@@ -8,7 +8,7 @@ repository = "https://github.com/ivov/lisette"
 
 [grammars.lisette]
 repository = "https://github.com/ivov/lisette"
-rev = "4885472c936aaddcfb2a1e6765af83cdc8825a18"
+rev = "a2fbd9d956ba38f52a456c5ad51da30e4bacdd1f"
 path = "editors/tree-sitter-lisette"
 
 [language_servers.lisette-lsp]
