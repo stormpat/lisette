@@ -27,27 +27,32 @@ var (
 )
 
 func init() {
-	if lisVer, goVer, err := loadCargoToml(); err == nil {
+	if lisVer, goVer, err := loadProjectMetadata(); err == nil {
 		lisVersion = lisVer
 		goVersion = goVer
 	}
 }
 
-func loadCargoToml() (lisVer, goVer string, err error) {
+func loadProjectMetadata() (lisVer, goVer string, err error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", "", err
 	}
 
 	for {
-		path := filepath.Join(dir, "Cargo.toml")
-		if _, err := os.Stat(path); err == nil {
-			content, err := os.ReadFile(path)
+		cargoPath := filepath.Join(dir, "Cargo.toml")
+		goVersionPath := filepath.Join(dir, "go-version")
+		if _, err := os.Stat(cargoPath); err == nil {
+			content, err := os.ReadFile(cargoPath)
 			if err != nil {
 				return "", "", err
 			}
 			lisVer = extractTomlValue(string(content), "[workspace.package]", "version")
-			goVer = extractTomlValue(string(content), "[workspace.metadata.lisette]", "go-version")
+			goVerBytes, err := os.ReadFile(goVersionPath)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to read go-version: %w", err)
+			}
+			goVer = strings.TrimSpace(string(goVerBytes))
 			return lisVer, goVer, nil
 		}
 

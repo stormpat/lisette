@@ -42,6 +42,3 @@ opt-level = 3
 [profile.flamegraph]
 inherits = "release"
 debug = true
-
-[workspace.metadata.lisette]
-go-version = "1.25.5"
