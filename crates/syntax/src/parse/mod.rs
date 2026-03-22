@@ -6,7 +6,7 @@ use crate::types::Type;
 
 pub const MAX_TUPLE_ARITY: usize = 5;
 pub const TUPLE_FIELDS: &[&str] = &["First", "Second", "Third", "Fourth", "Fifth"];
-const MAX_DEPTH: u32 = 256;
+const MAX_DEPTH: u32 = 128;
 const MAX_ERRORS: usize = 100;
 const MAX_LOOKAHEAD: usize = 256;
 
