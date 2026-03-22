@@ -108,6 +108,11 @@
         color: var(--accent-hover);
       }
 
+      .mobile-sep,
+      .mobile-br {
+        display: none;
+      }
+
       /* ---------------------------------------------------------- */
       /*  Hero                                                      */
       /* ---------------------------------------------------------- */
@@ -509,7 +514,84 @@
 
       @media (max-width: 768px) {
         .hero {
-          padding: 60px 32px 50px;
+          padding: 60px 16px 50px;
+        }
+
+        .examples {
+          padding: 20px 12px 80px;
+        }
+
+        .hero-sub br {
+          display: none;
+        }
+
+        .hero-sub .mobile-sep {
+          display: inline;
+        }
+
+        .mobile-br {
+          display: block;
+        }
+
+        .examples-header .mobile-br {
+          margin-bottom: 6px;
+        }
+
+        .hero-sub .mobile-hide {
+          display: none;
+        }
+
+        code,
+        pre {
+          font-size: 0.7rem;
+        }
+
+        .code-window pre,
+        .example-block pre,
+        .diag-block pre {
+          padding: 14px 12px;
+        }
+
+        .example-label {
+          padding: 10px 16px;
+        }
+
+        .code-window,
+        .example-block,
+        .diag-block {
+          border-radius: 0;
+          width: 100vw;
+          max-width: 100vw;
+          margin-left: calc(-50vw + 50%);
+          box-shadow: none;
+          border-top: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+        }
+
+        .code-window pre,
+        .example-block pre,
+        .diag-block pre {
+          padding-left: 16px;
+        }
+
+        .diag-block pre {
+          font-size: 0.7rem;
+        }
+
+        .editor-icons {
+          display: none;
+        }
+
+        .examples-header h2 {
+          font-size: 1.8rem;
+        }
+
+        .examples-header p {
+          font-size: 0.95rem;
+        }
+
+        .hero-cta {
+          display: none;
         }
       }
     </style>
@@ -525,8 +607,8 @@
             ><br />that compiles to <span class="brand-go">Go</span>
           </h1>
           <p class="hero-sub">
-            Algebraic data types&ensp;·&ensp;Pattern matching&ensp;·&ensp;No nil<br />
-            Hindley-Milner type system&ensp;·&ensp;Immutable by default<br />
+            Algebraic data types&ensp;·&ensp;Pattern matching<span class="mobile-br"></span><span class="mobile-hide">&ensp;·&ensp;</span>No nil<span class="mobile-sep">&ensp;·&ensp;</span><br />
+            Hindley-Milner type system<span class="mobile-br"></span><span class="mobile-hide">&ensp;·&ensp;Immutable by default&ensp;·&ensp;</span><br />
             Interoperability with Go's ecosystem
           </p>
           <div class="hero-cta">
@@ -1072,7 +1154,7 @@
     <section class="examples" id="learn-more">
       <div class="examples-header">
         <h2>Learn more</h2>
-        <p>By visiting the repository: <a href="https://github.com/ivov/lisette?tab=readme-ov-file#lisette"><code>github.com/ivov/lisette</code></a></p>
+        <p>By visiting the repository:<span class="mobile-br"></span> <a href="https://github.com/ivov/lisette?tab=readme-ov-file#lisette"><code>github.com/ivov/lisette</code></a></p>
       </div>
     </section>
 
