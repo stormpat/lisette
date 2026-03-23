@@ -146,9 +146,7 @@ Commands:
     check      Validate a file or project
     clean      Remove build artifacts
     learn      Generate a sample project
-    doc        Explore prelude or Go stdlib
-    bindgen    Generate .d.lis bindings
-    lsp        Start the LSP server
+    doc        Explore the prelude and Go stdlib
     help       Print this message
 
 Hint: Run `lis help <command>` to learn more about a command.
