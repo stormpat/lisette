@@ -187,8 +187,8 @@ pub fn name_not_found(
     span: Span,
     available_names: &[String],
 ) -> LisetteDiagnostic {
-    if variable_name == "nil" {
-        return LisetteDiagnostic::error("`nil` is not supported")
+    if matches!(variable_name, "nil" | "null" | "Nil" | "undefined") {
+        return LisetteDiagnostic::error(&format!("`{}` is not supported", variable_name))
             .with_resolve_code("nil_not_supported")
             .with_span_label(&span, "does not exist")
             .with_help("Absence is encoded with `Option<T>` in Lisette. Use `None` to represent absent values.");
