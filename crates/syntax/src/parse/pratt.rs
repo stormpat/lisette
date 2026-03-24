@@ -268,7 +268,8 @@ impl<'source> Parser<'source> {
                     let span = ast::Span::new(
                         self.file_id,
                         first_span.byte_offset,
-                        (last_span.byte_offset + last_span.byte_length) - first_span.byte_offset,
+                        (last_span.byte_offset + last_span.byte_length)
+                            .saturating_sub(first_span.byte_offset),
                     );
                     let error = ParseError::new(title, span, "misplaced")
                         .with_parse_code("syntax_error")
