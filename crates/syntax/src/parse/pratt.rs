@@ -31,7 +31,7 @@ impl<'source> Parser<'source> {
         let start = self.current_token();
         let mut lhs = self.parse_left_hand_side();
 
-        while !self.at_eof() {
+        while !self.at_eof() && !self.too_many_errors() {
             if self.check_go_channel_send() {
                 self.leave_recursion();
                 return lhs;
