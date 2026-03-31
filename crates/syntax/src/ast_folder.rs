@@ -475,6 +475,24 @@ pub(crate) trait AstFolder {
                 }
             }
 
+            Range {
+                start,
+                end,
+                inclusive,
+                ty,
+                span,
+            } => Range {
+                start: start
+                    .map(|e| self.fold_expression(*e).map(Box::new))
+                    .transpose()?,
+                end: end
+                    .map(|e| self.fold_expression(*e).map(Box::new))
+                    .transpose()?,
+                inclusive,
+                ty,
+                span,
+            },
+
             Literal { .. }
             | Identifier { .. }
             | Enum { .. }
@@ -486,7 +504,6 @@ pub(crate) trait AstFolder {
             | Interface { .. }
             | Continue { .. }
             | Unit { .. }
-            | Range { .. }
             | RawGo { .. }
             | NoOp => expression,
         })
