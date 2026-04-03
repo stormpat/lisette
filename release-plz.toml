@@ -18,3 +18,7 @@ changelog_include = [
   "lisette-stdlib",
   "lisette-lsp",
 ]
+
+[changelog]
+header = """# Changelog
+"""
