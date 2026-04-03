@@ -11,7 +11,7 @@ pre-commit:
   parallel: true
   commands:
     check:
-      glob: "*.{rs,lis,toml}"
+      glob: "**/*.{rs,lis,toml}"
       run: just check && just check-stdlib-typedefs
     bindgen:
       glob: "tools/bindgen/**/*.go"
