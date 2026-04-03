@@ -140,6 +140,7 @@ func RunStd(args []string) {
 	fs := flag.NewFlagSet("stdlib", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to bindgen config file")
 	outDir := fs.String("outdir", "", "output directory for generated .d.lis files")
+	version := fs.String("version", "", "override Lisette version in generated headers")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: bindgen stdlib -outdir <dir>\n\n")
 		fmt.Fprintf(os.Stderr, "Generates .d.lis type definitions for all Go std packages.\n\n")
@@ -160,9 +161,14 @@ func RunStd(args []string) {
 		os.Exit(1)
 	}
 
+	effectiveVersion := lisVersion
+	if *version != "" {
+		effectiveVersion = *version
+	}
+
 	fmt.Fprintf(os.Stderr, "Generating stdlib bindings to %s...\n", *outDir)
 
-	result, err := GenerateStd(context.Background(), *outDir, lisVersion, goVersion, &cfg)
+	result, err := GenerateStd(context.Background(), *outDir, effectiveVersion, goVersion, &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bindgen: %v\n", err)
 		os.Exit(1)

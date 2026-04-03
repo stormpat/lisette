@@ -39,7 +39,7 @@ pub enum Command {
     Bindgen {
         package: String,
         output: Option<String>,
-        force: bool,
+        version: Option<String>,
         verbose: bool,
     },
     Doc {
@@ -240,12 +240,11 @@ impl Command {
             "bindgen" => {
                 let mut package = None;
                 let mut output = None;
-                let mut force = false;
+                let mut version = None;
                 let mut verbose = false;
 
                 for arg in arguments {
                     match arg.as_str() {
-                        "-f" | "--force" => force = true,
                         "-v" | "--verbose" => verbose = true,
                         s if s.starts_with("-o=") || s.starts_with("--output=") => {
                             output = Some(s.split('=').nth(1).unwrap_or("").to_string());
@@ -254,6 +253,7 @@ impl Command {
                             return Err(ParseError::UnknownFlag(s.to_string()));
                         }
                         s if package.is_none() => package = Some(s.to_string()),
+                        s if version.is_none() => version = Some(s.to_string()),
                         _ => {}
                     }
                 }
@@ -262,7 +262,7 @@ impl Command {
                     Some(package) => Ok(Command::Bindgen {
                         package,
                         output,
-                        force,
+                        version,
                         verbose,
                     }),
                     None => Err(ParseError::MissingArgument {

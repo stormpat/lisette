@@ -76,10 +76,10 @@ fuzz-infer duration="300":
 check-stdlib-typedefs:
     cargo run -p lisette -- check crates/stdlib/typedefs/
 
-regenerate-stdlib-typedefs:
+regenerate-stdlib-typedefs version="":
     cd tools/bindgen && just build
     just build # make binary to run bindgen
-    ./target/release/lis bindgen stdlib
+    ./target/release/lis bindgen stdlib {{version}}
     ./target/release/lis format crates/stdlib/typedefs/
     just build # recompile compiler to embed updated typedefs
     ./target/release/lis check crates/stdlib/typedefs/

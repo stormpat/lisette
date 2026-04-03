@@ -81,9 +81,9 @@ fn main() {
         Command::Bindgen {
             package,
             output,
-            force,
+            version,
             verbose,
-        } => handlers::bindgen(&package, output, force, verbose),
+        } => handlers::bindgen(&package, output, version, verbose),
         Command::Doc { query } => handlers::doc(query),
         Command::DocSearch { query } => handlers::doc_search(&query),
         Command::Learn => handlers::learn(),

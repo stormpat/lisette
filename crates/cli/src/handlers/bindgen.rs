@@ -61,7 +61,12 @@ fn resolve_bindgen_binary() -> Option<PathBuf> {
     None
 }
 
-pub fn bindgen(package: &str, output: Option<String>, _force: bool, verbose: bool) -> i32 {
+pub fn bindgen(
+    package: &str,
+    output: Option<String>,
+    version: Option<String>,
+    verbose: bool,
+) -> i32 {
     if let Err(code) = crate::go_cli::require_go() {
         return code;
     }
@@ -76,7 +81,7 @@ pub fn bindgen(package: &str, output: Option<String>, _force: bool, verbose: boo
             );
             return 1;
         }
-        return bindgen_std(source_dir, verbose);
+        return bindgen_std(source_dir, version, verbose);
     }
 
     let bin_path = match resolve_bindgen_binary() {
@@ -143,7 +148,7 @@ fn bindgen_pkg(bin_path: &Path, package: &str, output: Option<String>, verbose: 
     }
 }
 
-fn bindgen_std(source_dir: &Path, verbose: bool) -> i32 {
+fn bindgen_std(source_dir: &Path, version: Option<String>, verbose: bool) -> i32 {
     let out_dir = "crates/stdlib/typedefs";
 
     if verbose {
@@ -168,16 +173,22 @@ fn bindgen_std(source_dir: &Path, verbose: bool) -> i32 {
         .to_string_lossy()
         .to_string();
 
+    let mut args = vec![
+        "run".to_string(),
+        "./cmd/bindgen".to_string(),
+        "stdlib".to_string(),
+        "--config".to_string(),
+        config_path,
+        "--outdir".to_string(),
+        absolute_out_dir,
+    ];
+    if let Some(ver) = version {
+        args.push("--version".to_string());
+        args.push(ver);
+    }
+
     let status = Command::new("go")
-        .args([
-            "run",
-            "./cmd/bindgen",
-            "stdlib",
-            "--config",
-            &config_path,
-            "--outdir",
-            &absolute_out_dir,
-        ])
+        .args(&args)
         .current_dir(source_dir)
         .status();
 
