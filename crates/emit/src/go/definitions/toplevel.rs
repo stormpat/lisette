@@ -14,12 +14,15 @@ use syntax::program::Definition;
 use syntax::types::Type;
 
 impl Emitter<'_> {
-    /// Returns `"GoString"` if the user has defined a `string` method on this type
-    /// (so their method takes `String` and the auto-generated one becomes `GoString`),
-    /// otherwise returns `"String"` for the default auto-generated stringer.
-    fn stringer_method_name(&self, name: &str) -> &'static str {
+    /// Returns the name for the auto-generated stringer method, or `None` if no
+    /// auto-generated method should be emitted.
+    ///
+    /// - No user `string` → auto-generated method is `"String"`
+    /// - User `string` only → auto-generated method is `"GoString"`
+    /// - User `string` + `goString` → `None` (skip, user covers both)
+    fn stringer_method_name(&self, name: &str) -> Option<&'static str> {
         let qualified = format!("{}.{}", self.current_module, name);
-        let has_user_string = self
+        let methods = self
             .ctx
             .definitions
             .get(qualified.as_str())
@@ -29,12 +32,11 @@ impl Emitter<'_> {
                 | Definition::ValueEnum { methods, .. }
                 | Definition::TypeAlias { methods, .. } => Some(methods),
                 _ => None,
-            })
-            .is_some_and(|m| m.contains_key("string"));
-        if has_user_string {
-            "GoString"
-        } else {
-            "String"
+            });
+        match methods {
+            Some(m) if m.contains_key("string") && m.contains_key("goString") => None,
+            Some(m) if m.contains_key("string") => Some("GoString"),
+            _ => Some("String"),
         }
     }
 
@@ -317,20 +319,21 @@ impl Emitter<'_> {
             } else {
                 None
             };
-            let stringer_name = self.stringer_method_name(name);
-            let string_method = self.emit_tuple_struct_stringer_method(
-                name,
-                &receiver_generics,
-                fields.len(),
-                underlying_go_type.as_deref(),
-                stringer_name,
-            );
-            // Zero-field structs return a literal without fmt.Sprintf, so also skip fmt.
-            if !string_method.is_empty() {
-                if string_method.contains("fmt.") {
-                    self.ensure_imported.insert("fmt".to_string());
+            if let Some(stringer_name) = self.stringer_method_name(name) {
+                let string_method = self.emit_tuple_struct_stringer_method(
+                    name,
+                    &receiver_generics,
+                    fields.len(),
+                    underlying_go_type.as_deref(),
+                    stringer_name,
+                );
+                // Zero-field structs return a literal without fmt.Sprintf, so also skip fmt.
+                if !string_method.is_empty() {
+                    if string_method.contains("fmt.") {
+                        self.ensure_imported.insert("fmt".to_string());
+                    }
+                    return format!("{definition}\n\n{string_method}");
                 }
-                return format!("{definition}\n\n{string_method}");
             }
             return definition;
         }
@@ -397,18 +400,20 @@ impl Emitter<'_> {
             )
         };
 
-        let stringer_name = self.stringer_method_name(name);
-        let string_method = self.emit_struct_stringer_method(
-            name,
-            &receiver_generics,
-            &go_field_names,
-            stringer_name,
-        );
-        if !go_field_names.is_empty() {
-            self.ensure_imported.insert("fmt".to_string());
+        if let Some(stringer_name) = self.stringer_method_name(name) {
+            let string_method = self.emit_struct_stringer_method(
+                name,
+                &receiver_generics,
+                &go_field_names,
+                stringer_name,
+            );
+            if !go_field_names.is_empty() {
+                self.ensure_imported.insert("fmt".to_string());
+            }
+            format!("{definition}\n\n{string_method}")
+        } else {
+            definition
         }
-
-        format!("{definition}\n\n{string_method}")
     }
 
     fn emit_tuple_struct_definition(
@@ -529,14 +534,15 @@ impl Emitter<'_> {
 
         let layout = self.module.enum_layouts.get(&enum_id).unwrap();
         let mut result = layout.emit_definition(&generics_string);
-        result.push_str("\n\n");
-        let stringer_name = self.stringer_method_name(name);
-        result.push_str(&layout.emit_stringer_method(&receiver_generics, stringer_name));
+        if let Some(stringer_name) = self.stringer_method_name(name) {
+            result.push_str("\n\n");
+            result.push_str(&layout.emit_stringer_method(&receiver_generics, stringer_name));
+            self.ensure_imported.insert("fmt".to_string());
+        }
         if has_json {
             result.push_str("\n\n");
             result.push_str(&layout.emit_json_methods(&receiver_generics));
         }
-        self.ensure_imported.insert("fmt".to_string());
         if has_json {
             self.ensure_imported.insert("encoding/json".to_string());
         }
