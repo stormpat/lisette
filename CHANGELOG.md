@@ -7,10 +7,6 @@
 - skip pattern analysis on import cycle ([#34](https://github.com/ivov/lisette/pull/34))
 - interface subtype satisfaction through type variables ([#31](https://github.com/ivov/lisette/pull/31))
 
-### Other
-
-- bump stdlib typedefs to v0.1.5
-
 ## [0.1.4](https://github.com/ivov/lisette/compare/lisette-v0.1.3...lisette-v0.1.4) - 2026-04-07
 
 ### Added
@@ -24,10 +20,6 @@
 - ice when calling generic type as function ([#28](https://github.com/ivov/lisette/pull/28))
 - skip auto-generated stringer on user string + goString
 - swap string method for go string method ([#17](https://github.com/ivov/lisette/pull/17))
-
-### Other
-
-- bump stdlib typedefs to v0.1.4
 
 ## [0.1.3](https://github.com/ivov/lisette/compare/lisette-v0.1.2...lisette-v0.1.3) - 2026-04-06
 
@@ -46,7 +38,6 @@
 ### Other
 
 - replace DiscardedTailFact boolean with enum
-- bump stdlib typedefs to v0.1.3
 - match nested files in lefthook format check glob
 - regenerate stdlib typedefs
 

@@ -25,3 +25,6 @@ header = """# Changelog
 
 Lisette is under active development. Any version before 1.0.0 may include breaking changes.
 """
+commit_parsers = [
+  { message = "^chore: bump stdlib typedefs", skip = true },
+]
