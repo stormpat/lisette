@@ -26,6 +26,22 @@ header = """# Changelog
 
 Lisette is under active development. Any version before 1.0.0 may include breaking changes.
 """
+body = '''
+## [{{ version }}](https://github.com/ivov/lisette/compare/lisette-v{{ previous.version }}...lisette-v{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for commit in commits %}
+{%- set subject = commit.raw_message | split(pat="\n") | first | trim -%}
+{%- if subject is matching("\(#\d+\)$") -%}
+{%- set parts = subject | split(pat=" (#") -%}
+{%- set pr = parts | last | split(pat=")") | first -%}
+{%- set head = parts | slice(end=-1) | join(sep=" (#") %}
+- {{ head }} ([#{{ pr }}](https://github.com/ivov/lisette/pull/{{ pr }}))
+{%- else %}
+- {{ subject }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/ivov/lisette/commit/{{ commit.id }}))
+{%- endif %}
+{%- endfor %}
+
+'''
 commit_parsers = [
   { message = "^chore: bump stdlib typedefs", skip = true },
+  { message = ".*", group = "all" },
 ]
