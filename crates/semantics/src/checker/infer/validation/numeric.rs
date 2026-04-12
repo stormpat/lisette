@@ -17,7 +17,9 @@ impl Checker<'_, '_> {
         };
 
         // For positive literals (u64 from parser), only check against max.
-        // Negative literals are handled by check_negative_literal_overflow.
+        // Negative literals route through check_negative_magnitude_overflow:
+        // either via the unary-minus path (operators.rs) or via the
+        // pre-negated text detection in literals.rs.
         if value as i128 > bounds.max {
             self.sink.push(diagnostics::infer::integer_literal_overflow(
                 bounds.name,
@@ -60,11 +62,20 @@ impl Checker<'_, '_> {
             return;
         };
 
+        self.check_negative_magnitude_overflow(*value, target_ty, span);
+    }
+
+    pub(crate) fn check_negative_magnitude_overflow(
+        &mut self,
+        magnitude: u64,
+        target_ty: &Type,
+        span: Span,
+    ) {
         let type_name = target_ty.get_name();
 
-        // Unsigned types cannot be negated (except zero).
+        // Allow `-0` on unsigned types; any nonzero negation is an error.
         if is_unsigned_type(type_name) {
-            if *value != 0 {
+            if magnitude != 0 {
                 self.sink.push(diagnostics::infer::cannot_negate_unsigned(
                     type_name.unwrap_or("uint"),
                     span,
@@ -77,7 +88,7 @@ impl Checker<'_, '_> {
             return;
         };
 
-        if *value as i128 > -bounds.min {
+        if magnitude as i128 > -bounds.min {
             self.sink.push(diagnostics::infer::integer_literal_overflow(
                 bounds.name,
                 bounds.min,

@@ -390,6 +390,19 @@ fn classify(x: int) -> string {
 }
 
 #[test]
+fn negative_pattern_i64_min_emit() {
+    let input = r#"
+fn classify(x: int) -> string {
+  match x {
+    -9223372036854775808 => "min",
+    _ => "other",
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn variable_shadow_inside_match_arm() {
     let input = r#"
 fn test(opt: Option<int>) -> int {

@@ -1,0 +1,12 @@
+---
+source: tests/spec/emit/patterns.rs
+description: "input: \nfn classify(x: int) -> string {\n  match x {\n    -9223372036854775808 => \"min\",\n    _ => \"other\",\n  }\n}\n"
+---
+package main
+
+func classify(x int) string {
+	if x == -9223372036854775808 {
+		return "min"
+	}
+	return "other"
+}

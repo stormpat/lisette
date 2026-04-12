@@ -186,16 +186,16 @@ impl<'source> Lexer<'source> {
         self.errors.push(error);
     }
 
-    pub(super) fn error_invalid_escape(&mut self, offset: usize, ch: char) {
-        let span = self.span(offset as u32, 2);
+    pub(super) fn error_invalid_escape(&mut self, ch: char) {
+        let span = self.span((self.current_offset - 1) as u32, 2);
         let error = ParseError::new(
             "Invalid escape sequence",
             span,
-            format!("`\\{}` is not a valid escape", ch),
+            format!("`\\{ch}` is not a valid escape"),
         )
         .with_lex_code("invalid_escape_sequence")
         .with_help(
-            "Valid escapes are `\\n`, `\\t`, `\\r`, `\\\\`, `\\'`, `\\xHH` (hex), and `\\ooo` (octal)",
+            "Valid escapes are `\\n`, `\\t`, `\\r`, `\\\\`, `\\'`, `\\xHH` (hex), `\\ooo` (octal), and `\\u{HEX}` (unicode)",
         );
         self.errors.push(error);
     }
@@ -209,6 +209,30 @@ impl<'source> Lexer<'source> {
         )
         .with_lex_code("octal_escape_out_of_range")
         .with_help("Octal escapes must be in the range `\\0` to `\\377` (0x00 to 0xFF)");
+        self.errors.push(error);
+    }
+
+    pub(super) fn error_invalid_unicode_escape(&mut self, offset: usize, length: usize) {
+        let span = self.span(offset as u32, length as u32);
+        let error = ParseError::new(
+            "Invalid unicode escape",
+            span,
+            "expected `\\u{HEX}` with 1-6 hex digits",
+        )
+        .with_lex_code("invalid_unicode_escape")
+        .with_help("Use the form `\\u{1F600}` with 1-6 hexadecimal digits between braces");
+        self.errors.push(error);
+    }
+
+    pub(super) fn error_unicode_escape_out_of_range(&mut self, offset: usize, length: usize) {
+        let span = self.span(offset as u32, length as u32);
+        let error = ParseError::new(
+            "Unicode escape out of range",
+            span,
+            "codepoint exceeds U+10FFFF or is a surrogate (U+D800-U+DFFF)",
+        )
+        .with_lex_code("unicode_escape_out_of_range")
+        .with_help("Unicode escapes must be valid scalar values: 0..=0xD7FF or 0xE000..=0x10FFFF");
         self.errors.push(error);
     }
 

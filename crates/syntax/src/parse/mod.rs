@@ -724,67 +724,75 @@ impl<'source> Parser<'source> {
         self.errors.push(error);
     }
 
-    fn parse_integer_text(&mut self, text: &str) -> ast::Literal {
+    pub(crate) fn parse_integer_text(&mut self, text: &str) -> ast::Literal {
+        self.parse_integer_text_with(text, false)
+    }
+
+    pub(crate) fn parse_integer_text_with(
+        &mut self,
+        text: &str,
+        preserve_decimal_text: bool,
+    ) -> ast::Literal {
         let clean = if text.contains('_') {
             std::borrow::Cow::Owned(text.replace('_', ""))
         } else {
             std::borrow::Cow::Borrowed(text)
         };
 
-        let (n, preserve_text) = if clean.starts_with("0x") || clean.starts_with("0X") {
+        let (n, is_decimal) = if clean.starts_with("0x") || clean.starts_with("0X") {
             let value = u64::from_str_radix(&clean[2..], 16).unwrap_or_else(|_| {
                 self.track_error(
-                    format!("hex literal '{}' is too large", text),
+                    format!("hex literal '{text}' is too large"),
                     "Maximum value is `0xFFFFFFFFFFFFFFFF`.",
                 );
                 0
             });
-            (value, true)
+            (value, false)
         } else if clean.starts_with("0o") || clean.starts_with("0O") {
             let value = u64::from_str_radix(&clean[2..], 8).unwrap_or_else(|_| {
                 self.track_error(
-                    format!("octal literal '{}' is too large", text),
+                    format!("octal literal '{text}' is too large"),
                     "Maximum value is `0o1777777777777777777777`.",
                 );
                 0
             });
-            (value, true)
+            (value, false)
         } else if clean.starts_with("0b") || clean.starts_with("0B") {
             let value = u64::from_str_radix(&clean[2..], 2).unwrap_or_else(|_| {
                 self.track_error(
-                    format!("binary literal '{}' is too large", text),
+                    format!("binary literal '{text}' is too large"),
                     "Value must fit in 64 bits.",
                 );
                 0
             });
-            (value, true)
+            (value, false)
         } else if clean.len() > 1
             && clean.starts_with('0')
             && clean.chars().skip(1).all(|c| c.is_ascii_digit())
         {
             let value = u64::from_str_radix(&clean[1..], 8).unwrap_or_else(|_| {
                 self.track_error(
-                    format!("octal literal '{}' is too large", text),
+                    format!("octal literal '{text}' is too large"),
                     "Maximum value is `01777777777777777777777`.",
                 );
                 0
             });
-            (value, true)
+            (value, false)
         } else {
             let value = clean.parse().unwrap_or_else(|_| {
                 self.track_error(
-                    format!("integer literal '{}' is too large", text),
+                    format!("integer literal '{text}' is too large"),
                     "Maximum value is `18446744073709551615`.",
                 );
                 0
             });
-            (value, false)
+            (value, true)
         };
 
-        let original_text = if preserve_text {
-            Some(text.to_string())
-        } else {
+        let original_text = if is_decimal && !preserve_decimal_text {
             None
+        } else {
+            Some(text.to_string())
         };
 
         ast::Literal::Integer {

@@ -1,0 +1,26 @@
+---
+source: tests/spec/lex/mod.rs
+description: "input: \"emoji \\u{1F600} here\""
+---
+LexResult {
+    tokens: [
+        Token {
+            kind: String,
+            text: "\"emoji \\u{1F600} here\"",
+            byte_offset: 0,
+            byte_length: 22,
+        },
+        Token {
+            kind: EOF,
+            text: "",
+            byte_offset: 22,
+            byte_length: 0,
+        },
+    ],
+    errors: [],
+    trivia: Trivia {
+        comments: [],
+        doc_comments: [],
+        blank_lines: [],
+    },
+}

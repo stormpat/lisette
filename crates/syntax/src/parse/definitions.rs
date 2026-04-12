@@ -379,14 +379,20 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_value_enum_variant_value(&mut self) -> (Literal, u32) {
+        const EMPTY: Literal = Literal::Integer {
+            value: 0,
+            text: None,
+        };
+
         let token = self.current_token();
 
         match token.kind {
             Integer => {
                 let text = token.text;
                 let end = token.byte_offset + token.byte_length;
+                let literal = self.parse_integer_text_with(text, true);
                 self.next();
-                (Self::parse_integer_literal(text), end)
+                (literal, end)
             }
             String => {
                 let text = token.text;
@@ -395,84 +401,47 @@ impl<'source> Parser<'source> {
                 (Literal::String(text[1..text.len() - 1].to_string()), end)
             }
             Minus => {
+                let minus_offset = token.byte_offset;
                 self.next();
                 let next_token = self.current_token();
-                if next_token.kind == Integer {
-                    let text = next_token.text;
-                    let end = next_token.byte_offset + next_token.byte_length;
-                    self.next();
-                    if let Literal::Integer { value, text: orig } =
-                        Self::parse_integer_literal(text)
-                    {
-                        (
-                            Literal::Integer {
-                                value: (-(value as i64)) as u64,
-                                text: orig.map(|t| format!("-{}", t)),
-                            },
-                            end,
-                        )
-                    } else {
-                        self.track_error(
-                            "expected integer after `-`",
-                            "Use `-42` for negative integers.",
-                        );
-                        (
-                            Literal::Integer {
-                                value: 0,
-                                text: None,
-                            },
-                            next_token.byte_offset,
-                        )
-                    }
-                } else {
+                if next_token.kind != Integer {
                     self.track_error(
                         "expected integer after `-`",
                         "Use `-42` for negative integers.",
                     );
-                    (
-                        Literal::Integer {
-                            value: 0,
-                            text: None,
-                        },
-                        next_token.byte_offset,
-                    )
+                    return (EMPTY, next_token.byte_offset);
                 }
+                let text = next_token.text;
+                let end = next_token.byte_offset + next_token.byte_length;
+                let neg_span = Span::new(self.file_id, minus_offset, end - minus_offset);
+                let literal = self.parse_integer_text_with(text, true);
+                self.next();
+                let Literal::Integer { value, text: orig } = literal else {
+                    return (EMPTY, end);
+                };
+                if value > i64::MIN.unsigned_abs() {
+                    self.track_error_at(
+                        neg_span,
+                        "negative integer out of range",
+                        "Negative integer must be ≥ -9223372036854775808 (i64 minimum).",
+                    );
+                    return (EMPTY, end);
+                }
+                (
+                    Literal::Integer {
+                        value: value.wrapping_neg(),
+                        text: orig.map(|t| format!("-{t}")),
+                    },
+                    end,
+                )
             }
             _ => {
                 self.track_error(
                     "expected integer or string literal",
                     "Value enum variants require integer or string values.",
                 );
-                (
-                    Literal::Integer {
-                        value: 0,
-                        text: None,
-                    },
-                    token.byte_offset,
-                )
+                (EMPTY, token.byte_offset)
             }
-        }
-    }
-
-    fn parse_integer_literal(text: &str) -> Literal {
-        let value = if text.starts_with("0x") || text.starts_with("0X") {
-            u64::from_str_radix(&text[2..].replace('_', ""), 16).unwrap_or(0)
-        } else if text.starts_with("0o") || text.starts_with("0O") {
-            u64::from_str_radix(&text[2..].replace('_', ""), 8).unwrap_or(0)
-        } else if text.starts_with("0b") || text.starts_with("0B") {
-            u64::from_str_radix(&text[2..].replace('_', ""), 2).unwrap_or(0)
-        } else if text.starts_with('0')
-            && text.len() > 1
-            && text.chars().nth(1).is_some_and(|c| c.is_ascii_digit())
-        {
-            u64::from_str_radix(&text[1..].replace('_', ""), 8).unwrap_or(0)
-        } else {
-            text.replace('_', "").parse().unwrap_or(0)
-        };
-
-        Literal::Integer {
-            value,
-            text: Some(text.to_string()),
         }
     }
 

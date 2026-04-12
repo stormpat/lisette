@@ -1,16 +1,16 @@
 ---
 source: tests/spec/parse/mod.rs
-description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"negative five\",\n    -1 => \"negative one\",\n    0 => \"zero\",\n    _ => \"other\",\n  }\n}\n"
+description: "input: \nfn classify(x: int) -> string {\n  match x {\n    -9223372036854775808 => \"min\",\n    _ => \"other\",\n  }\n}\n"
 ---
 [
     Function {
         doc: None,
         attributes: [],
-        name: "test",
+        name: "classify",
         name_span: Span {
             file_id: 0,
             byte_offset: 4,
-            byte_length: 4,
+            byte_length: 8,
         },
         generics: [],
         params: [
@@ -19,7 +19,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                     identifier: "x",
                     span: Span {
                         file_id: 0,
-                        byte_offset: 9,
+                        byte_offset: 13,
                         byte_length: 1,
                     },
                 },
@@ -29,7 +29,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                         params: [],
                         span: Span {
                             file_id: 0,
-                            byte_offset: 12,
+                            byte_offset: 16,
                             byte_length: 3,
                         },
                     },
@@ -45,7 +45,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
             params: [],
             span: Span {
                 file_id: 0,
-                byte_offset: 20,
+                byte_offset: 24,
                 byte_length: 6,
             },
         },
@@ -63,7 +63,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                         ),
                         span: Span {
                             file_id: 0,
-                            byte_offset: 37,
+                            byte_offset: 41,
                             byte_length: 1,
                         },
                         binding_id: None,
@@ -73,9 +73,9 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                         MatchArm {
                             pattern: Literal {
                                 literal: Integer {
-                                    value: 18446744073709551611,
+                                    value: 9223372036854775808,
                                     text: Some(
-                                        "-5",
+                                        "-9223372036854775808",
                                     ),
                                 },
                                 ty: Variable(
@@ -83,81 +83,21 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                                 ),
                                 span: Span {
                                     file_id: 0,
-                                    byte_offset: 45,
-                                    byte_length: 2,
+                                    byte_offset: 49,
+                                    byte_length: 20,
                                 },
                             },
                             expression: Literal {
                                 literal: String(
-                                    "negative five",
+                                    "min",
                                 ),
                                 ty: Variable(
                                     -1,
                                 ),
                                 span: Span {
                                     file_id: 0,
-                                    byte_offset: 51,
-                                    byte_length: 15,
-                                },
-                            },
-                        },
-                        MatchArm {
-                            pattern: Literal {
-                                literal: Integer {
-                                    value: 18446744073709551615,
-                                    text: Some(
-                                        "-1",
-                                    ),
-                                },
-                                ty: Variable(
-                                    -1,
-                                ),
-                                span: Span {
-                                    file_id: 0,
-                                    byte_offset: 72,
-                                    byte_length: 2,
-                                },
-                            },
-                            expression: Literal {
-                                literal: String(
-                                    "negative one",
-                                ),
-                                ty: Variable(
-                                    -1,
-                                ),
-                                span: Span {
-                                    file_id: 0,
-                                    byte_offset: 78,
-                                    byte_length: 14,
-                                },
-                            },
-                        },
-                        MatchArm {
-                            pattern: Literal {
-                                literal: Integer {
-                                    value: 0,
-                                    text: None,
-                                },
-                                ty: Variable(
-                                    -1,
-                                ),
-                                span: Span {
-                                    file_id: 0,
-                                    byte_offset: 98,
-                                    byte_length: 1,
-                                },
-                            },
-                            expression: Literal {
-                                literal: String(
-                                    "zero",
-                                ),
-                                ty: Variable(
-                                    -1,
-                                ),
-                                span: Span {
-                                    file_id: 0,
-                                    byte_offset: 103,
-                                    byte_length: 6,
+                                    byte_offset: 73,
+                                    byte_length: 5,
                                 },
                             },
                         },
@@ -165,7 +105,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                             pattern: WildCard {
                                 span: Span {
                                     file_id: 0,
-                                    byte_offset: 115,
+                                    byte_offset: 84,
                                     byte_length: 1,
                                 },
                             },
@@ -178,7 +118,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                                 ),
                                 span: Span {
                                     file_id: 0,
-                                    byte_offset: 120,
+                                    byte_offset: 89,
                                     byte_length: 7,
                                 },
                             },
@@ -190,8 +130,8 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
                     ),
                     span: Span {
                         file_id: 0,
-                        byte_offset: 31,
-                        byte_length: 101,
+                        byte_offset: 35,
+                        byte_length: 66,
                     },
                 },
             ],
@@ -200,8 +140,8 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
             ),
             span: Span {
                 file_id: 0,
-                byte_offset: 27,
-                byte_length: 107,
+                byte_offset: 31,
+                byte_length: 72,
             },
         },
         ty: Variable(
@@ -210,7 +150,7 @@ description: "input: \nfn test(x: int) -> string {\n  match x {\n    -5 => \"neg
         span: Span {
             file_id: 0,
             byte_offset: 1,
-            byte_length: 133,
+            byte_length: 102,
         },
     },
 ]

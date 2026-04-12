@@ -96,26 +96,33 @@ impl<'source> Parser<'source> {
         match self.current_token().kind {
             Integer => {
                 let int_pattern = self.parse_integer_pattern();
-                if let Pattern::Literal {
+                let Pattern::Literal {
                     literal: Literal::Integer { value, text },
-                    ty: _,
-                    span: _,
+                    ..
                 } = int_pattern
-                {
-                    let neg_text = match text {
-                        Some(t) => format!("-{}", t),
-                        None => format!("-{}", value),
-                    };
-                    Pattern::Literal {
-                        literal: Literal::Integer {
-                            value,
-                            text: Some(neg_text),
-                        },
-                        ty: Type::uninferred(),
-                        span: self.span_from_tokens(start),
-                    }
-                } else {
-                    int_pattern
+                else {
+                    return int_pattern;
+                };
+                let span = self.span_from_tokens(start);
+                if value > i64::MIN.unsigned_abs() {
+                    self.track_error_at(
+                        span,
+                        "negative integer out of range",
+                        "Negative integer must be ≥ -9223372036854775808 (i64 minimum).",
+                    );
+                    return Pattern::WildCard { span };
+                }
+                let neg_text = match text {
+                    Some(t) => format!("-{t}"),
+                    None => format!("-{value}"),
+                };
+                Pattern::Literal {
+                    literal: Literal::Integer {
+                        value: value.wrapping_neg(),
+                        text: Some(neg_text),
+                    },
+                    ty: Type::uninferred(),
+                    span,
                 }
             }
             Float => {

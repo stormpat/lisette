@@ -168,6 +168,48 @@ fn lex_octal_escape_out_of_range() {
 }
 
 #[test]
+fn lex_unicode_escape_missing_braces() {
+    let input = r#"let x = "\u1F600""#;
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
+fn lex_unicode_escape_empty() {
+    let input = r#"let x = "\u{}""#;
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
+fn lex_unicode_escape_invalid_hex() {
+    let input = r#"let x = "\u{XYZ}""#;
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
+fn lex_unicode_escape_too_many_digits() {
+    let input = r#"let x = "\u{1234567}""#;
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
+fn lex_unicode_escape_above_max() {
+    let input = r#"let x = "\u{110000}""#;
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
+fn lex_unicode_escape_surrogate() {
+    let input = r#"let x = "\u{D800}""#;
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
+fn lex_unicode_escape_unterminated() {
+    let input = "let x = \"\\u{1F600\"";
+    assert_lex_error_snapshot!(input);
+}
+
+#[test]
 fn lex_number_trailing_underscore() {
     let input = r#"let x = 42_"#;
     assert_lex_error_snapshot!(input);
@@ -3430,6 +3472,49 @@ fn parse_regular_enum_with_underlying_type() {
 enum Status: int {
   Active,
   Inactive,
+}
+"#;
+    assert_parse_error_snapshot!(input);
+}
+
+#[test]
+fn parse_negative_pattern_below_i64_min() {
+    let input = r#"
+fn classify(x: int) -> string {
+  match x {
+    -9223372036854775809 => "low",
+    _ => "other",
+  }
+}
+"#;
+    assert_parse_error_snapshot!(input);
+}
+
+#[test]
+fn parse_value_enum_negative_below_i64_min() {
+    let input = r#"
+enum Bad: int64 {
+  Way = -9223372036854775809,
+}
+"#;
+    assert_parse_error_snapshot!(input);
+}
+
+#[test]
+fn parse_value_enum_positive_above_u64_max() {
+    let input = r#"
+enum Bad: int64 {
+  Way = 99999999999999999999999,
+}
+"#;
+    assert_parse_error_snapshot!(input);
+}
+
+#[test]
+fn parse_value_enum_negative_below_u64_max() {
+    let input = r#"
+enum Bad: int64 {
+  Way = -18446744073709551616,
 }
 "#;
     assert_parse_error_snapshot!(input);

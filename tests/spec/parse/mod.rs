@@ -3200,6 +3200,29 @@ enum Offset {
 }
 
 #[test]
+fn negative_pattern_i64_min() {
+    let input = r#"
+fn classify(x: int) -> string {
+  match x {
+    -9223372036854775808 => "min",
+    _ => "other",
+  }
+}
+"#;
+    assert_parse_snapshot!(input);
+}
+
+#[test]
+fn value_enum_negative_i64_min() {
+    let input = r#"
+enum Time: int64 {
+  Earliest = -9223372036854775808,
+}
+"#;
+    assert_parse_snapshot!(input);
+}
+
+#[test]
 fn struct_with_json_attribute() {
     let input = r#"
 #[json]

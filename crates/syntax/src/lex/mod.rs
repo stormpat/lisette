@@ -754,6 +754,47 @@ impl<'source> Lexer<'source> {
         }
     }
 
+    fn consume_unicode_escape(&mut self, escape_start: usize) {
+        if self.at_eof() || self.current_byte() != b'{' {
+            self.error_invalid_unicode_escape(escape_start, self.current_offset - escape_start);
+            return;
+        }
+        self.next();
+
+        let hex_start = self.current_offset;
+        let mut all_hex = true;
+        while !self.at_eof() {
+            let byte = self.current_byte();
+            if byte == b'}' || byte == b'"' || byte == b'\n' {
+                break;
+            }
+            if !byte.is_ascii_hexdigit() {
+                all_hex = false;
+            }
+            self.next();
+        }
+        let hex_end = self.current_offset;
+
+        let closed = !self.at_eof() && self.current_byte() == b'}';
+        if closed {
+            self.next();
+        }
+
+        let hex_len = hex_end - hex_start;
+        let total_len = self.current_offset - escape_start;
+
+        if !closed || !all_hex || hex_len == 0 || hex_len > 6 {
+            self.error_invalid_unicode_escape(escape_start, total_len);
+            return;
+        }
+
+        let codepoint = u32::from_str_radix(&self.input[hex_start..hex_end], 16)
+            .expect("hex digits validated above");
+        if char::from_u32(codepoint).is_none() {
+            self.error_unicode_escape_out_of_range(escape_start, total_len);
+        }
+    }
+
     /// Consume up to 2 more octal digits after the first has already been read.
     fn consume_octal_escape(&mut self, first_digit: u8) -> u16 {
         let mut value: u16 = (first_digit - b'0') as u16;
@@ -795,10 +836,17 @@ impl<'source> Lexer<'source> {
                         escaped = false;
                         continue;
                     }
-                    b'n' | b't' | b'r' | b'\\' | b'"' | b'x' | b'u' | b'U' => {}
+                    b'u' => {
+                        let escape_start = self.current_offset - 1;
+                        self.next();
+                        self.consume_unicode_escape(escape_start);
+                        escaped = false;
+                        continue;
+                    }
+                    b'n' | b't' | b'r' | b'\\' | b'"' | b'x' | b'U' => {}
                     b'\'' => {}
                     _ => {
-                        self.error_invalid_escape(start_offset, self.current_char());
+                        self.error_invalid_escape(self.current_char());
                     }
                 }
                 escaped = false;
@@ -1021,6 +1069,8 @@ impl<'source> Lexer<'source> {
                                 let escape_len = self.current_offset - escape_start;
                                 self.error_octal_escape_out_of_range(escape_start, escape_len);
                             }
+                        } else if b == b'u' {
+                            self.consume_unicode_escape(escape_start);
                         }
                     }
                 }
@@ -1121,7 +1171,7 @@ impl<'source> Lexer<'source> {
                     self.next();
                 }
                 _ => {
-                    self.error_invalid_escape(start_offset, self.current_char());
+                    self.error_invalid_escape(self.current_char());
 
                     while !self.at_eof() && self.current_byte() != b'\'' {
                         self.next();

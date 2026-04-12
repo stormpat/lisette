@@ -413,6 +413,18 @@ fn string_literal_with_escaped_backslash() {
 }
 
 #[test]
+fn string_literal_with_unicode_escape_bmp() {
+    let input = "\"caf\\u{00E9}\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn string_literal_with_unicode_escape_astral() {
+    let input = "\"emoji \\u{1F600} here\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
 fn string_literal_with_special_chars() {
     let input = "\"hello!@#$%^&*()_+{}|:<>?~`-=[]\\;',./\"";
     assert_lex_snapshot!(input);

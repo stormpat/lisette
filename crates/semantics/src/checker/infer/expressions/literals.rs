@@ -25,7 +25,14 @@ impl Checker<'_, '_> {
             Literal::Integer { value, text } => {
                 let resolved = expected_ty.resolve();
                 let ty = if resolved.is_numeric() {
-                    if !self.scopes.is_inside_negation() {
+                    let is_pre_negated = text.as_deref().is_some_and(|t| t.starts_with('-'));
+                    if is_pre_negated {
+                        self.check_negative_magnitude_overflow(
+                            value.wrapping_neg(),
+                            &resolved,
+                            span,
+                        );
+                    } else if !self.scopes.is_inside_negation() {
                         self.check_integer_literal_overflow(value, &resolved, span);
                     }
                     resolved.clone()
