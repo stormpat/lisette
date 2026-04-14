@@ -365,15 +365,19 @@ impl Type {
     }
 
     pub fn is_result(&self) -> bool {
-        self.has_name("Result")
+        self.has_qualified_id("prelude.Result")
     }
 
     pub fn is_option(&self) -> bool {
-        self.has_name("Option")
+        self.has_qualified_id("prelude.Option")
     }
 
     pub fn is_partial(&self) -> bool {
-        self.has_name("Partial")
+        self.has_qualified_id("prelude.Partial")
+    }
+
+    fn has_qualified_id(&self, qualified_id: &str) -> bool {
+        matches!(self, Type::Constructor { id, .. } if id.as_str() == qualified_id)
     }
 
     pub fn is_unit(&self) -> bool {

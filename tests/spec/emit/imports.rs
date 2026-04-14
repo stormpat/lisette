@@ -239,3 +239,26 @@ pub struct Style {}
         ]
     );
 }
+
+#[test]
+fn package_local_option_alias_does_not_collide_with_prelude_option() {
+    // Regression: a Go module that declares its own `type Option = ...`
+    // (e.g. the functional-options pattern) would trip `Type::is_option`
+    // because it compared unqualified tails, causing an ICE in the emit
+    // phase when the package-local Option was treated as prelude.Option.
+    let input = r#"
+import "go:example.com/validator"
+
+fn test() {
+  let _ = validator.WithOption()
+}
+"#;
+    let typedef = r#"
+pub struct Validate {}
+
+pub type Option = fn(Ref<Validate>) -> ()
+
+pub fn WithOption() -> Option
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/validator", typedef)]);
+}

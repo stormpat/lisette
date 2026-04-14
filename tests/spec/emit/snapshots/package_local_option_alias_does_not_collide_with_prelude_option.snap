@@ -1,0 +1,11 @@
+---
+source: tests/spec/emit/imports.rs
+description: "input: \nimport \"go:example.com/validator\"\n\nfn test() {\n  let _ = validator.WithOption()\n}\n"
+---
+package main
+
+import "example.com/validator"
+
+func test() {
+	_ = validator.WithOption()
+}
