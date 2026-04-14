@@ -211,6 +211,8 @@ impl<'a> GoWorkspace<'a> {
 
             let typedef = self.run_bindgen(pkg_path)?;
 
+            validate_typedef_parses(pkg_path, &typedef)?;
+
             if let Some(parent_dir) = pkg_typedef_path.parent() {
                 fs::create_dir_all(parent_dir)
                     .map_err(|e| format!("Failed to create cache directory: {}", e))?;
@@ -470,6 +472,19 @@ fn extract_missing_subpackage(stderr: &str) -> Option<(String, String)> {
         return None;
     }
     Some((found, missing))
+}
+
+fn validate_typedef_parses(pkg_path: &str, typedef: &str) -> Result<(), String> {
+    let parse = Parser::lex_and_parse_file(typedef, 0);
+    if !parse.failed() {
+        return Ok(());
+    }
+    Err(format!(
+        "Bindgen produced unparseable typedef for `{}`: {} parse error(s); first: {}",
+        pkg_path,
+        parse.errors.len(),
+        parse.errors[0].message,
+    ))
 }
 
 fn extract_third_party_imports(typedef: &str) -> Vec<String> {
