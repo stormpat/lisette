@@ -341,6 +341,14 @@ fn translate_go_error(args: &[&str], stderr: &str) -> String {
         );
     }
     if stderr.contains("invalid github.com import path") {
+        if let Some(rest) = module.strip_prefix("github.com/")
+            && !rest.contains('/')
+        {
+            return format!(
+                "`{}` is missing the repository segment; try `github.com/{}/<repo>`",
+                module, rest
+            );
+        }
         return format!(
             "`{}` is not a valid github.com import path (github only allows letters, digits, and `.-_`)",
             module
