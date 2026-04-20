@@ -1,0 +1,11 @@
+---
+source: tests/ui/errors/mod.rs
+---
+  [error] Invalid `as` binding
+   ╭─[test.lis:4:30]
+ 3 │ 
+ 4 │ fn test(pair: (Point, int), (Point { x, .. } as p, z): (Point, int)) -> int { x + z }
+   ·                              ──────────┬─────────
+   ·                                        ╰── `as` is disallowed here
+   ╰────
+  help: Use `as` only in `match`, `if let`, and `while let` · code: [infer.as_binding_in_irrefutable_context]

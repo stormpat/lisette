@@ -6,7 +6,7 @@ use syntax::program::{CallKind, Definition, NativeTypeKind};
 use syntax::types::{Bound, SubstitutionMap, Type, substitute, unqualified_name};
 
 use super::super::Checker;
-use super::super::checks::check_binding_pattern;
+use super::super::checks::{check_binding_pattern, reject_as_binding_in_irrefutable_context};
 use super::primitives::contains_deref;
 use crate::checker::PostInferenceCheck;
 use crate::checker::scopes::UseContext;
@@ -852,6 +852,8 @@ impl Checker<'_, '_> {
                         .unwrap_or_else(|| self.new_type_var())
                 });
 
+                reject_as_binding_in_irrefutable_context(self.sink, &binding.pattern);
+
                 let (new_pattern, typed_pattern) = self.infer_pattern(
                     binding.pattern,
                     binding_ty.clone(),
@@ -1148,8 +1150,16 @@ impl Checker<'_, '_> {
             .map(|t| t.resolve().is_ref())
             .unwrap_or(false);
         if !is_deref && !binding_is_ref && !self.scopes.lookup_mutable(&var_name) {
+            let is_match_arm = self
+                .scopes
+                .lookup_binding_id(&var_name)
+                .and_then(|id| self.facts.bindings.get(&id))
+                .is_some_and(|b| b.kind.is_match_arm());
             self.sink.push(diagnostics::infer::disallowed_mutation(
-                &var_name, *span, None,
+                &var_name,
+                *span,
+                None,
+                is_match_arm,
             ));
         }
     }

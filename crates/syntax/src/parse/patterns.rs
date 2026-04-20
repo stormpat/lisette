@@ -32,7 +32,27 @@ impl<'source> Parser<'source> {
             self.resync_on_error();
             return Pattern::WildCard { span };
         }
-        let result = self.parse_pattern_inner();
+        let start = self.current_token();
+        let mut result = self.parse_pattern_inner();
+        if self.advance_if(As) {
+            if !self.is(Identifier) {
+                self.track_error("expected identifier after `as`", "Use `as <name>`");
+            } else if self.current_token().text == "_" {
+                self.track_error(
+                    "`_` is not a valid `as` alias",
+                    "Use a named binding, or omit `as _`",
+                );
+                self.next();
+            } else {
+                let name: EcoString = self.current_token().text.into();
+                self.next();
+                result = Pattern::AsBinding {
+                    pattern: Box::new(result),
+                    name,
+                    span: self.span_from_tokens(start),
+                };
+            }
+        }
         self.leave_recursion();
         result
     }

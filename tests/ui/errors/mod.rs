@@ -121,6 +121,163 @@ fn test(name: string) {
 }
 
 #[test]
+fn infer_as_binding_in_let() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(p: Point) -> int {
+  let Point { x, .. } as q = p;
+  q.x
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_as_binding_in_for() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(pts: Slice<Point>) {
+  for Point { x, .. } as p in pts {}
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_as_binding_in_param() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(Point { x, .. } as p: Point) -> int { x }
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_nested_as_binding_in_let() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(pair: (Point, int)) -> int {
+  let (Point { x, .. } as p, z) = pair;
+  p.x + z
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_nested_as_binding_in_for() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(pairs: Slice<(Point, int)>) {
+  for (Point { x, .. } as p, _) in pairs {}
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_nested_as_binding_in_param() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(pair: (Point, int), (Point { x, .. } as p, z): (Point, int)) -> int { x + z }
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mutate_match_arm_binding() {
+    let input = r#"
+struct Counter { n: int }
+
+impl Counter {
+  fn bump(self: Ref<Counter>) {
+    self.n = self.n + 1
+  }
+}
+
+fn test(opt: Option<Counter>) {
+  if let Some(Counter { n, .. } as c) = opt {
+    c.bump();
+    let _ = n;
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn parse_underscore_as_alias() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(p: Point) -> int {
+  match p {
+    Point { x, .. } as _ => x,
+  }
+}
+"#;
+    assert_parse_error_snapshot!(input);
+}
+
+#[test]
+fn infer_uppercase_as_alias() {
+    let input = r#"
+struct Point { x: int, y: int }
+
+fn test(p: Point) -> int {
+  match p {
+    Point { x, .. } as P => x,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_redundant_as_identifier() {
+    let input = r#"
+fn test(x: int) -> int {
+  match x {
+    n as m => m,
+    _ => 0,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_redundant_as_wildcard() {
+    let input = r#"
+fn test(x: int) -> int {
+  match x {
+    _ as m => m,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_redundant_as_literal() {
+    let input = r#"
+fn test(x: int) -> int {
+  match x {
+    42 as m => m,
+    _ => 0,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_mut_not_allowed_with_destructuring() {
     let input = r#"
 fn test() {

@@ -3,7 +3,8 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use ecow::EcoString;
 use syntax::ast::BindingKind;
 use syntax::ast::{
-    EnumFieldDefinition, Expression, Pattern, RestPattern, Span, StructFieldPattern, TypedPattern,
+    EnumFieldDefinition, Expression, Literal, Pattern, RestPattern, Span, StructFieldPattern,
+    TypedPattern,
 };
 use syntax::program::Definition;
 use syntax::types::{Type, substitute};
@@ -35,6 +36,15 @@ pub(crate) fn collect_pattern_bindings(pattern: &Pattern) -> Vec<(String, Span)>
             .first()
             .map(collect_pattern_bindings)
             .unwrap_or_default(),
+        Pattern::AsBinding {
+            pattern,
+            name,
+            span,
+        } => {
+            let mut bindings = collect_pattern_bindings(pattern);
+            bindings.push((name.to_string(), *span));
+            bindings
+        }
         Pattern::WildCard { .. } | Pattern::Literal { .. } | Pattern::Unit { .. } => vec![],
     }
 }
@@ -59,31 +69,15 @@ impl Checker<'_, '_> {
     ) -> (Pattern, TypedPattern) {
         match pattern {
             Pattern::Identifier { identifier, span } => {
-                let is_typedef = self.is_d_lis();
-                let identifier_str = identifier.to_string();
-                let binding_id = self.facts.add_binding(
-                    identifier_str.clone(),
+                self.bind_name_in_scope(
+                    identifier.to_string(),
                     span,
+                    expected_ty,
                     kind,
-                    is_typedef,
+                    self.is_d_lis(),
                     is_struct_field,
+                    false,
                 );
-
-                let scope = self.scopes.current_mut();
-                scope
-                    .values
-                    .insert(identifier_str.clone(), expected_ty.clone());
-                scope
-                    .name_to_binding
-                    .insert(identifier_str.clone(), binding_id);
-
-                if kind.is_mutable() {
-                    scope
-                        .mutables
-                        .get_or_insert_with(HashSet::default)
-                        .insert(identifier_str);
-                }
-
                 (
                     Pattern::Identifier { identifier, span },
                     TypedPattern::Wildcard,
@@ -201,9 +195,14 @@ impl Checker<'_, '_> {
                 if let RestPattern::Bind { ref name, ref span } = rest {
                     let rest_ty = self.type_slice(element_ty.clone());
                     let is_typedef = self.is_d_lis();
-                    let binding_id =
-                        self.facts
-                            .add_binding(name.to_string(), *span, kind, is_typedef, false);
+                    let binding_id = self.facts.add_binding(
+                        name.to_string(),
+                        *span,
+                        kind,
+                        is_typedef,
+                        false,
+                        false,
+                    );
                     let scope = self.scopes.current_mut();
                     scope.values.insert(name.to_string(), rest_ty);
                     scope.name_to_binding.insert(name.to_string(), binding_id);
@@ -226,6 +225,100 @@ impl Checker<'_, '_> {
             Pattern::Or { patterns, span } => {
                 self.infer_or_pattern(patterns, span, expected_ty, kind)
             }
+
+            Pattern::AsBinding {
+                pattern,
+                name,
+                span,
+            } => {
+                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
+                    self.sink
+                        .push(diagnostics::infer::uppercase_binding(span, &name));
+                }
+                match pattern.as_ref() {
+                    Pattern::Identifier { identifier, .. } => {
+                        self.sink.push(diagnostics::infer::redundant_as_identifier(
+                            identifier, &name, span,
+                        ));
+                    }
+                    Pattern::WildCard { .. } => {
+                        self.sink
+                            .push(diagnostics::infer::redundant_as_wildcard(&name, span));
+                    }
+                    Pattern::Literal { literal, .. } => {
+                        self.sink.push(diagnostics::infer::redundant_as_literal(
+                            &format_literal(literal),
+                            &name,
+                            span,
+                        ));
+                    }
+                    _ => {}
+                }
+                let inner_kind = match kind {
+                    BindingKind::Let { .. } => BindingKind::Let { mutable: false },
+                    BindingKind::Parameter { .. } => BindingKind::Parameter { mutable: false },
+                    other => other,
+                };
+                let (inner, typed) = self.infer_pattern_inner(
+                    *pattern,
+                    expected_ty.clone(),
+                    inner_kind,
+                    is_struct_field,
+                );
+                let alias_ty = inner.get_type().unwrap_or_else(|| expected_ty.clone());
+                let name_span = Span::new(
+                    span.file_id,
+                    span.byte_offset + span.byte_length - name.len() as u32,
+                    name.len() as u32,
+                );
+                self.bind_name_in_scope(
+                    name.to_string(),
+                    name_span,
+                    alias_ty,
+                    kind,
+                    false,
+                    is_struct_field,
+                    true,
+                );
+                (
+                    Pattern::AsBinding {
+                        pattern: Box::new(inner),
+                        name,
+                        span,
+                    },
+                    typed,
+                )
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn bind_name_in_scope(
+        &mut self,
+        name: String,
+        span: Span,
+        ty: Type,
+        kind: BindingKind,
+        is_typedef: bool,
+        is_struct_field: bool,
+        is_as_alias: bool,
+    ) {
+        let binding_id = self.facts.add_binding(
+            name.clone(),
+            span,
+            kind,
+            is_typedef,
+            is_struct_field,
+            is_as_alias,
+        );
+        let scope = self.scopes.current_mut();
+        scope.values.insert(name.clone(), ty);
+        scope.name_to_binding.insert(name.clone(), binding_id);
+        if kind.is_mutable() {
+            scope
+                .mutables
+                .get_or_insert_with(HashSet::default)
+                .insert(name);
         }
     }
 
@@ -763,5 +856,18 @@ impl Checker<'_, '_> {
             span: *span,
         };
         Some((pattern, typed))
+    }
+}
+
+fn format_literal(lit: &Literal) -> String {
+    match lit {
+        Literal::Integer { text, value } => text.as_ref().unwrap_or(&value.to_string()).clone(),
+        Literal::Float { text, value } => text.as_ref().unwrap_or(&value.to_string()).clone(),
+        Literal::Imaginary(v) => format!("{}i", v),
+        Literal::Boolean(b) => b.to_string(),
+        Literal::String(s) => format!("\"{}\"", s),
+        Literal::Char(c) => format!("'{}'", c),
+        Literal::FormatString(_) => "f\"...\"".to_string(),
+        Literal::Slice(_) => "[...]".to_string(),
     }
 }

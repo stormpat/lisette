@@ -285,6 +285,7 @@ pub fn disallowed_mutation(
     variable_name: &str,
     span: Span,
     self_type_name: Option<&str>,
+    is_match_arm_binding: bool,
 ) -> LisetteDiagnostic {
     if variable_name == "self" {
         if let Some(type_name) = self_type_name {
@@ -300,6 +301,13 @@ pub fn disallowed_mutation(
                 .with_span_label(&span, "receiver is immutable")
                 .with_help("Use `self: Ref<Self>` to make the receiver mutable")
         }
+    } else if is_match_arm_binding {
+        LisetteDiagnostic::error("Immutable variable")
+            .with_infer_code("immutable")
+            .with_span_label(&span, "cannot mutate an immutable variable")
+            .with_help(format!(
+                "Pattern bindings are immutable; rebind with `let mut {variable_name} = {variable_name}` to mutate"
+            ))
     } else {
         LisetteDiagnostic::error("Immutable variable")
             .with_infer_code("immutable")
@@ -788,6 +796,49 @@ pub fn literal_pattern_in_binding(span: Span) -> LisetteDiagnostic {
         .with_infer_code("literal_in_binding")
         .with_span_label(&span, "value might not equal this literal")
         .with_help("Use `match` or `if` to compare values")
+}
+
+pub fn as_binding_in_irrefutable_context(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Invalid `as` binding")
+        .with_infer_code("as_binding_in_irrefutable_context")
+        .with_span_label(&span, "`as` is disallowed here")
+        .with_help("Use `as` only in `match`, `if let`, and `while let`")
+}
+
+pub fn select_some_as_binding_not_supported(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Cannot alias `Some(...)` in select")
+        .with_infer_code("select_some_as_not_supported")
+        .with_span_label(&span, "`as` cannot be placed around `Some(...)`")
+        .with_help(
+            "Place `as` inside `Some(...)` to bind the received value: `Some(value as alias)`",
+        )
+}
+
+pub fn redundant_as_identifier(inner: &str, alias: &str, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Redundant `as` binding")
+        .with_infer_code("redundant_as_binding")
+        .with_span_label(&span, format!("`{}` already binds this value", inner))
+        .with_help(format!(
+            "Use `{}` directly, or rename `{}` to `{}`",
+            alias, inner, alias
+        ))
+}
+
+pub fn redundant_as_wildcard(alias: &str, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Redundant `as` binding")
+        .with_infer_code("redundant_as_binding")
+        .with_span_label(&span, "`_` binds nothing")
+        .with_help(format!("Replace `_ as {}` with just `{}`", alias, alias))
+}
+
+pub fn redundant_as_literal(literal: &str, alias: &str, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Redundant `as` binding")
+        .with_infer_code("redundant_as_binding")
+        .with_span_label(&span, format!("`{}` is always `{}`", alias, literal))
+        .with_help(format!(
+            "Replace `{} as {}` with just `{}`",
+            literal, alias, literal
+        ))
 }
 
 pub fn or_pattern_in_irrefutable_context(span: Span) -> LisetteDiagnostic {
