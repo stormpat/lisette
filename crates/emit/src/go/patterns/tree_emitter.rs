@@ -478,12 +478,22 @@ impl<'a, 'e> TreeEmitter<'a, 'e> {
 
                     self.emitter
                         .emit_branch_header(output, &condition, is_catchall, i == 0);
-                    self.emit_chain_decision_body(
-                        output,
-                        &test.decision,
-                        arm_position,
-                        subject_var,
-                    );
+
+                    if matches!(test.decision, Decision::Guard { .. }) {
+                        self.emit_decision_in_case(
+                            output,
+                            &test.decision,
+                            arm_position,
+                            subject_var,
+                        );
+                    } else {
+                        self.emit_chain_decision_body(
+                            output,
+                            &test.decision,
+                            arm_position,
+                            subject_var,
+                        );
+                    }
                 }
 
                 self.emitter.exit_scope();

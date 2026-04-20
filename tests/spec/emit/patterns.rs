@@ -855,3 +855,84 @@ pub struct Scroll { pub delta: int }
 "#;
     assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/events", typedef)]);
 }
+
+#[test]
+fn or_pattern_on_interface_all_alts_have_field_checks() {
+    let input = r#"
+import "go:example.com/events"
+
+fn handle(e: events.Event) -> int {
+  match e {
+    events.Click { x: 5 } | events.Scroll { delta: 10 } => 1,
+    _ => 0,
+  }
+}
+"#;
+    let typedef = r#"
+pub interface Event {}
+pub struct Click { pub x: int }
+pub struct Scroll { pub delta: int }
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/events", typedef)]);
+}
+
+#[test]
+fn or_pattern_on_interface_field_check_with_guard() {
+    let input = r#"
+import "go:example.com/events"
+
+fn handle(e: events.Event, active: bool) -> int {
+  match e {
+    events.Click { x: 5 } | events.Scroll { .. } if active => 1,
+    _ => 0,
+  }
+}
+"#;
+    let typedef = r#"
+pub interface Event {}
+pub struct Click { pub x: int }
+pub struct Scroll { pub delta: int }
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/events", typedef)]);
+}
+
+#[test]
+fn or_pattern_on_interface_three_alts_middle_has_field_check() {
+    let input = r#"
+import "go:example.com/events"
+
+fn handle(e: events.Event) -> int {
+  match e {
+    events.Click { .. } | events.Scroll { delta: 10 } | events.KeyPress { .. } => 1,
+    _ => 0,
+  }
+}
+"#;
+    let typedef = r#"
+pub interface Event {}
+pub struct Click { pub x: int }
+pub struct Scroll { pub delta: int }
+pub struct KeyPress { pub key: string }
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/events", typedef)]);
+}
+
+#[test]
+fn type_switch_arm_with_binding_and_guard() {
+    let input = r#"
+import "go:example.com/events"
+
+fn handle(e: events.Event, threshold: int) -> int {
+  match e {
+    events.Click { x } if x > threshold => x,
+    events.Click { x } => x + 1,
+    _ => 0,
+  }
+}
+"#;
+    let typedef = r#"
+pub interface Event {}
+pub struct Click { pub x: int }
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/events", typedef)]);
+}
