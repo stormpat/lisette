@@ -408,24 +408,6 @@ pub(crate) fn try_flip_comparison(expression: &str) -> Option<String> {
     None
 }
 
-/// Whether the body `lines[start..end]` declares a `var :=` whose name is also
-/// referenced anywhere outside that range. Used by block-flattening passes to
-/// avoid moving an inner `var :=` into the same Go scope as an outer one
-/// (which would trip "no new variables on left side of :=").
-fn body_var_conflicts_outside<S: AsRef<str>>(lines: &[S], start: usize, end: usize) -> bool {
-    lines[start..end].iter().any(|l| {
-        let Some(idx) = l.as_ref().find(" := ") else {
-            return false;
-        };
-        let var = &l.as_ref()[..idx];
-        is_go_identifier(var)
-            && lines
-                .iter()
-                .enumerate()
-                .any(|(k, ol)| (k < start || k >= end) && output_references_var(ol.as_ref(), var))
-    })
-}
-
 /// After `inline_returns` converts assignments to returns, `} else {`
 /// wrappers become redundant when the if-branch already diverges.
 /// This pass strips them: `<diverge>\n} else {\n<body>\n}\n` → `<diverge>\n}\n<body>\n`.
@@ -438,23 +420,21 @@ fn strip_redundant_else(output: &mut String, pre_len: usize) {
 
         while i < lines.len() {
             if lines[i] == "} else {" && result.last().is_some_and(|l| is_diverge_line(l)) {
-                let close = find_matching_close(&lines, i);
-                let safe_to_strip =
-                    close.is_some_and(|j| !body_var_conflicts_outside(&lines, i + 1, j));
+                result.push("}");
+                changed = true;
 
-                if safe_to_strip {
-                    result.push("}");
-                    changed = true;
-                    let close = close.unwrap();
+                if let Some(close) = find_matching_close(&lines, i) {
                     for line in &lines[i + 1..close] {
                         result.push(line);
                     }
                     i = close + 1;
-                    continue;
+                } else {
+                    i += 1;
                 }
+            } else {
+                result.push(&lines[i]);
+                i += 1;
             }
-            result.push(&lines[i]);
-            i += 1;
         }
 
         if !changed {
@@ -492,14 +472,29 @@ fn strip_bare_blocks(output: &mut String, pre_len: usize) {
             && j > i + 1
             && lines[j] == "}"
             && is_diverge_line(lines[j - 1])
-            && !body_var_conflicts_outside(&lines, i + 1, j)
         {
-            for line in &lines[i + 1..j] {
-                result.push(line);
+            // Skip when an inner `var :=` would collide with an outer reference
+            // ("no new variables on left side of :=" error).
+            let has_conflict = lines[i + 1..j].iter().any(|l| {
+                let Some(idx) = l.find(" := ") else {
+                    return false;
+                };
+                let var = &l[..idx];
+                is_go_identifier(var)
+                    && lines
+                        .iter()
+                        .enumerate()
+                        .any(|(k, ol)| (k < i || k > j) && output_references_var(ol, var))
+            });
+
+            if !has_conflict {
+                for line in &lines[i + 1..j] {
+                    result.push(line);
+                }
+                changed = true;
+                i = j + 1;
+                continue;
             }
-            changed = true;
-            i = j + 1;
-            continue;
         }
         result.push(lines[i]);
         i += 1;

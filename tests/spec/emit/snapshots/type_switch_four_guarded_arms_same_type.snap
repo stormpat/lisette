@@ -12,22 +12,20 @@ func handle(e events.Event) int {
 		x := e.X
 		if x > 1000 {
 			return 4
-		} else {
-			x_1 := e.X
-			if x_1 > 100 {
-				return 3
-			} else {
-				x := e.X
-				if x > 50 {
-					return 2
-				}
-				x_2 := e.X
-				if x_2 > 0 {
-					return 1
-				}
-				return 0
-			}
 		}
+		x_1 := e.X
+		if x_1 > 100 {
+			return 3
+		}
+		x_2 := e.X
+		if x_2 > 50 {
+			return 2
+		}
+		x_3 := e.X
+		if x_3 > 0 {
+			return 1
+		}
+		return 0
 	default:
 		return 0
 	}
