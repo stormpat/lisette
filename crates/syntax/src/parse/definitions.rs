@@ -123,6 +123,12 @@ impl<'source> Parser<'source> {
             } else {
                 text
             };
+            if value.contains('\n') {
+                self.track_error(
+                    "struct tags cannot contain newlines",
+                    "Raw strings used as struct tags must be a single line.",
+                );
+            }
             return Some(AttributeArg::Raw(value.to_string()));
         }
 
