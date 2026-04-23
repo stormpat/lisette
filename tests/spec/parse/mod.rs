@@ -3516,3 +3516,24 @@ fn test() { func(a, b, ..xs,); }
 "#;
     assert_parse_snapshot!(input);
 }
+
+#[test]
+fn raw_string_literal() {
+    let input = "
+fn test() { `hello world` }
+";
+    assert_parse_snapshot!(input);
+}
+
+#[test]
+fn match_raw_string() {
+    let input = "
+fn test(path: string) {
+  match path {
+    `C:\\` => print(\"windows\"),
+    _ => print(\"other\"),
+  }
+}
+";
+    assert_parse_snapshot!(input);
+}

@@ -40,6 +40,9 @@ impl Emitter<'_> {
             Literal::String(s) => {
                 format!("\"{}\"", convert_escape_sequences(s))
             }
+            Literal::RawString(s) => {
+                format!("`{}`", s)
+            }
             Literal::Char(c) => {
                 format!("'{}'", convert_escape_sequences(c))
             }

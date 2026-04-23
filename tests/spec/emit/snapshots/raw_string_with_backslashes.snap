@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/literals.rs
+description: "input: \nfn test() {\n  `C:\\Users\\foo\\bar`\n}\n"
+---
+package main
+
+func test() {
+	_ = `C:\Users\foo\bar`
+}

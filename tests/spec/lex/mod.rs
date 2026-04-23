@@ -813,3 +813,27 @@ fn no_asi_before_closing_bracket() {
 ]";
     assert_lex_snapshot!(input);
 }
+
+#[test]
+fn raw_string_simple() {
+    let input = "`hello world`";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn raw_string_empty() {
+    let input = "``";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn raw_string_with_backslashes() {
+    let input = r#"`C:\Users\foo\bar`"#;
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn raw_string_multiline() {
+    let input = "`line1\nline2\nline3`";
+    assert_lex_snapshot!(input);
+}

@@ -1,0 +1,26 @@
+---
+source: tests/spec/lex/mod.rs
+description: "input: `C:\\Users\\foo\\bar`"
+---
+LexResult {
+    tokens: [
+        Token {
+            kind: Backtick,
+            text: "`C:\\Users\\foo\\bar`",
+            byte_offset: 0,
+            byte_length: 18,
+        },
+        Token {
+            kind: EOF,
+            text: "",
+            byte_offset: 18,
+            byte_length: 0,
+        },
+    ],
+    errors: [],
+    trivia: Trivia {
+        comments: [],
+        doc_comments: [],
+        blank_lines: [],
+    },
+}

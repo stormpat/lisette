@@ -79,6 +79,7 @@ impl<'source> Parser<'source> {
             Float => self.parse_float_pattern(),
             Boolean => self.parse_boolean_pattern(),
             String => self.parse_string_pattern(),
+            Backtick => self.parse_raw_string_pattern(),
             Char => self.parse_char_pattern(),
 
             Imaginary => {
@@ -247,6 +248,23 @@ impl<'source> Parser<'source> {
 
         Pattern::Literal {
             literal: Literal::String(s_stripped),
+            ty: Type::uninferred(),
+            span: self.span_from_tokens(start),
+        }
+    }
+
+    fn parse_raw_string_pattern(&mut self) -> Pattern {
+        let start = self.current_token();
+        let s = start.text;
+        self.next();
+        let s_stripped = if s.len() >= 2 && s.starts_with('`') && s.ends_with('`') {
+            s[1..s.len() - 1].to_string()
+        } else {
+            s.to_string()
+        };
+
+        Pattern::Literal {
+            literal: Literal::RawString(s_stripped),
             ty: Type::uninferred(),
             span: self.span_from_tokens(start),
         }

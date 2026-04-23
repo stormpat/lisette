@@ -515,3 +515,35 @@ fn main() {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn raw_string_simple() {
+    let input = r#"
+fn test() {
+  `hello world`
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn raw_string_with_backslashes() {
+    let input = "
+fn test() {
+  `C:\\Users\\foo\\bar`
+}
+";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn raw_string_multiline() {
+    let input = "
+fn test() {
+  `line1
+line2
+line3`
+}
+";
+    assert_emit_snapshot!(input);
+}

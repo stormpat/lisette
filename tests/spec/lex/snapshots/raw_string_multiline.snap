@@ -1,0 +1,26 @@
+---
+source: tests/spec/lex/mod.rs
+description: "input: `line1\nline2\nline3`"
+---
+LexResult {
+    tokens: [
+        Token {
+            kind: Backtick,
+            text: "`line1\nline2\nline3`",
+            byte_offset: 0,
+            byte_length: 19,
+        },
+        Token {
+            kind: EOF,
+            text: "",
+            byte_offset: 19,
+            byte_length: 0,
+        },
+    ],
+    errors: [],
+    trivia: Trivia {
+        comments: [],
+        doc_comments: [],
+        blank_lines: [],
+    },
+}

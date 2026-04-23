@@ -1658,6 +1658,7 @@ pub enum Literal {
     Imaginary(f64),
     Boolean(bool),
     String(String),
+    RawString(String),
     FormatString(Vec<FormatStringPart>),
     Char(String),
     Slice(Vec<Expression>),

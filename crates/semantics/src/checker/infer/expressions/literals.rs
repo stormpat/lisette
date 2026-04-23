@@ -92,6 +92,17 @@ impl Checker<'_, '_> {
                 }
             }
 
+            Literal::RawString(string) => {
+                let string_ty = self.type_string();
+                self.unify(expected_ty, &string_ty, &span);
+
+                Expression::Literal {
+                    literal: Literal::RawString(string),
+                    ty: string_ty,
+                    span,
+                }
+            }
+
             Literal::Char(char) => {
                 let resolved = expected_ty.resolve_in(&self.env);
                 let ty = if resolved.is_numeric() {

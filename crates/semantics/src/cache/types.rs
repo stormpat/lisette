@@ -84,6 +84,7 @@ impl CachedLiteral {
             },
             Literal::Boolean(v) => CachedLiteral::Boolean(*v),
             Literal::String(v) => CachedLiteral::String(v.clone()),
+            Literal::RawString(v) => CachedLiteral::String(v.clone()),
             Literal::Char(v) => CachedLiteral::Char(v.clone()),
             // These shouldn't appear in ValueEnum variants
             Literal::Imaginary(_) | Literal::FormatString(_) | Literal::Slice(_) => {

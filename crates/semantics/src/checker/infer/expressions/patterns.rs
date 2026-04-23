@@ -860,6 +860,7 @@ fn format_literal(lit: &Literal) -> String {
         Literal::Imaginary(v) => format!("{}i", v),
         Literal::Boolean(b) => b.to_string(),
         Literal::String(s) => format!("\"{}\"", s),
+        Literal::RawString(s) => format!("`{}`", s),
         Literal::Char(c) => format!("'{}'", c),
         Literal::FormatString(_) => "f\"...\"".to_string(),
         Literal::Slice(_) => "[...]".to_string(),
