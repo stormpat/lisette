@@ -29,7 +29,9 @@ impl<'source> Parser<'source> {
         }
 
         match self.current_token().kind {
-            Integer | Imaginary | Boolean | Char | String | Float | Backtick => self.parse_literal(),
+            Integer | Imaginary | Boolean | Char | String | Float | Backtick => {
+                self.parse_literal()
+            }
             FormatStringStart => self.parse_format_string(),
             LeftParen => self.parse_parenthesized_expression(),
             LeftCurlyBrace => self.parse_block_expression(),
@@ -195,7 +197,11 @@ impl<'source> Parser<'source> {
                 let s_stripped = if s.len() >= 2 && s.starts_with('`') && s.ends_with('`') {
                     &s[1..s.len() - 1]
                 } else {
-                    debug_assert!(false, "lexer produced Backtick token without backticks: {:?}", s);
+                    debug_assert!(
+                        false,
+                        "lexer produced Backtick token without backticks: {:?}",
+                        s
+                    );
                     s
                 };
                 Literal::RawString(s_stripped.to_string())
