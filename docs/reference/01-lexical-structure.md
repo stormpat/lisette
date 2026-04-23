@@ -96,6 +96,20 @@ Escape sequences:
 | `\r`     | Carriage return |
 | `\t`     | Tab             |
 
+### Raw string literals
+
+Raw string literals are enclosed in backticks. No escape sequences are processed — the content is taken verbatim. They support multiline content and are useful for regular expressions, file paths, and SQL queries. Type: `string`.
+
+```rust
+let path = `C:\Users\foo\bar`
+let pattern = `^\d{3}-\d{4}$`
+let query = `SELECT *
+  FROM users
+  WHERE active = true`
+```
+
+Raw strings cannot contain a backtick character (as it would end the literal).
+
 ### Format strings
 
 A format string begins with `f"` and can contain interpolated expressions in `{}`.
