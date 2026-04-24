@@ -5,11 +5,11 @@ use syntax::ParseError;
 use crate::LisetteDiagnostic;
 
 #[derive(Debug, Default)]
-pub struct DiagnosticSink {
+pub struct LocalSink {
     diagnostics: RefCell<Vec<LisetteDiagnostic>>,
 }
 
-impl DiagnosticSink {
+impl LocalSink {
     pub fn new() -> Self {
         Self::default()
     }
@@ -49,5 +49,11 @@ impl DiagnosticSink {
     pub fn extend_parse_errors(&self, errors: Vec<ParseError>) {
         let diagnostics = errors.into_iter().map(LisetteDiagnostic::from);
         self.diagnostics.borrow_mut().extend(diagnostics);
+    }
+
+    pub fn merge(sinks: Vec<LocalSink>) -> Vec<LisetteDiagnostic> {
+        let mut all: Vec<LisetteDiagnostic> = sinks.into_iter().flat_map(|s| s.take()).collect();
+        all.sort_by_key(|d| d.primary_offset());
+        all
     }
 }

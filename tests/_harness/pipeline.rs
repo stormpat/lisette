@@ -1,17 +1,14 @@
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
-use diagnostics::{DiagnosticSink, LisetteDiagnostic};
-use semantics::{checker::Checker, pattern_analysis, store::Store};
+use diagnostics::{LisetteDiagnostic, LocalSink};
+use semantics::{checker::TaskState, store::Store};
 use stdlib::get_go_stdlib_typedef;
 use syntax::{
     ast::Expression,
     desugar,
     lex::Lexer,
     parse::Parser,
-    program::{
-        CoercionInfo, Definition, File, FileImport, MutationInfo, ResolutionInfo, UnusedInfo,
-        Visibility,
-    },
+    program::{Definition, File, FileImport, MutationInfo, UnusedInfo, Visibility},
     types::Symbol,
 };
 
@@ -86,32 +83,23 @@ impl CompiledTest {
         let mut store = Store::new();
         store.add_module(TEST_MODULE_ID);
 
-        let sink = DiagnosticSink::new();
+        let sink = LocalSink::new();
 
         init_prelude(&mut store);
 
-        let (
-            typed_ast,
-            definitions,
-            unused,
-            mutations,
-            coercions,
-            resolutions,
-            ufcs_methods,
-            go_package_names,
-        ) = {
-            let mut checker = Checker::new(&mut store, &sink);
+        let (typed_ast, definitions, unused, mutations, ufcs_methods, go_package_names) = {
+            let mut checker = TaskState::with_fresh_allocator(&sink);
             checker
                 .ufcs_methods
-                .extend(semantics::prelude::compute_prelude_ufcs(checker.store));
+                .extend(semantics::prelude::compute_prelude_ufcs(&store));
             checker.cursor.module_id = TEST_MODULE_ID.to_string();
-            register_test_builtins(&mut checker);
-            checker.put_prelude_in_scope();
+            register_test_builtins(&mut store, &mut checker);
+            checker.put_prelude_in_scope(&store);
 
             let locator = deps::TypedefLocator::default();
 
             for (name, typedef) in &self.extra_go_typedefs {
-                checker.parse_and_register_go_module(name, typedef, &locator);
+                checker.parse_and_register_go_module(&mut store, name, typedef, &locator);
             }
 
             let imports: Vec<FileImport> = self
@@ -128,7 +116,8 @@ impl CompiledTest {
                         if let Some(go_pkg) = name.strip_prefix("go:")
                             && let Some(typedef) = get_go_stdlib_typedef(go_pkg)
                         {
-                            checker.parse_and_register_go_module(name, typedef, &locator);
+                            checker
+                                .parse_and_register_go_module(&mut store, name, typedef, &locator);
                         }
                         Some(FileImport {
                             name: name.clone(),
@@ -142,14 +131,14 @@ impl CompiledTest {
                 })
                 .collect();
 
-            checker.put_imported_modules_in_scope(&imports);
+            checker.put_imported_modules_in_scope(&store, &imports);
 
-            checker.register_types_and_values(&self.ast, &Visibility::Local);
-            checker.check_const_cycles(&[self.ast.as_slice()]);
+            checker.register_types_and_values(&mut store, &self.ast, &Visibility::Local);
+            checker.check_const_cycles(&store, &[self.ast.as_slice()]);
 
             // Store AST in module so compute_module_ufcs can scan impl blocks (condition 3)
-            let test_file_id = checker.store.new_file_id();
-            checker.store.store_file(
+            let test_file_id = store.new_file_id();
+            store.store_file(
                 TEST_MODULE_ID,
                 File::new(
                     TEST_MODULE_ID,
@@ -160,8 +149,7 @@ impl CompiledTest {
                 ),
             );
             {
-                let module = checker
-                    .store
+                let module = store
                     .get_module(TEST_MODULE_ID)
                     .expect("test module must exist");
                 let ufcs_entries =
@@ -173,7 +161,7 @@ impl CompiledTest {
 
             for expression in self.ast {
                 let type_var = checker.new_type_var();
-                let typed_expression = checker.infer_expression(expression, &type_var);
+                let typed_expression = checker.infer_expression(&mut store, expression, &type_var);
                 typed_ast.push(typed_expression);
 
                 if checker.failed() {
@@ -189,27 +177,28 @@ impl CompiledTest {
                 semantics::checker::freeze::FreezeFolder::new(&checker.env).freeze_items(typed_ast);
 
             if !checker.failed() {
-                let module_id = checker.cursor.module_id.clone();
-                {
-                    let mut ctx = semantics::validators::ValidatorContext {
-                        typed_ast: &typed_ast,
-                        is_typedef: false,
-                        module_id: &module_id,
-                        store: checker.store,
-                        facts: &mut checker.facts,
-                        coercions: &checker.coercions,
-                        sink: checker.sink,
-                    };
-                    semantics::validators::run_all(&mut ctx);
-                }
-                let pattern_ctx = pattern_analysis::Context::new(
-                    checker.store,
-                    &checker.facts.or_pattern_error_spans,
+                // Overwrite the stored file with the typed AST so validators::run
+                // sees post-inference items when iterating store.modules.
+                store.store_file(
+                    TEST_MODULE_ID,
+                    File::new(
+                        TEST_MODULE_ID,
+                        "test.lis",
+                        "",
+                        typed_ast.clone(),
+                        test_file_id,
+                    ),
                 );
-                for expression in &typed_ast {
-                    pattern_analysis::check(expression, &pattern_ctx, checker.sink);
-                }
-                checker.facts.pattern_issues = pattern_ctx.take_issues();
+                let analysis =
+                    semantics::context::AnalysisContext::new(&store, &checker.ufcs_methods);
+                let mut harness_unused = UnusedInfo::default();
+                semantics::validators::run(
+                    &analysis,
+                    &mut checker.facts,
+                    checker.sink,
+                    &mut harness_unused,
+                    false,
+                );
             }
 
             if self.wrapped {
@@ -235,8 +224,7 @@ impl CompiledTest {
                 }
             }
 
-            let definitions: HashMap<Symbol, Definition> = checker
-                .store
+            let definitions: HashMap<Symbol, Definition> = store
                 .modules
                 .values()
                 .flat_map(|m| m.definitions.iter())
@@ -254,18 +242,14 @@ impl CompiledTest {
                 }
             }
 
-            let coercions = std::mem::take(&mut checker.coercions);
-            let resolutions = std::mem::take(&mut checker.resolutions);
             let ufcs_methods = std::mem::take(&mut checker.ufcs_methods);
-            let go_package_names = checker.store.go_package_names.clone();
+            let go_package_names = store.go_package_names.clone();
 
             (
                 typed_ast,
                 definitions,
                 unused,
                 mutations,
-                coercions,
-                resolutions,
                 ufcs_methods,
                 go_package_names,
             )
@@ -278,8 +262,6 @@ impl CompiledTest {
             module_id: TEST_MODULE_ID.to_string(),
             unused,
             mutations,
-            coercions,
-            resolutions,
             ufcs_methods,
             go_package_names,
         }
@@ -293,8 +275,6 @@ pub struct InferenceResult {
     pub module_id: String,
     pub unused: UnusedInfo,
     pub mutations: MutationInfo,
-    pub coercions: CoercionInfo,
-    pub resolutions: ResolutionInfo,
     pub ufcs_methods: HashSet<(String, String)>,
     pub go_package_names: HashMap<String, String>,
 }

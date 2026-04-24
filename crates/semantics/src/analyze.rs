@@ -1,7 +1,8 @@
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use diagnostics::{DiagnosticSink, SemanticResult, TypedefSource};
+use diagnostics::{LocalSink, SemanticResult, TypedefSource};
 use syntax::ast::Expression;
 use syntax::program::{File, ModuleInfo, MutationInfo, UnusedInfo};
 
@@ -13,12 +14,10 @@ use crate::cache::{
     hash_module_sources, is_cache_disabled, prelude as prelude_cache, register_cached_module,
     save_module_cache, try_load_cache,
 };
-use crate::checker::Checker;
-use crate::facts::Facts;
-use crate::lint;
+use crate::checker::TaskState;
+use crate::facts::{BindingIdAllocator, Facts};
 use crate::loader::Loader;
 use crate::module_graph::build_module_graph;
-use crate::pattern_analysis;
 use crate::prelude::parse_and_register_prelude;
 use crate::store::{ENTRY_MODULE_ID, Store};
 use crate::validators;
@@ -54,7 +53,7 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
     store.init_entry_module();
     store.store_entry_file(&input.filename, &input.source, input.ast);
 
-    let sink = DiagnosticSink::new();
+    let sink = LocalSink::new();
 
     if input.config.load_siblings {
         for (filename, source) in input.loader.scan_folder(ENTRY_MODULE_ID) {
@@ -108,11 +107,13 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
     let cache_enabled = input.project_root.is_some() && !cache_disabled;
     let check_go_files = input.compile_phase == CompilePhase::Emit;
 
-    let (mut facts, coercions, resolutions, cached_modules, compiled_modules, ufcs_methods) = {
-        let mut checker = Checker::new(&mut store, &sink);
+    let binding_ids = Arc::new(BindingIdAllocator::new());
+
+    let (mut facts, cached_modules, compiled_modules, ufcs_methods) = {
+        let mut checker = TaskState::new(&sink, binding_ids.clone());
         checker
             .ufcs_methods
-            .extend(crate::prelude::compute_prelude_ufcs(checker.store));
+            .extend(crate::prelude::compute_prelude_ufcs(&store));
 
         let mut module_hashes: HashMap<String, u64> = HashMap::default();
         let mut cached_modules: HashSet<String> = HashSet::default();
@@ -127,13 +128,15 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
             go_stdlib::try_load_go_stdlib_cache()
         };
 
+        let mut to_infer: Vec<String> = Vec::new();
+
         for module_id in order {
             if let Some(go_pkg) = module_id.strip_prefix("go:") {
                 if deps::is_stdlib(go_pkg)
                     && let Some(ref cache) = go_cache
                 {
-                    load_cached_go_module(checker.store, &module_id, cache);
-                    if checker.store.is_visited(&module_id) {
+                    load_cached_go_module(&mut store, &module_id, cache);
+                    if store.is_visited(&module_id) {
                         continue;
                     }
                 }
@@ -142,12 +145,17 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
                     content: source, ..
                 } = input.locator.find_typedef_content(go_pkg)
                 {
-                    checker.parse_and_register_go_module(&module_id, &source, &input.locator);
+                    checker.parse_and_register_go_module(
+                        &mut store,
+                        &module_id,
+                        &source,
+                        &input.locator,
+                    );
                 }
                 continue;
             }
 
-            if checker.store.is_visited(&module_id) {
+            if store.is_visited(&module_id) {
                 continue;
             }
 
@@ -174,7 +182,7 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
                 checker
                     .ufcs_methods
                     .extend(cached.ufcs_methods.iter().cloned());
-                register_cached_module(checker.store, &module_id, cached);
+                register_cached_module(&mut store, &module_id, cached);
                 cached_modules.insert(module_id.clone());
                 continue;
             }
@@ -182,9 +190,8 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
             let prev_module_id = checker.cursor.module_id.clone();
             checker.cursor.module_id = module_id.to_string();
 
-            checker.store.store_module(&module_id, files);
-            checker.register_module(&module_id);
-            checker.infer_module(&module_id);
+            store.store_module(&module_id, files);
+            checker.register_module(&mut store, &module_id);
 
             checker.cursor.module_id = prev_module_id;
 
@@ -195,12 +202,26 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
                     dep_hashes,
                 });
             }
+
+            to_infer.push(module_id);
+        }
+
+        for module_id in &to_infer {
+            let prev_module_id = checker.cursor.module_id.clone();
+            checker.cursor.module_id = module_id.clone();
+
+            checker.infer_module(&mut store, module_id);
+
+            checker.cursor.module_id = prev_module_id;
+        }
+
+        for (module_id, typed_file) in std::mem::take(&mut checker.typed_files) {
+            store.store_file(&module_id, typed_file);
         }
 
         // Save Go stdlib cache if store has Go modules not already in cache
         if !cache_disabled {
-            let all_go_modules: Vec<String> = checker
-                .store
+            let all_go_modules: Vec<String> = store
                 .modules
                 .keys()
                 .filter(|id| id.strip_prefix("go:").is_some_and(deps::is_stdlib))
@@ -212,60 +233,34 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
                         || all_go_modules.iter().any(|id| !c.modules.contains_key(id))
                 });
             if needs_save {
-                go_stdlib::save_go_stdlib_cache(checker.store, &all_go_modules);
+                go_stdlib::save_go_stdlib_cache(&store, &all_go_modules);
             }
         }
 
         if !cache_disabled && !prelude_cache_hit {
-            prelude_cache::save_prelude_cache(checker.store);
+            prelude_cache::save_prelude_cache(&store);
         }
 
         (
             checker.facts,
-            checker.coercions,
-            checker.resolutions,
             cached_modules,
             compiled_modules,
             checker.ufcs_methods,
         )
     };
 
+    let analysis = crate::context::AnalysisContext::new(&store, &ufcs_methods);
+
+    let mut unused = UnusedInfo::default();
     if !has_pre_check_errors {
-        for module in store.modules.values() {
-            let module_id = module.id.clone();
-            for file in module.files.values() {
-                let is_typedef = module.typedefs.contains_key(&file.id);
-                let mut ctx = validators::ValidatorContext {
-                    typed_ast: &file.items,
-                    is_typedef,
-                    module_id: &module_id,
-                    store: &store,
-                    facts: &mut facts,
-                    coercions: &coercions,
-                    sink: &sink,
-                };
-                validators::run_all(&mut ctx);
-            }
-        }
-
-        let pattern_ctx = pattern_analysis::Context::new(&store, &facts.or_pattern_error_spans);
-        for module in store.modules.values() {
-            for file in module.files.values() {
-                for expression in &file.items {
-                    pattern_analysis::check(expression, &pattern_ctx, &sink);
-                }
-            }
-        }
-        facts.pattern_issues = pattern_ctx.take_issues();
+        validators::run(
+            &analysis,
+            &mut facts,
+            &sink,
+            &mut unused,
+            input.config.run_lints,
+        );
     }
-
-    let errors = sink.take();
-
-    let unused = if input.config.run_lints && !has_pre_check_errors {
-        lint::lint_all_modules(&store, &facts, &sink)
-    } else {
-        UnusedInfo::default()
-    };
 
     let mut mutations = MutationInfo::default();
     for (&binding_id, b) in facts.bindings.iter() {
@@ -274,7 +269,7 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
         }
     }
 
-    let lints = sink.take();
+    let (errors, lints): (Vec<_>, Vec<_>) = sink.take().into_iter().partition(|d| d.is_error());
 
     if cache_enabled && let Some(ref project_root) = input.project_root {
         let has_errors = errors.iter().any(|e| e.is_error());
@@ -349,8 +344,6 @@ pub fn analyze(input: AnalyzeInput) -> (SemanticResult, Facts) {
         entry_module_id: ENTRY_MODULE_ID.to_string(),
         unused,
         mutations,
-        coercions,
-        resolutions,
         cached_modules,
         ufcs_methods,
         typedef_sources,

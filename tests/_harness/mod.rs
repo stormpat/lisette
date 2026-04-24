@@ -16,22 +16,21 @@ pub use infer::{InferResult, infer, infer_module};
 
 pub const TEST_MODULE_ID: &str = "test";
 
-use diagnostics::DiagnosticSink;
-use semantics::checker::Checker;
+use diagnostics::LocalSink;
+use semantics::checker::TaskState;
 use semantics::prelude::parse_and_register_prelude;
 use semantics::store::Store;
 use syntax::program::{Definition, Visibility};
 use syntax::types::Type;
 
 pub fn init_prelude(store: &mut Store) {
-    let sink = DiagnosticSink::new();
+    let sink = LocalSink::new();
     parse_and_register_prelude(store, &sink);
 }
 
-pub fn register_test_builtins(checker: &mut Checker) {
+pub fn register_test_builtins(store: &mut Store, _checker: &mut TaskState) {
     let module_id = "prelude";
-    let module = checker
-        .store
+    let module = store
         .modules
         .get_mut(module_id)
         .expect("prelude module must exist");

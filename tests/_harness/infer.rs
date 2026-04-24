@@ -1,7 +1,5 @@
-use diagnostics::{DiagnosticSink, LisetteDiagnostic};
-use semantics::{
-    checker::Checker, module_graph::build_module_graph, pattern_analysis, store::Store,
-};
+use diagnostics::{LisetteDiagnostic, LocalSink};
+use semantics::{checker::TaskState, module_graph::build_module_graph, store::Store};
 use stdlib::get_go_stdlib_typedef;
 use syntax::{ast::Expression, types::Type};
 
@@ -31,7 +29,7 @@ pub fn infer_module(module_name: &str, fs: MockFileSystem) -> InferResult {
 
     store.module_ids.extend(available_folders);
 
-    let sink = DiagnosticSink::new();
+    let sink = LocalSink::new();
 
     let locator = deps::TypedefLocator::default();
     let mut graph_result =
@@ -47,23 +45,23 @@ pub fn infer_module(module_name: &str, fs: MockFileSystem) -> InferResult {
     init_prelude(&mut store);
 
     let ast = {
-        let mut checker = Checker::new(&mut store, &sink);
+        let mut checker = TaskState::with_fresh_allocator(&sink);
         checker
             .ufcs_methods
-            .extend(semantics::prelude::compute_prelude_ufcs(checker.store));
-        register_test_builtins(&mut checker);
-        checker.put_prelude_in_scope();
+            .extend(semantics::prelude::compute_prelude_ufcs(&store));
+        register_test_builtins(&mut store, &mut checker);
+        checker.put_prelude_in_scope(&store);
 
         let order = std::mem::take(&mut graph_result.order);
         for module_id in order {
             if let Some(go_pkg) = module_id.strip_prefix("go:") {
                 if let Some(typedef) = get_go_stdlib_typedef(go_pkg) {
-                    checker.parse_and_register_go_module(&module_id, typedef, &locator);
+                    checker.parse_and_register_go_module(&mut store, &module_id, typedef, &locator);
                 }
                 continue;
             }
 
-            if checker.store.is_visited(&module_id) {
+            if store.is_visited(&module_id) {
                 continue;
             }
 
@@ -72,14 +70,18 @@ pub fn infer_module(module_name: &str, fs: MockFileSystem) -> InferResult {
             let prev_module_id = checker.cursor.module_id.clone();
             checker.cursor.module_id = module_id.to_string();
 
-            checker.store.store_module(&module_id, files);
-            checker.register_module(&module_id);
-            checker.infer_module(&module_id);
+            store.store_module(&module_id, files);
+            checker.register_module(&mut store, &module_id);
+            checker.infer_module(&mut store, &module_id);
 
             checker.cursor.module_id = prev_module_id;
         }
 
-        let module = checker.store.get_module(module_name).unwrap();
+        for (module_id, typed_file) in std::mem::take(&mut checker.typed_files) {
+            store.store_file(&module_id, typed_file);
+        }
+
+        let module = store.get_module(module_name).unwrap();
         let ast: Vec<_> = module
             .files
             .values()
@@ -87,37 +89,15 @@ pub fn infer_module(module_name: &str, fs: MockFileSystem) -> InferResult {
             .collect();
 
         if !checker.failed() {
-            let module_ids: Vec<String> = checker.store.modules.keys().cloned().collect();
-            for mid in &module_ids {
-                let typed_ast: Vec<_> = checker
-                    .store
-                    .get_module(mid)
-                    .map(|m| m.files.values().flat_map(|f| f.items.clone()).collect())
-                    .unwrap_or_default();
-                let is_typedef = checker
-                    .store
-                    .get_module(mid)
-                    .map(|m| !m.typedefs.is_empty() && m.files.is_empty())
-                    .unwrap_or(false);
-                let mut ctx = semantics::validators::ValidatorContext {
-                    typed_ast: &typed_ast,
-                    is_typedef,
-                    module_id: mid,
-                    store: checker.store,
-                    facts: &mut checker.facts,
-                    coercions: &checker.coercions,
-                    sink: checker.sink,
-                };
-                semantics::validators::run_all(&mut ctx);
-            }
-            let pattern_ctx = pattern_analysis::Context::new(
-                checker.store,
-                &checker.facts.or_pattern_error_spans,
+            let analysis = semantics::context::AnalysisContext::new(&store, &checker.ufcs_methods);
+            let mut unused = syntax::program::UnusedInfo::default();
+            semantics::validators::run(
+                &analysis,
+                &mut checker.facts,
+                checker.sink,
+                &mut unused,
+                false,
             );
-            for expression in &ast {
-                pattern_analysis::check(expression, &pattern_ctx, checker.sink);
-            }
-            checker.facts.pattern_issues = pattern_ctx.take_issues();
         }
 
         ast

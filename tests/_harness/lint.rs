@@ -1,10 +1,10 @@
-use diagnostics::{DiagnosticSink, LisetteDiagnostic};
-use semantics::{checker::Checker, lint, pattern_analysis, store::Store};
+use diagnostics::{LisetteDiagnostic, LocalSink};
+use semantics::{checker::TaskState, store::Store, validators};
 use syntax::{
     desugar,
     lex::Lexer,
     parse::Parser,
-    program::{File, Visibility},
+    program::{File, UnusedInfo, Visibility},
 };
 
 use super::init_prelude;
@@ -17,7 +17,7 @@ pub fn lint(source: &str) -> Vec<LisetteDiagnostic> {
     let mut store = Store::new();
     store.add_module(TEST_MODULE_ID);
 
-    let sink = DiagnosticSink::new();
+    let sink = LocalSink::new();
 
     init_prelude(&mut store);
 
@@ -45,17 +45,17 @@ pub fn lint(source: &str) -> Vec<LisetteDiagnostic> {
     }
     let ast = desugar_result.ast;
 
-    let mut checker = Checker::new(&mut store, &sink);
+    let mut checker = TaskState::with_fresh_allocator(&sink);
     checker.cursor.module_id = TEST_MODULE_ID.to_string();
-    register_test_builtins(&mut checker);
-    checker.put_prelude_in_scope();
-    checker.register_types_and_values(&ast, &Visibility::Private);
+    register_test_builtins(&mut store, &mut checker);
+    checker.put_prelude_in_scope(&store);
+    checker.register_types_and_values(&mut store, &ast, &Visibility::Private);
 
     let mut typed_ast = vec![];
 
     for expression in ast {
         let type_var = checker.new_type_var();
-        let typed_expression = checker.infer_expression(expression, &type_var);
+        let typed_expression = checker.infer_expression(&mut store, expression, &type_var);
         typed_ast.push(typed_expression);
 
         if checker.failed() {
@@ -69,28 +69,6 @@ pub fn lint(source: &str) -> Vec<LisetteDiagnostic> {
     }
     typed_ast = semantics::checker::freeze::FreezeFolder::new(&checker.env).freeze_items(typed_ast);
 
-    if !checker.failed() {
-        let module_id = checker.cursor.module_id.clone();
-        {
-            let mut ctx = semantics::validators::ValidatorContext {
-                typed_ast: &typed_ast,
-                is_typedef: false,
-                module_id: &module_id,
-                store: checker.store,
-                facts: &mut checker.facts,
-                coercions: &checker.coercions,
-                sink: checker.sink,
-            };
-            semantics::validators::run_all(&mut ctx);
-        }
-        let pattern_ctx =
-            pattern_analysis::Context::new(checker.store, &checker.facts.or_pattern_error_spans);
-        for expression in &typed_ast {
-            pattern_analysis::check(expression, &pattern_ctx, checker.sink);
-        }
-        checker.facts.pattern_issues = pattern_ctx.take_issues();
-    }
-
     if checker.failed() {
         return vec![];
     }
@@ -103,23 +81,11 @@ pub fn lint(source: &str) -> Vec<LisetteDiagnostic> {
         items: typed_ast,
     };
 
-    checker.store.store_file(TEST_MODULE_ID, typed_file);
+    store.store_file(TEST_MODULE_ID, typed_file);
 
-    let lint_config = lint::LintConfig::default();
-    let module = checker.store.get_module(TEST_MODULE_ID).unwrap();
-    let file = module.files.get(&file_id).unwrap();
+    let analysis = semantics::context::AnalysisContext::new(&store, &checker.ufcs_methods);
+    let mut unused = UnusedInfo::default();
+    validators::run(&analysis, &mut checker.facts, &sink, &mut unused, true);
 
-    let go_package_names = checker.store.go_package_names.clone();
-    let lint_ctx = lint::LintContext {
-        ast: &file.items,
-        facts: &checker.facts,
-        module: Some(module),
-        config: &lint_config,
-        is_d_lis: file.is_d_lis(),
-        files: &module.files,
-        go_package_names: &go_package_names,
-    };
-    let lint_sink = DiagnosticSink::new();
-    lint::lint_file(&lint_ctx, &lint_sink);
-    lint_sink.take()
+    sink.take()
 }
