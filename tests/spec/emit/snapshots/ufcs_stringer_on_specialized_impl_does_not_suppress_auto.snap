@@ -1,0 +1,23 @@
+---
+source: tests/spec/emit/types.rs
+description: "input: \nstruct Box<T> { v: T }\n\nimpl Box<int> {\n  fn String(self) -> string {\n    \"int_box\"\n  }\n}\n\nfn main() {\n  let _ = Box { v: 42 }\n}\n"
+---
+package main
+
+import "fmt"
+
+type Box[T any] struct {
+	v T
+}
+
+func (b Box[T]) String() string {
+	return fmt.Sprintf("Box { v: %v }", b.v)
+}
+
+func Box_String(_ Box[int]) string {
+	return "int_box"
+}
+
+func main() {
+	_ = Box[int]{v: 42}
+}

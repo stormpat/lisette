@@ -3943,3 +3943,196 @@ enum A {
 
     assert_build_snapshot!(fs, "github.com/user/myproject");
 }
+
+#[test]
+fn go_exported_impl_method_kept_when_only_reached_via_fmt_stringer() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+fn main() {
+  let a = A { a: "text" }
+  fmt.Println(a)
+}
+
+struct A { a: string }
+
+impl A {
+  fn String(self) -> string {
+    self.a + "asdf"
+  }
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
+
+#[test]
+fn go_exported_impl_method_kept_when_only_reached_via_go_stringer() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+fn main() {
+  let a = A { a: "text" }
+  fmt.Printf("%#v\n", a)
+}
+
+struct A { a: string }
+
+impl A {
+  fn GoString(self) -> string {
+    self.a + "asdf"
+  }
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
+
+#[test]
+fn go_exported_impl_method_kept_when_only_reached_via_error_interface() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+fn main() {
+  let e = MyErr { msg: "boom" }
+  fmt.Println(e)
+}
+
+struct MyErr { msg: string }
+
+impl MyErr {
+  fn Error(self) -> string {
+    "ERR: " + self.msg
+  }
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
+
+#[test]
+fn go_exported_impl_method_kept_even_when_never_called() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+struct Widget { name: string }
+
+impl Widget {
+  fn MarshalJSON(self) -> string {
+    "{\"name\":\"" + self.name + "\"}"
+  }
+}
+
+fn main() {
+  let _ = Widget { name: "x" }
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
+
+#[test]
+fn lisette_cased_stringer_method_promotes_to_go_exported() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+struct A { a: string }
+
+impl A {
+  fn string(self) -> string {
+    "lis_" + self.a
+  }
+}
+
+fn main() {
+  let a = A { a: "x" }
+  fmt.Println(a)
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
+
+#[test]
+fn lisette_cased_error_method_promotes_to_go_exported() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+struct MyErr { msg: string }
+
+impl MyErr {
+  fn error(self) -> string {
+    "ERR: " + self.msg
+  }
+}
+
+fn main() {
+  let e = MyErr { msg: "boom" }
+  fmt.Println(e)
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
+
+#[test]
+fn lisette_cased_go_stringer_method_promotes_to_go_exported() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+struct A { a: string }
+
+impl A {
+  fn goString(self) -> string {
+    "dbg_" + self.a
+  }
+}
+
+fn main() {
+  let a = A { a: "x" }
+  fmt.Printf("%#v\n", a)
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}
