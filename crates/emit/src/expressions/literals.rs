@@ -137,8 +137,8 @@ impl Emitter<'_> {
 }
 
 pub(crate) fn emit_raw_string(value: &str) -> String {
-    // Go discards `\r` from backtick raw strings, so we must fall back to
-    // double-quoted form when the content contains CR.
+    // Go backtick raw strings cannot contain backticks, and Go discards `\r`
+    // from them, so fall back to double-quoted form in either case.
     if !value.contains('`') && !value.contains('\r') {
         format!("`{}`", value)
     } else {
