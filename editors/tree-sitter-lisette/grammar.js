@@ -990,7 +990,7 @@ module.exports = grammar({
       token.immediate('"'),
     ),
 
-    raw_string_literal: _ => token(seq('r"', /[^"\n]*/, '"')),
+    raw_string_literal: _ => token(seq('r"', /[^"]*/, '"')),
 
     format_string: $ => seq(
       'f"',
