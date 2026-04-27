@@ -98,14 +98,18 @@ Escape sequences:
 
 ### Raw string literals
 
-A raw string literal begins with `r"` and ends with `"`. Inside, every character is literal, i.e. backslashes are not escapes.
+A raw string literal begins with `r"` and ends with `"`. Inside, every character is literal, i.e. backslashes are not escapes. Raw strings can span multiple lines.
 
 ```rust
 let pattern = r"([a-zA-Z])(\d)"
 let path    = r"C:\Users\me"
+let query   = r"
+    SELECT foo FROM bar
+    WHERE id = 100
+"
 ```
 
-Raw strings are single-line and cannot contain a double quote.
+Raw strings cannot contain a double quote.
 
 ### Format strings
 
