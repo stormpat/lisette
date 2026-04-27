@@ -857,8 +857,14 @@ fn raw_string_unterminated_eof() {
 }
 
 #[test]
-fn raw_string_unterminated_newline() {
-    let input = "r\"abc\nlet x = 1";
+fn raw_string_multiline_simple() {
+    let input = "r\"line1\nline2\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn raw_string_multiline_unterminated_eof() {
+    let input = "r\"abc\ndef";
     assert_lex_snapshot!(input);
 }
 

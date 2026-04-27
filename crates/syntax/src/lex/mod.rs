@@ -911,8 +911,6 @@ impl<'source> Lexer<'source> {
                 terminated = true;
                 self.next();
                 break;
-            } else if byte == b'\n' {
-                break;
             } else if byte == 0 {
                 self.error_disallowed_byte_in_raw_string(self.current_offset, byte);
                 self.next();

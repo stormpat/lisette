@@ -1363,3 +1363,8 @@ fn raw_string_with_regex_roundtrip() {
 fn raw_string_with_windows_path_roundtrip() {
     assert_format_snapshot!(r#"fn test() { let p = r"C:\Users\me" }"#);
 }
+
+#[test]
+fn raw_string_multiline_roundtrip() {
+    assert_format_snapshot!("fn test() {\n  let sql = r\"\n    SELECT foo FROM bar\n    WHERE id = 100\n  \"\n}");
+}

@@ -145,6 +145,7 @@ pub(crate) fn emit_raw_string(value: &str) -> String {
         let escaped = value
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
+            .replace('\n', "\\n")
             .replace('\r', "\\r");
         format!("\"{}\"", escaped)
     }

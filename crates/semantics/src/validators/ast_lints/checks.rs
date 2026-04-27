@@ -506,7 +506,7 @@ pub fn check_unnecessary_raw_string_expression(
     else {
         return;
     };
-    if !value.contains('\\') {
+    if !value.contains('\\') && !value.contains('\n') {
         diagnostics.push(diagnostics::lint::unnecessary_raw_string(span));
     }
 }
@@ -523,7 +523,7 @@ pub fn check_unnecessary_raw_string_pattern(
     else {
         return;
     };
-    if !value.contains('\\') {
+    if !value.contains('\\') && !value.contains('\n') {
         diagnostics.push(diagnostics::lint::unnecessary_raw_string(span));
     }
 }

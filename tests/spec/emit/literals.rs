@@ -573,6 +573,18 @@ fn raw_string_with_cr_falls_back_to_double_quoted() {
 }
 
 #[test]
+fn raw_string_multiline() {
+    let input = "fn test() -> string {\n  r\"\nSELECT foo FROM bar\nWHERE id = 100\n\"\n}\n";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn raw_string_multiline_with_backtick_falls_back_to_double_quoted() {
+    let input = "fn test() -> string {\n  r\"line1\nhas `tick\nline3\"\n}\n";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn raw_string_pattern_emit() {
     let input = r#"
 fn test(s: string) -> int {
