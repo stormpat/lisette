@@ -200,3 +200,97 @@ let x = f"use {{braces}}"
   (let_declaration
     pattern: (identifier)
     value: (format_string)))
+
+================================================================================
+String multiline
+================================================================================
+
+let x = "first
+second
+third"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    pattern: (identifier)
+    value: (string_literal
+      (string_content))))
+
+================================================================================
+Raw string multiline
+================================================================================
+
+let x = r"first
+second"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    pattern: (identifier)
+    value: (raw_string_literal)))
+
+================================================================================
+Format string multiline text
+================================================================================
+
+let x = f"hello
+{name}
+world"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    pattern: (identifier)
+    value: (format_string
+      (interpolation
+        (identifier)))))
+
+================================================================================
+Format string multiline interpolation rejected
+:error
+================================================================================
+
+let x = f"{a +
+b}"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    pattern: (identifier)
+    value: (format_string
+      (ERROR))))
+
+================================================================================
+Format string multiline string inside interpolation rejected
+:error
+================================================================================
+
+let x = f"{"a
+b"}"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (ERROR
+    (identifier)
+    (format_string)))
+
+================================================================================
+Format string nested f-string with multiline inner interpolation rejected
+:error
+================================================================================
+
+let x = f"{f"{a +
+b}"}"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (ERROR
+    (identifier)
+    (format_string
+      (ERROR))))

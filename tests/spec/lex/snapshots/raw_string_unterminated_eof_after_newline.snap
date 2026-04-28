@@ -6,39 +6,9 @@ LexResult {
     tokens: [
         Token {
             kind: RawString,
-            text: "r\"abc",
+            text: "r\"abc\nlet x = 1",
             byte_offset: 0,
-            byte_length: 5,
-        },
-        Token {
-            kind: Semicolon,
-            text: "",
-            byte_offset: 5,
-            byte_length: 0,
-        },
-        Token {
-            kind: Let,
-            text: "let",
-            byte_offset: 6,
-            byte_length: 3,
-        },
-        Token {
-            kind: Identifier,
-            text: "x",
-            byte_offset: 10,
-            byte_length: 1,
-        },
-        Token {
-            kind: Equal,
-            text: "=",
-            byte_offset: 12,
-            byte_length: 1,
-        },
-        Token {
-            kind: Integer,
-            text: "1",
-            byte_offset: 14,
-            byte_length: 1,
+            byte_length: 15,
         },
         Token {
             kind: EOF,
@@ -55,7 +25,7 @@ LexResult {
                     Span {
                         file_id: 0,
                         byte_offset: 0,
-                        byte_length: 5,
+                        byte_length: 2,
                     },
                     "raw string not closed",
                 ),

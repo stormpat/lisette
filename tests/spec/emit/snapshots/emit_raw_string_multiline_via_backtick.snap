@@ -1,0 +1,12 @@
+---
+source: tests/spec/emit/literals.rs
+assertion_line: 597
+description: "input: \nfn test() -> string {\n  let s = r\"a\nb\"\n  s\n}\n"
+---
+package main
+
+func test() string {
+	s := `a
+b`
+	return s
+}

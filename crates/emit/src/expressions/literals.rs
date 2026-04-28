@@ -137,15 +137,16 @@ impl Emitter<'_> {
 }
 
 pub(crate) fn emit_raw_string(value: &str) -> String {
-    // Go discards `\r` from backtick raw strings, so we must fall back to
-    // double-quoted form when the content contains CR.
+    // Go backtick raw strings cannot contain backticks, and Go discards `\r`
+    // from them, so fall back to double-quoted form in either case.
     if !value.contains('`') && !value.contains('\r') {
         format!("`{}`", value)
     } else {
         let escaped = value
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
-            .replace('\r', "\\r");
+            .replace('\r', "\\r")
+            .replace('\n', "\\n");
         format!("\"{}\"", escaped)
     }
 }
@@ -188,6 +189,10 @@ pub(crate) fn convert_escape_sequences(s: &str) -> String {
             } else {
                 result.push(c);
             }
+        } else if c == '\n' {
+            result.push_str("\\n");
+        } else if c == '\r' {
+            result.push_str("\\r");
         } else {
             result.push(c);
         }

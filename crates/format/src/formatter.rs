@@ -534,7 +534,13 @@ impl<'a> Formatter<'a> {
                 }
             }
             Literal::Boolean(b) => Document::str(if *b { "true" } else { "false" }),
+            Literal::String { value, raw: true } if value.contains('\n') => {
+                Document::verbatim(format!("r\"{value}\""))
+            }
             Literal::String { value, raw: true } => Document::string(format!("r\"{value}\"")),
+            Literal::String { value, raw: false } if value.contains('\n') => {
+                Document::verbatim(format!("\"{value}\""))
+            }
             Literal::String { value, raw: false } => Document::string(format!("\"{value}\"")),
             Literal::Char(c) => Document::string(format!("'{c}'")),
             Literal::Slice(elements) => self.slice(elements),
@@ -564,6 +570,9 @@ impl<'a> Formatter<'a> {
 
         for part in parts {
             match part {
+                FormatStringPart::Text(s) if s.contains('\n') => {
+                    docs.push(Document::verbatim(s.clone()))
+                }
                 FormatStringPart::Text(s) => docs.push(Document::string(s.clone())),
                 FormatStringPart::Expression(e) => {
                     docs.push(Document::str("{"));

@@ -873,8 +873,6 @@ impl<'source> Lexer<'source> {
                 terminated = true;
                 self.next();
                 break;
-            } else if byte == b'\n' {
-                break; // unterminated string literal across newline, handled below
             }
 
             self.next();
@@ -888,7 +886,7 @@ impl<'source> Lexer<'source> {
         }
 
         if !terminated {
-            self.error_unterminated_string(start_offset, length);
+            self.error_unterminated_string(start_offset, 1);
         }
 
         Token {
@@ -911,8 +909,6 @@ impl<'source> Lexer<'source> {
                 terminated = true;
                 self.next();
                 break;
-            } else if byte == b'\n' {
-                break;
             } else if byte == 0 {
                 self.error_disallowed_byte_in_raw_string(self.current_offset, byte);
                 self.next();
@@ -925,7 +921,7 @@ impl<'source> Lexer<'source> {
         let length = end_offset - start_offset;
 
         if !terminated {
-            self.error_unterminated_raw_string(start_offset, length);
+            self.error_unterminated_raw_string(start_offset, 2);
         }
 
         Token {
@@ -1163,14 +1159,49 @@ impl<'source> Lexer<'source> {
         None
     }
 
+    // Caller has just consumed `{` of the broken interpolation, so we start
+    // inside it (depth=1). Newlines are not a recovery boundary now that
+    // f-string text spans them, so we balance braces and skip past quoted
+    // strings to avoid stopping at the first inner `"`.
     fn skip_to_format_string_end(&mut self) {
+        let mut depth = 1;
         while !self.at_eof() {
             match self.current_byte() {
-                b'"' => {
+                b'\\' => {
+                    self.next();
+                    if !self.at_eof() {
+                        self.next();
+                    }
+                }
+                b'"' if depth == 0 => {
                     self.next();
                     return;
                 }
-                b'\n' => return,
+                b'"' => {
+                    self.next();
+                    while !self.at_eof() && self.current_byte() != b'"' {
+                        if self.current_byte() == b'\\' {
+                            self.next();
+                            if self.at_eof() {
+                                break;
+                            }
+                        }
+                        self.next();
+                    }
+                    if !self.at_eof() {
+                        self.next();
+                    }
+                }
+                b'{' => {
+                    depth += 1;
+                    self.next();
+                }
+                b'}' => {
+                    if depth > 0 {
+                        depth -= 1;
+                    }
+                    self.next();
+                }
                 _ => self.next(),
             }
         }
@@ -1234,12 +1265,6 @@ impl<'source> Lexer<'source> {
                     return tokens;
                 }
 
-                b'\n' => {
-                    let length = self.current_offset.saturating_sub(start_offset);
-                    self.error_unterminated_format_string(start_offset, length);
-                    return tokens;
-                }
-
                 b'{' => {
                     self.push_format_string_text_if_needed(&mut tokens, text_segment_start);
 
@@ -1258,8 +1283,7 @@ impl<'source> Lexer<'source> {
             }
         }
 
-        let length = self.current_offset.saturating_sub(start_offset);
-        self.error_unterminated_format_string(start_offset, length);
+        self.error_unterminated_format_string(start_offset, 2);
         tokens
     }
 

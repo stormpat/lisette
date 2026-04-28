@@ -3622,3 +3622,27 @@ fn test() { @rawgo(r"if x > 0 {\n}") }
 "#;
     assert_parse_snapshot!(input);
 }
+
+#[test]
+fn parse_string_multiline_preserves_indent() {
+    let input = "fn test() { let s = \"a\n    b\" }";
+    assert_parse_snapshot!(input);
+}
+
+#[test]
+fn parse_string_crlf_normalised() {
+    let input = "fn test() { let s = \"a\r\nb\" }";
+    assert_parse_snapshot!(input);
+}
+
+#[test]
+fn parse_raw_string_crlf_normalised() {
+    let input = "fn test() { let s = r\"a\r\nb\" }";
+    assert_parse_snapshot!(input);
+}
+
+#[test]
+fn parse_pattern_string_multiline() {
+    let input = "fn test() { match s { \"a\nb\" => 1, _ => 0 } }";
+    assert_parse_snapshot!(input);
+}

@@ -1363,3 +1363,25 @@ fn raw_string_with_regex_roundtrip() {
 fn raw_string_with_windows_path_roundtrip() {
     assert_format_snapshot!(r#"fn test() { let p = r"C:\Users\me" }"#);
 }
+
+#[test]
+fn format_string_multiline_roundtrip() {
+    assert_format_snapshot!("fn test() { let s = \"a\nb\"; foo(s) }");
+}
+
+#[test]
+fn format_raw_string_multiline_roundtrip() {
+    assert_format_snapshot!("fn test() { let s = r\"a\nb\"; foo(s) }");
+}
+
+#[test]
+fn format_fstring_multiline_text_roundtrip() {
+    assert_format_snapshot!("fn test() { let s = f\"hello\n{name}\nworld\" }");
+}
+
+#[test]
+fn format_multiline_string_in_call_forces_arg_wrap() {
+    assert_format_snapshot!(
+        "fn test() { foo(\"a\nb\", very_long_argument_name_that_should_force_wrapping_because_it_is_extremely_long, another_argument_name_that_is_also_long) }"
+    );
+}

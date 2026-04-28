@@ -79,6 +79,7 @@ module.exports = grammar({
     $._error_sentinel,
     $._open_angle,
     $._bang,
+    $._interpolation_open,
   ],
 
   supertypes: $ => [
@@ -993,7 +994,7 @@ module.exports = grammar({
       token.immediate('"'),
     ),
 
-    raw_string_literal: _ => token(seq('r"', /[^"\n]*/, '"')),
+    raw_string_literal: _ => token(seq('r"', /[^"]*/, '"')),
 
     format_string: $ => seq(
       'f"',
@@ -1006,7 +1007,7 @@ module.exports = grammar({
     ),
 
     interpolation: $ => seq(
-      '{',
+      alias($._interpolation_open, '{'),
       $._expression,
       '}',
     ),

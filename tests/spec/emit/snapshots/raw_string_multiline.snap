@@ -1,0 +1,13 @@
+---
+source: tests/spec/emit/literals.rs
+assertion_line: 578
+description: "input: fn test() -> string {\n  r\"\nSELECT foo FROM bar\nWHERE id = 100\n\"\n}\n"
+---
+package main
+
+func test() string {
+	return `
+SELECT foo FROM bar
+WHERE id = 100
+`
+}

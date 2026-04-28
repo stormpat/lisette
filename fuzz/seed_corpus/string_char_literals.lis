@@ -4,6 +4,13 @@ fn test() {
   let s3 = "hello\nworld\t";
   let s4 = "She said \"hello\"";
   let s5 = "backslash: \\";
+  let s6 = "first
+second
+third";
+  let s7 = r"raw line one
+raw line two";
+  let s8 = r"with \backslashes
+across lines";
   let c1 = 'b';
   let c2 = '\n';
   let c3 = '\t';
