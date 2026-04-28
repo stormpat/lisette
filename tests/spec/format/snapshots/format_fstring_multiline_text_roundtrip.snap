@@ -1,0 +1,10 @@
+---
+source: tests/spec/format/mod.rs
+assertion_line: 1379
+description: "input: fn test() { let s = f\"hello\n{name}\nworld\" }"
+---
+fn test() {
+  let s = f"hello
+{name}
+world"
+}

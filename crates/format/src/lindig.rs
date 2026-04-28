@@ -49,6 +49,13 @@ fn fits(
                 current_width += s.graphemes(true).count() as isize;
             }
 
+            Document::VerbatimText(s) => {
+                if s.contains('\n') {
+                    return false;
+                }
+                current_width += s.graphemes(true).count() as isize;
+            }
+
             Document::StrictBreak { unbroken, .. } | Document::FlexBreak { unbroken, .. } => {
                 match mode {
                     Mode::Broken | Mode::ForcedBroken => return true,
@@ -149,6 +156,23 @@ fn format(
                 output.push_str(s);
             }
 
+            Document::VerbatimText(s) => {
+                if pending_indent >= 0 {
+                    write_indent(output, pending_indent);
+                    pending_indent = -1;
+                }
+                let mut segments = s.split('\n');
+                if let Some(first) = segments.next() {
+                    output.push_str(first);
+                    width += first.graphemes(true).count() as isize;
+                }
+                for segment in segments {
+                    output.push('\n');
+                    output.push_str(segment);
+                    width = segment.graphemes(true).count() as isize;
+                }
+            }
+
             Document::Sequence(vec) => {
                 for doc in vec.iter().rev() {
                     docs.push((indent, mode, doc));
@@ -195,6 +219,7 @@ pub enum Document<'a> {
     NestIfBroken(isize, Box<Self>),
     Group(Box<Self>),
     Text(Cow<'a, str>),
+    VerbatimText(Cow<'a, str>),
 }
 
 impl<'a> Document<'a> {
@@ -204,6 +229,10 @@ impl<'a> Document<'a> {
 
     pub fn string(string: String) -> Self {
         Document::Text(Cow::Owned(string))
+    }
+
+    pub fn verbatim(string: String) -> Self {
+        Document::VerbatimText(Cow::Owned(string))
     }
 
     pub fn group(self) -> Self {

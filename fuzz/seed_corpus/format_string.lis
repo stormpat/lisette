@@ -9,4 +9,13 @@ fn test() {
   let s8 = f"result: {arr[0]}";
   let s9 = f"result: {if x { 1 } else { 0 }}";
   let s10 = f"literal {{ and }} braces";
+  let s11 = f"line one
+line two with {value}
+line three";
+  let s12 = f"{a}
+{b}
+{c}";
+  let s13 = f"no interp
+just text
+across lines";
 }

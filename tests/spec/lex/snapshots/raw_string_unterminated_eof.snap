@@ -25,7 +25,7 @@ LexResult {
                     Span {
                         file_id: 0,
                         byte_offset: 0,
-                        byte_length: 5,
+                        byte_length: 2,
                     },
                     "raw string not closed",
                 ),

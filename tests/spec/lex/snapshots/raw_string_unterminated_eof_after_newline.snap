@@ -1,20 +1,19 @@
 ---
 source: tests/spec/lex/mod.rs
-assertion_line: 868
-description: "input: r\"abc\ndef"
+description: "input: r\"abc\nlet x = 1"
 ---
 LexResult {
     tokens: [
         Token {
             kind: RawString,
-            text: "r\"abc\ndef",
+            text: "r\"abc\nlet x = 1",
             byte_offset: 0,
-            byte_length: 9,
+            byte_length: 15,
         },
         Token {
             kind: EOF,
             text: "",
-            byte_offset: 9,
+            byte_offset: 15,
             byte_length: 0,
         },
     ],
@@ -26,7 +25,7 @@ LexResult {
                     Span {
                         file_id: 0,
                         byte_offset: 0,
-                        byte_length: 9,
+                        byte_length: 2,
                     },
                     "raw string not closed",
                 ),

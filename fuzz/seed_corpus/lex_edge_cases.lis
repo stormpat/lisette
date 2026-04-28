@@ -18,3 +18,23 @@ let x = 42
 
 expr?
 (a, b)
+
+let unterminated_str = "no closing quote
+let unterminated_raw = r"no closing quote
+across many
+lines
+
+let unterminated_fstring = f"text {expr}
+more text
+
+let trailing_backslash = "ends with \
+
+let cr_in_string = "carriage \r return"
+let crlf_in_string = "windows
+ending"
+
+let just_newlines = "
+
+
+
+"

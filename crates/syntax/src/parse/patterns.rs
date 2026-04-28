@@ -1,5 +1,6 @@
 use ecow::EcoString;
 
+use super::strings::cook_string_contents;
 use super::{MAX_TUPLE_ARITY, ParseError, Parser};
 use crate::ast::{Annotation, Binding, Literal, Pattern, RestPattern, Span, StructFieldPattern};
 use crate::lex::Token;
@@ -243,20 +244,20 @@ impl<'source> Parser<'source> {
         self.next();
         let (value, raw) = if kind == crate::lex::TokenKind::RawString {
             let stripped = if s.len() >= 3 && s.starts_with("r\"") && s.ends_with('"') {
-                s[2..s.len() - 1].to_string()
+                &s[2..s.len() - 1]
             } else if s.len() >= 2 && s.starts_with("r\"") {
-                s[2..].to_string()
+                &s[2..]
             } else {
-                s.to_string()
+                s
             };
-            (stripped, true)
+            (cook_string_contents(stripped), true)
         } else {
             let stripped = if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
-                s[1..s.len() - 1].to_string()
+                &s[1..s.len() - 1]
             } else {
-                s.to_string()
+                s
             };
-            (stripped, false)
+            (cook_string_contents(stripped), false)
         };
 
         Pattern::Literal {

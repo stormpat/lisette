@@ -5349,7 +5349,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "[^\"\\n]*"
+            "value": "[^\"]*"
           },
           {
             "type": "STRING",
@@ -5398,7 +5398,12 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_interpolation_open"
+          },
+          "named": false,
           "value": "{"
         },
         {
@@ -5640,6 +5645,10 @@
     {
       "type": "SYMBOL",
       "name": "_bang"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_interpolation_open"
     }
   ],
   "inline": [

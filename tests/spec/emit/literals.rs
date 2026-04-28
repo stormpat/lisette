@@ -596,3 +596,33 @@ fn test(s: string) -> int {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn emit_string_multiline_basic() {
+    let input = "\nfn test() -> string {\n  let s = \"a\nb\"\n  s\n}\n";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn emit_raw_string_multiline_via_backtick() {
+    let input = "\nfn test() -> string {\n  let s = r\"a\nb\"\n  s\n}\n";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn emit_raw_string_multiline_with_backtick_fallback() {
+    let input = "\nfn test() -> string {\n  let s = r\"first `tick\nsecond\"\n  s\n}\n";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn emit_fstring_multiline_text() {
+    let input = "\nfn test(name: string) -> string {\n  f\"hello\n{name}\nworld\"\n}\n";
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn emit_string_singleline_unchanged() {
+    let input = "\nfn test() -> string {\n  let s = \"x\"\n  s\n}\n";
+    assert_emit_snapshot!(input);
+}

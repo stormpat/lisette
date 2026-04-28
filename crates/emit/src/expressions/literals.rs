@@ -145,8 +145,8 @@ pub(crate) fn emit_raw_string(value: &str) -> String {
         let escaped = value
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
-            .replace('\n', "\\n")
-            .replace('\r', "\\r");
+            .replace('\r', "\\r")
+            .replace('\n', "\\n");
         format!("\"{}\"", escaped)
     }
 }
@@ -189,6 +189,10 @@ pub(crate) fn convert_escape_sequences(s: &str) -> String {
             } else {
                 result.push(c);
             }
+        } else if c == '\n' {
+            result.push_str("\\n");
+        } else if c == '\r' {
+            result.push_str("\\r");
         } else {
             result.push(c);
         }

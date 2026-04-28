@@ -1,5 +1,6 @@
 use ecow::EcoString;
 
+use super::strings::cook_string_contents;
 use super::{MAX_TUPLE_ARITY, ParseError, Parser};
 use crate::ast::{
     Annotation, Attribute, BinaryOperator, Binding, Expression, FormatStringPart, ImportAlias,
@@ -181,7 +182,7 @@ impl<'source> Parser<'source> {
                     s
                 };
                 Literal::String {
-                    value: s_stripped.to_string(),
+                    value: cook_string_contents(s_stripped),
                     raw: false,
                 }
             }
@@ -202,7 +203,7 @@ impl<'source> Parser<'source> {
                     s
                 };
                 Literal::String {
-                    value: s_stripped.to_string(),
+                    value: cook_string_contents(s_stripped),
                     raw: true,
                 }
             }
@@ -1064,7 +1065,7 @@ impl<'source> Parser<'source> {
                 FormatStringText => {
                     let text = self.current_token().text;
                     self.next();
-                    parts.push(FormatStringPart::Text(text.to_string()));
+                    parts.push(FormatStringPart::Text(cook_string_contents(text)));
                 }
                 FormatStringInterpolationStart => {
                     self.ensure(FormatStringInterpolationStart);

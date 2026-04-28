@@ -78,13 +78,18 @@ let no = false
 
 ### String literals
 
-String literals are enclosed in double quotes and must be on a single line. Type: `string`.
+String literals are enclosed in double quotes and may span multiple lines. Type: `string`. 
 
 ```rust
 let greeting = "Hello, world!"
 let escaped = "line one\nline two"
 let quoted = "She said \"hi\""
+let multi = "This is
+a very long
+multiline string."
 ```
+
+A newline between the opening and closing `"` is preserved in the value as a `\n` byte. Source-code indentation inside a multi-line string is part of the value.
 
 Escape sequences:
 
@@ -98,27 +103,27 @@ Escape sequences:
 
 ### Raw string literals
 
-A raw string literal begins with `r"` and ends with `"`. Inside, every character is literal, i.e. backslashes are not escapes. Raw strings can span multiple lines.
+A raw string literal begins with `r"` and ends with `"`. Inside, every character is literal, i.e. backslashes are not escapes. A raw string may span multiple lines.
 
 ```rust
 let pattern = r"([a-zA-Z])(\d)"
 let path    = r"C:\Users\me"
-let query   = r"
-    SELECT foo FROM bar
-    WHERE id = 100
-"
+let block   = r"line one
+line two"
 ```
 
-Raw strings cannot contain a double quote.
+Raw strings cannot contain a double quote; escape it as `\"` in a regular string instead.
 
 ### Format strings
 
-A format string begins with `f"` and can contain interpolated expressions in `{}`.
+A format string begins with `f"` and can contain interpolated expressions in `{}`. The text portions follow the same multi-line rules as regular strings. Interpolation expressions inside `{}` must remain on a single line.
 
 ```rust
 let name = "Alice"
 let age = 30
 let msg = f"Hello, {name}! You are {age} years old."
+let block = f"name: {name}
+age: {age}"
 ```
 
 Use `{{` and `}}` to escape braces.

@@ -857,14 +857,8 @@ fn raw_string_unterminated_eof() {
 }
 
 #[test]
-fn raw_string_multiline_simple() {
-    let input = "r\"line1\nline2\"";
-    assert_lex_snapshot!(input);
-}
-
-#[test]
-fn raw_string_multiline_unterminated_eof() {
-    let input = "r\"abc\ndef";
+fn raw_string_unterminated_eof_after_newline() {
+    let input = "r\"abc\nlet x = 1";
     assert_lex_snapshot!(input);
 }
 
@@ -973,5 +967,41 @@ fn unsupported_fr_in_fstring_interpolation() {
 #[test]
 fn unsupported_hash_delimited_in_fstring_interpolation() {
     let input = "f\"{r#\"abc\"#}\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn string_literal_multiline() {
+    let input = "\"a\nb\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn raw_string_multiline() {
+    let input = "r\"a\nb\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn format_string_multiline_text() {
+    let input = "f\"hello\n{name}\nworld\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn format_string_multiline_text_no_interpolation() {
+    let input = "f\"a\nb\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn multiline_format_string_interpolation_recovery_no_spurious_unterminated() {
+    let input = "let s = f\"result: {\n  match n {\n    0 => \"zero\",\n  }\n}\"";
+    assert_lex_snapshot!(input);
+}
+
+#[test]
+fn multiline_string_blank_lines_trivia_unaffected() {
+    let input = "let a = 1\n\nlet s = \"x\ny\"\n\nlet b = 2";
     assert_lex_snapshot!(input);
 }

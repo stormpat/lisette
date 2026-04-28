@@ -19,6 +19,7 @@ mod expressions;
 mod identifiers;
 mod patterns;
 mod pratt;
+mod strings;
 
 pub use error::ParseError;
 
