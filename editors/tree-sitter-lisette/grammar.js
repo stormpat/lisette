@@ -635,6 +635,7 @@ module.exports = grammar({
       $.shorthand_field_initializer,
       $.field_initializer,
       $.base_field_initializer,
+      $.zero_fill_initializer,
     )),
 
     shorthand_field_initializer: $ => $.identifier,
@@ -649,6 +650,8 @@ module.exports = grammar({
       '..',
       $._expression,
     ),
+
+    zero_fill_initializer: _ => prec(1, '..'),
 
     // Control flow
 

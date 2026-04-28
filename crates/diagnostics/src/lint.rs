@@ -249,6 +249,21 @@ pub fn ineffective_try_block(span: &Span) -> LisetteDiagnostic {
         .with_help("A `try` block is effective only if the expression may succeed or fail")
 }
 
+pub fn replaceable_with_zero_fill(span: &Span, kept: &str, struct_name: &str) -> LisetteDiagnostic {
+    let example = if kept.is_empty() {
+        format!("`{} {{ .. }}`", struct_name)
+    } else {
+        format!("`{} {{ {}, .. }}`", struct_name, kept)
+    };
+    LisetteDiagnostic::warn("Replaceable with zero-fill spread")
+        .with_lint_code("replaceable_with_zero_fill")
+        .with_span_label(span, "has zero-valued fields")
+        .with_help(format!(
+            "Replace zero-valued fields with zero-fill spread: {}",
+            example
+        ))
+}
+
 pub fn double_negation(span: &Span, is_bool: bool) -> LisetteDiagnostic {
     let (code, msg) = if is_bool {
         ("double_bool_negation", "Double boolean negation")
@@ -307,6 +322,15 @@ pub fn empty_match_arm(span: &Span) -> LisetteDiagnostic {
         .with_lint_code("empty_match_arm")
         .with_span_label(span, "forgotten stub?")
         .with_help("Return `()` to indicate an intentional no-op in a match arm")
+}
+
+pub fn discarded_lambda_value(span: &Span, body_ty: &str) -> LisetteDiagnostic {
+    LisetteDiagnostic::warn("Discarded lambda value")
+        .with_lint_code("discarded_lambda_value")
+        .with_span_label(span, format!("value of type `{}` is discarded", body_ty))
+        .with_help(
+            "The lambda signature requires `()`, which does not match the value it is returning. End the lambda body with `()` or bind the value with `let _ = expr`.",
+        )
 }
 
 pub fn unnecessary_parens(span: &Span, keyword: &str) -> LisetteDiagnostic {

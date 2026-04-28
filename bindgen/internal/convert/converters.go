@@ -39,6 +39,62 @@ func isReferenceType(typeStr string) bool {
 	return strings.HasPrefix(typeStr, "Slice<") || strings.HasPrefix(typeStr, "Map<")
 }
 
+// liftReflectionDecodeParams returns (specs, nil) when not whitelisted or no
+// `interface{}` params are liftable; the index map encodes per-param Ref<T>
+// rewrites for the caller to apply during the param loop.
+func (c *Converter) liftReflectionDecodeParams(
+	sig *types.Signature,
+	qualifiedName string,
+	specs TypeParamSpecs,
+) (TypeParamSpecs, map[int]string) {
+	if !c.cfg.IsReflectionDecode(c.currentPkgPath, qualifiedName) {
+		return specs, nil
+	}
+	used := make(map[string]bool, len(specs))
+	for _, s := range specs {
+		used[s.Name] = true
+	}
+	var overrides map[int]string
+	params := sig.Params()
+	for i := 0; i < params.Len(); i++ {
+		if sig.Variadic() && i == params.Len()-1 {
+			continue
+		}
+		t := params.At(i).Type()
+		for {
+			alias, ok := t.(*types.Alias)
+			if !ok {
+				break
+			}
+			t = alias.Rhs()
+		}
+		iface, ok := t.(*types.Interface)
+		if !ok || !iface.Empty() || isErrorInterface(iface) {
+			continue
+		}
+		name := freshTypeParamName(used)
+		used[name] = true
+		specs = append(specs, TypeParamSpec{Name: name})
+		if overrides == nil {
+			overrides = make(map[int]string)
+		}
+		overrides[i] = fmt.Sprintf("Ref<%s>", name)
+	}
+	return specs, overrides
+}
+
+func freshTypeParamName(used map[string]bool) string {
+	if !used["T"] {
+		return "T"
+	}
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("T%d", n)
+		if !used[candidate] {
+			return candidate
+		}
+	}
+}
+
 func (c *Converter) convertFunction(result *ConvertResult, symbolExport extract.SymbolExport) {
 	signature, ok := symbolExport.GoType.(*types.Signature)
 	if !ok {
@@ -58,6 +114,9 @@ func (c *Converter) convertFunction(result *ConvertResult, symbolExport extract.
 	c.typeParamSubstitutions = substitutions
 	defer func() { c.typeParamSubstitutions = prevSubs }()
 
+	liftedSpecs, paramOverrides := c.liftReflectionDecodeParams(signature, result.Name, result.TypeParams)
+	result.TypeParams = liftedSpecs
+
 	mutParams := c.cfg.MutatingParams(c.currentPkgPath, result.Name)
 
 	params := signature.Params()
@@ -72,6 +131,9 @@ func (c *Converter) convertFunction(result *ConvertResult, symbolExport extract.
 		typeStr := paramType.LisetteType
 		if signature.Variadic() && i == params.Len()-1 {
 			typeStr = sliceToVarArgs(typeStr)
+		}
+		if override, ok := paramOverrides[i]; ok {
+			typeStr = override
 		}
 
 		name := param.Name()
@@ -204,6 +266,13 @@ func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.Sy
 		qualifiedName = result.Receiver.BaseTypeName + "." + result.Name
 	}
 
+	methodSpecs, _, skip := collectTypeParams(signature.TypeParams(), false, c)
+	if skip != nil {
+		result.SkipReason = skip
+		return
+	}
+	liftedSpecs, paramOverrides := c.liftReflectionDecodeParams(signature, qualifiedName, methodSpecs)
+
 	mutParams := c.cfg.MutatingParams(c.currentPkgPath, qualifiedName)
 
 	params := signature.Params()
@@ -218,6 +287,9 @@ func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.Sy
 		typeStr := paramType.LisetteType
 		if signature.Variadic() && i == params.Len()-1 {
 			typeStr = sliceToVarArgs(typeStr)
+		}
+		if override, ok := paramOverrides[i]; ok {
+			typeStr = override
 		}
 
 		name := param.Name()
@@ -290,12 +362,119 @@ func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.Sy
 		}
 	}
 
-	methodSpecs, _, skip := collectTypeParams(signature.TypeParams(), false, c)
-	if skip != nil {
-		result.SkipReason = skip
-		return
+	result.TypeParams = liftedSpecs
+
+	if isFluentBuilderCandidate(result, symbolExport, signature) {
+		if fn := c.findFuncDecl(symbolExport.Obj); fn != nil && isFluentMethod(fn, ncGetReceiverName(fn)) {
+			if c.cfg == nil || !c.cfg.ShouldDenyUnusedValue(c.currentPkgPath, qualifiedName) {
+				result.BuilderMethod = true
+			}
+		}
 	}
-	result.TypeParams = methodSpecs
+}
+
+// isFluentBuilderCandidate gates AST inspection. Clone/Copy return new values despite the fluent shape.
+func isFluentBuilderCandidate(result *ConvertResult, exp extract.SymbolExport, sig *types.Signature) bool {
+	if result.Receiver == nil || !result.Receiver.IsPointer || exp.IsPromoted {
+		return false
+	}
+	if result.Name == "Clone" || result.Name == "Copy" {
+		return false
+	}
+	return returnIsReceiverShaped(sig)
+}
+
+// leftmostIdent walks `recv.A(...).B(...)` chains so the receiver can be detected at the head.
+func leftmostIdent(expr ast.Expr) *ast.Ident {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e
+	case *ast.SelectorExpr:
+		return leftmostIdent(e.X)
+	case *ast.CallExpr:
+		return leftmostIdent(e.Fun)
+	}
+	return nil
+}
+
+// returnIsReceiverShaped filters out delegation that returns unrelated types (e.g. `*Alpha.At -> color.Color`) and Result/Option-wrapped returns where unused_value cannot fire.
+func returnIsReceiverShaped(sig *types.Signature) bool {
+	recv := sig.Recv()
+	if recv == nil {
+		return false
+	}
+	results := sig.Results()
+	if results.Len() != 1 {
+		return false
+	}
+	recvPtr, ok := recv.Type().(*types.Pointer)
+	if !ok {
+		return false
+	}
+	recvNamed, ok := recvPtr.Elem().(*types.Named)
+	if !ok {
+		return false
+	}
+
+	if retNamed := singlePointerReturnNamed(sig); retNamed != nil && retNamed == recvNamed {
+		return true
+	}
+	retNamed, ok := results.At(0).Type().(*types.Named)
+	if !ok {
+		return false
+	}
+	if retNamed == recvNamed {
+		return true
+	}
+	if iface, ok := retNamed.Underlying().(*types.Interface); ok && !iface.Empty() {
+		return types.Implements(recvPtr, iface)
+	}
+	return false
+}
+
+// isFluentMethod excludes trivial `return self` getters — real fluent setters either do work before returning or delegate via a method call on the receiver.
+func isFluentMethod(fn *ast.FuncDecl, recvName string) bool {
+	if fn == nil || fn.Body == nil || recvName == "" {
+		return false
+	}
+
+	hasReturn := false
+	allMatchRecv := true
+	anyCallOnRecv := false
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok {
+			return true
+		}
+		if len(ret.Results) != 1 {
+			allMatchRecv = false
+			return true
+		}
+		hasReturn = true
+		switch r := ret.Results[0].(type) {
+		case *ast.Ident:
+			if r.Name != recvName {
+				allMatchRecv = false
+			}
+		case *ast.CallExpr:
+			if id := leftmostIdent(r); id != nil && id.Name == recvName {
+				anyCallOnRecv = true
+				return true
+			}
+			allMatchRecv = false
+		default:
+			allMatchRecv = false
+		}
+		return true
+	})
+
+	if !hasReturn || !allMatchRecv {
+		return false
+	}
+	return len(fn.Body.List) > 1 || anyCallOnRecv
 }
 
 func (c *Converter) convertType(result *ConvertResult, exp extract.SymbolExport) {
@@ -1056,6 +1235,11 @@ func (c *Converter) extractInterfaceMethods(_interface *types.Interface, typeNam
 				return nil, false
 			}
 
+			typeStr := paramType.LisetteType
+			if signature.Variadic() && j == signature.Params().Len()-1 {
+				typeStr = sliceToVarArgs(typeStr)
+			}
+
 			name := param.Name()
 			if name == "" {
 				name = fmt.Sprintf("arg%d", j)
@@ -1064,8 +1248,8 @@ func (c *Converter) extractInterfaceMethods(_interface *types.Interface, typeNam
 
 			params = append(params, FunctionParameter{
 				Name:    name,
-				Type:    paramType.LisetteType,
-				Mutable: isMutableParam(mutParams, name, paramType.LisetteType, method.Name()),
+				Type:    typeStr,
+				Mutable: isMutableParam(mutParams, name, typeStr, method.Name()),
 			})
 		}
 

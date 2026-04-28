@@ -32,6 +32,8 @@ type ConvertResult struct {
 	// rewrites the return type to Option<int> and emits the matching
 	// flag-name annotation (e.g. `#[go(sentinel_minus_one)]`).
 	SentinelInt *int
+	// BuilderMethod suppresses unused_value on fluent-chain returns the caller typically discards.
+	BuilderMethod bool
 }
 
 type FunctionParameter struct {
@@ -69,6 +71,18 @@ type EnumVariant struct {
 
 // ExternalPkgs maps package paths to package names (e.g., "time" -> "time").
 type ExternalPkgs map[string]string
+
+// ASCII SOH/STX, used to wrap a package path in reference strings so the
+// emitter can substitute it with the resolved local prefix after collision
+// detection. Neither byte can appear in identifiers or doc text.
+const (
+	PkgRefStart = "\x01"
+	PkgRefEnd   = "\x02"
+)
+
+func PkgRef(path string) string {
+	return PkgRefStart + path + PkgRefEnd
+}
 
 type Converter struct {
 	currentPkgPath       string

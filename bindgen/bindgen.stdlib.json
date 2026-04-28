@@ -5,6 +5,10 @@
         "bytes": ["Buffer.WriteByte", "Buffer.WriteRune", "Buffer.WriteString"],
         "fmt": ["Print", "Printf", "Println", "Fprint", "Fprintf", "Fprintln"],
         "strings": ["Builder.WriteByte", "Builder.WriteRune", "Builder.WriteString"]
+      },
+      "deny_unused_value": {
+        "go/types": ["TypeParam.Underlying"],
+        "html/template": ["Template.New"]
       }
     },
     "types": {
@@ -375,6 +379,12 @@
         "image/color": ["*"],
         "io/ioutil": ["Discard"],
         "unicode": ["*"]
+      },
+      "reflection_decode": {
+        "encoding/json": ["Unmarshal", "Decoder.Decode"],
+        "encoding/xml": ["Unmarshal", "Decoder.Decode", "Decoder.DecodeElement"],
+        "encoding/gob": ["Decoder.Decode"],
+        "encoding/binary": ["Read"]
       }
     }
   }
