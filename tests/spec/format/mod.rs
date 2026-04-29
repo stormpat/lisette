@@ -1318,6 +1318,20 @@ fn method_chain_short_stays_inline() {
 }
 
 #[test]
+fn method_chain_comment_between_segments() {
+    assert_format_snapshot!(
+        "fn test() { let foo = [5, 5, 5].map(|x| x * 2) // .filter(|x| x % 2 == 0)\n.fold(0, |acc, x| acc + x) }"
+    );
+}
+
+#[test]
+fn method_chain_comment_before_single_segment() {
+    assert_format_snapshot!(
+        "fn test() { let foo = [5, 5, 5] // .map(|x| x * 2)\n// .filter(|x| x % 2 == 0)\n.fold(0, |acc, x| acc + x) }"
+    );
+}
+
+#[test]
 fn unit_return_type_annotation() {
     assert_format_snapshot!("fn do_nothing() -> () { () }");
 }
