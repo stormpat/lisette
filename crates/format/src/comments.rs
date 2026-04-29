@@ -113,6 +113,12 @@ impl<'a> Comments<'a> {
         found
     }
 
+    pub fn has_comments_before(&self, position: u32) -> bool {
+        self.comments[self.comments_cursor..]
+            .iter()
+            .any(|c| c.start < position)
+    }
+
     pub fn has_comments_in_range(&self, span: syntax::ast::Span) -> bool {
         let start = span.byte_offset;
         let end = span.byte_offset + span.byte_length;
