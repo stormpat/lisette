@@ -114,7 +114,11 @@ impl<'a> Comments<'a> {
     }
 
     pub fn cursor_snapshot(&self) -> (usize, usize, usize) {
-        (self.comments_cursor, self.doc_comments_cursor, self.empty_cursor)
+        (
+            self.comments_cursor,
+            self.doc_comments_cursor,
+            self.empty_cursor,
+        )
     }
 
     pub fn restore_cursor(&mut self, snapshot: (usize, usize, usize)) {

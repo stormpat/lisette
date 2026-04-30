@@ -936,8 +936,9 @@ impl<'a> Formatter<'a> {
             // are genuine inter-segment comments and we should use chain formatting.
             let snapshot = self.comments.cursor_snapshot();
             let root_doc = self.expression(root);
-            let has_inter_segment_comments =
-                self.comments.has_comments_before(chain_segments[0].member_start);
+            let has_inter_segment_comments = self
+                .comments
+                .has_comments_before(chain_segments[0].member_start);
             if has_inter_segment_comments {
                 return self.format_method_chain_with_root(root_doc, &chain_segments);
             }
