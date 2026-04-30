@@ -54,17 +54,14 @@ pub(crate) fn definition_to_completion_kind(
     }
 }
 
-/// Extract the element type from a collection type (Slice<T>, Array<T>, Map<K, V>).
-fn element_type_name(ty: &syntax::types::Type) -> Option<&str> {
-    match ty {
-        syntax::types::Type::Nominal { id, params, .. }
-            if id == "prelude.Slice" || id == "prelude.Array" =>
-        {
-            params.first().and_then(type_name)
+/// Extract the element type from a collection type (Slice<T>, EnumeratedSlice<T>, Map<K, V>).
+fn element_type_name(ty: &syntax::types::Type) -> Option<String> {
+    use syntax::types::CompoundKind;
+    match ty.as_compound()? {
+        (CompoundKind::Slice | CompoundKind::EnumeratedSlice, args) => {
+            args.first().and_then(type_name)
         }
-        syntax::types::Type::Nominal { id, params, .. } if id == "prelude.Map" => {
-            params.get(1).and_then(type_name)
-        }
+        (CompoundKind::Map, args) => args.get(1).and_then(type_name),
         _ => None,
     }
 }
@@ -129,9 +126,9 @@ pub(crate) fn resolve_variable_type(
     let ty = &resolved[0];
 
     if indexed {
-        element_type_name(ty).map(|s| s.to_string())
+        element_type_name(ty)
     } else {
-        type_name(ty).map(|s| s.to_string())
+        type_name(ty)
     }
 }
 
@@ -160,7 +157,7 @@ pub(crate) fn detect_dot_context(
             }
         ) {
             let ty = expression.get_type();
-            return type_name(&ty).map(|type_id| DotContext::Instance(type_id.to_string()));
+            return type_name(&ty).map(DotContext::Instance);
         }
         return None;
     }
@@ -178,7 +175,7 @@ pub(crate) fn detect_dot_context(
 
     let ty = expression.get_type();
     if let Some(type_id) = type_name(&ty) {
-        return Some(DotContext::Instance(type_id.to_string()));
+        return Some(DotContext::Instance(type_id));
     }
 
     if let Expression::Identifier { value, .. } = expression.as_ref()

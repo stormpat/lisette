@@ -17,7 +17,7 @@ use crate::snapshot::AnalysisSnapshot;
 use crate::state::{CachedSnapshot, SharedState};
 
 /// Extract the constructor type name, unwrapping `Ref<T>` and peeling aliases.
-pub(crate) fn type_name(ty: &syntax::types::Type) -> Option<&str> {
+pub(crate) fn type_name(ty: &syntax::types::Type) -> Option<String> {
     match ty {
         syntax::types::Type::Nominal { id, params, .. } if id == "prelude.Ref" => {
             params.first().and_then(type_name)
@@ -26,7 +26,9 @@ pub(crate) fn type_name(ty: &syntax::types::Type) -> Option<&str> {
             underlying_ty: Some(u),
             ..
         } => type_name(u),
-        syntax::types::Type::Nominal { id, .. } => Some(id.as_str()),
+        syntax::types::Type::Nominal { id, .. } => Some(id.to_string()),
+        syntax::types::Type::Compound { kind, .. } => Some(format!("prelude.{}", kind.leaf_name())),
+        syntax::types::Type::Simple(kind) => Some(format!("prelude.{}", kind.leaf_name())),
         _ => None,
     }
 }

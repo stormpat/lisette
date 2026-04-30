@@ -410,7 +410,8 @@ pub(crate) fn get_hover_doc(
                 .iter()
                 .find(|fa| offset_in_span(offset, &fa.name_span))
             {
-                if let Some(Definition::Struct { fields, .. }) = snapshot.definitions().get(type_id)
+                if let Some(Definition::Struct { fields, .. }) =
+                    snapshot.definitions().get(type_id.as_str())
                 {
                     return fields
                         .iter()
@@ -420,7 +421,7 @@ pub(crate) fn get_hover_doc(
                 return None;
             }
 
-            let span = snapshot.definitions().get(type_id)?.name_span()?;
+            let span = snapshot.definitions().get(type_id.as_str())?.name_span()?;
             find_doc_at_definition_span(span, snapshot)
         }
 

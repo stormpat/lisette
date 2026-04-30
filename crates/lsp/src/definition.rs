@@ -45,10 +45,16 @@ pub(crate) fn resolve_struct_call_field(
     field_assignments
         .iter()
         .find(|fa| offset_in_span(offset, &fa.name_span))
-        .and_then(|fa| type_id.and_then(|tid| find_struct_field_span(tid, &fa.name, snapshot)))
+        .and_then(|fa| {
+            type_id
+                .as_deref()
+                .and_then(|tid| find_struct_field_span(tid, &fa.name, snapshot))
+        })
         .or_else(|| {
             lookup_definition_span(name, file, snapshot).or_else(|| {
-                type_id.and_then(|tid| snapshot.definitions().get(tid).and_then(|d| d.name_span()))
+                type_id
+                    .as_deref()
+                    .and_then(|tid| snapshot.definitions().get(tid).and_then(|d| d.name_span()))
             })
         })
 }
@@ -93,7 +99,7 @@ pub(crate) fn resolve_dot_access_definition(
     let resolve_by_type = || {
         type_name(&expression.get_type()).and_then(|type_id| {
             let name = format!("{}.{}", type_id, member);
-            try_lookup(&name).or_else(|| find_struct_field_span(type_id, member, snapshot))
+            try_lookup(&name).or_else(|| find_struct_field_span(&type_id, member, snapshot))
         })
     };
 

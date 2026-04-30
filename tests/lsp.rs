@@ -751,6 +751,62 @@ fn main() {
 }
 
 #[tokio::test]
+async fn completion_dot_on_slice_variable() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let names = [\"Lisette\", \"Lilian\", \"Lisa\"]
+  names.length()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 8).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "length"),
+        "should include 'length' from prelude Slice, got: {labels:?}"
+    );
+    assert!(
+        labels.iter().any(|l| l == "is_empty"),
+        "should include 'is_empty' from prelude Slice, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_dot_on_string_variable() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let s = \"hello\"
+  s.length()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 4).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "length"),
+        "should include 'length' from prelude string, got: {labels:?}"
+    );
+    assert!(
+        labels.iter().any(|l| l == "contains"),
+        "should include 'contains' from prelude string, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn completion_no_globals_after_dot() {
     let mut client = TestClient::new().await;
     client.initialize().await;
