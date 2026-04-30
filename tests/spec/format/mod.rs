@@ -1332,6 +1332,13 @@ fn method_chain_comment_before_single_segment() {
 }
 
 #[test]
+fn method_chain_comment_inside_receiver_slice() {
+    assert_format_snapshot!(
+        "fn test() { [\"Lilian\", // comment\n\"Lisette\", // comment\n\"Lisa\"].length() }"
+    );
+}
+
+#[test]
 fn unit_return_type_annotation() {
     assert_format_snapshot!("fn do_nothing() -> () { () }");
 }

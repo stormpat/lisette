@@ -113,10 +113,20 @@ impl<'a> Comments<'a> {
         found
     }
 
+    pub fn cursor_snapshot(&self) -> (usize, usize, usize) {
+        (self.comments_cursor, self.doc_comments_cursor, self.empty_cursor)
+    }
+
+    pub fn restore_cursor(&mut self, snapshot: (usize, usize, usize)) {
+        self.comments_cursor = snapshot.0;
+        self.doc_comments_cursor = snapshot.1;
+        self.empty_cursor = snapshot.2;
+    }
+
     pub fn has_comments_before(&self, position: u32) -> bool {
         self.comments[self.comments_cursor..]
-            .iter()
-            .any(|c| c.start < position)
+            .first()
+            .is_some_and(|c| c.start < position)
     }
 
     pub fn has_comments_in_range(&self, span: syntax::ast::Span) -> bool {

@@ -928,12 +928,20 @@ impl<'a> Formatter<'a> {
                 spread,
                 type_args,
             });
-            let has_inter_segment_comments = chain_segments
-                .iter()
-                .any(|s| self.comments.has_comments_before(s.member_start));
-            if chain_segments.len() >= 2 || has_inter_segment_comments {
+            if chain_segments.len() >= 2 {
                 return self.format_method_chain(root, &chain_segments);
             }
+            // Single-segment chain: probe-format the root to drain any inner-receiver
+            // comments, then check if comments remain before the member. If so, there
+            // are genuine inter-segment comments and we should use chain formatting.
+            let snapshot = self.comments.cursor_snapshot();
+            let root_doc = self.expression(root);
+            let has_inter_segment_comments =
+                self.comments.has_comments_before(chain_segments[0].member_start);
+            if has_inter_segment_comments {
+                return self.format_method_chain_with_root(root_doc, &chain_segments);
+            }
+            self.comments.restore_cursor(snapshot);
         }
 
         let head = self
@@ -1036,7 +1044,14 @@ impl<'a> Formatter<'a> {
         segments: &[MethodChainSegment<'a>],
     ) -> Document<'a> {
         let root_doc = self.expression(root);
+        self.format_method_chain_with_root(root_doc, segments)
+    }
 
+    fn format_method_chain_with_root(
+        &mut self,
+        root_doc: Document<'a>,
+        segments: &[MethodChainSegment<'a>],
+    ) -> Document<'a> {
         let segment_docs: Vec<Document<'a>> = segments
             .iter()
             .map(|seg| {
