@@ -1383,7 +1383,7 @@ import "go:example.com/aws"
 
 fn main() {
   let mut b = aws.ListInput { .. }
-  b.MaxItems = Some(5 as int32)
+  b.MaxItems = Some(5)
   b.MaxItems = None
 }
 "#;
