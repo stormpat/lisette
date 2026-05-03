@@ -212,11 +212,9 @@ impl LanguageServer for Backend {
             snapshot.definitions().get(type_id)?.doc().cloned()
         });
 
-        let ty_label = hover::enum_variant_label(expression, &ty).unwrap_or_else(|| ty.to_string());
-
         let content = match doc {
-            Some(doc) => format!("```lisette\n{ty_label}\n```\n\n---\n\n{doc}"),
-            None => format!("```lisette\n{ty_label}\n```"),
+            Some(doc) => format!("```lisette\n{ty}\n```\n\n---\n\n{doc}"),
+            None => format!("```lisette\n{ty}\n```"),
         };
 
         Ok(Some(Hover {

@@ -381,32 +381,6 @@ fn resolve_dot_access_doc(
         .cloned()
 }
 
-/// If `expression` is a zero-field enum variant identifier, returns a display
-/// label of the form `"EnumName.VariantName"`. Otherwise returns `None`.
-///
-/// Zero-field variants have the enum type itself (e.g. `Color`) as their
-/// inferred type, so without this the hover would only show `"Color"` for
-/// both `Color.R` and `Color.G`.
-pub(crate) fn enum_variant_label(
-    expression: &Expression,
-    ty: &syntax::types::Type,
-) -> Option<String> {
-    let Expression::Identifier {
-        qualified: Some(q), ..
-    } = expression
-    else {
-        return None;
-    };
-    // qualified looks like "module.EnumName.VariantName"; split off the last segment
-    let (parent, variant_name) = q.rsplit_once('.')?;
-    // parent must match the type's qualified id (e.g. "module.EnumName")
-    if ty.get_qualified_id() != Some(parent) {
-        return None;
-    }
-    let enum_name = parent.rsplit('.').next()?;
-    Some(format!("{}.{}", enum_name, variant_name))
-}
-
 /// Resolve the doc comment for the hovered expression.
 pub(crate) fn get_hover_doc(
     expression: &Expression,
