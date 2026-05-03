@@ -1487,6 +1487,20 @@ fn comment_trailing_in_value_enum_body() {
 }
 
 #[test]
+fn doc_comment_on_enum_variant() {
+    assert_format_snapshot!(
+        "/// Enum doc\nenum Color {\n  /// Doc for R\n  R,\n  /// Doc for G\n  G,\n  /// Doc for B\n  B,\n}"
+    );
+}
+
+#[test]
+fn doc_comment_on_value_enum_variant() {
+    assert_format_snapshot!(
+        "pub enum E: int {\n  /// Doc for A\n  A = 1,\n  /// Doc for B\n  B = 2,\n}"
+    );
+}
+
+#[test]
 fn comment_between_interface_methods() {
     assert_format_snapshot!("interface I {\n  fn first()\n  // between methods\n  fn second()\n}");
 }

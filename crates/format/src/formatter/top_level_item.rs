@@ -268,9 +268,20 @@ impl<'a> Formatter<'a> {
 
         let mut entries: Vec<SiblingEntry<'a>> = Vec::with_capacity(variants.len());
         for variant in variants {
+            let doc_leading = self
+                .comments
+                .take_doc_comments_before(variant.name_span.byte_offset);
             self.push_sibling_entry(&mut entries, variant.name_span.byte_offset, |s| {
                 s.enum_variant_body(variant)
             });
+            if let Some(doc) = doc_leading {
+                if let Some(last) = entries.last_mut() {
+                    last.leading = Some(match last.leading.take() {
+                        Some(reg) => doc.append(Document::Newline).append(reg),
+                        None => doc,
+                    });
+                }
+            }
         }
         let body = self.join_sibling_body(entries, span.end());
         Self::braced_body(header, body)
@@ -298,6 +309,9 @@ impl<'a> Formatter<'a> {
 
         let mut entries: Vec<SiblingEntry<'a>> = Vec::with_capacity(variants.len());
         for variant in variants {
+            let doc_leading = self
+                .comments
+                .take_doc_comments_before(variant.name_span.byte_offset);
             self.push_sibling_entry(&mut entries, variant.name_span.byte_offset, |s| {
                 let value_doc = s.literal(&variant.value);
                 Document::string(variant.name.to_string())
@@ -305,6 +319,14 @@ impl<'a> Formatter<'a> {
                     .append(value_doc)
                     .append(",")
             });
+            if let Some(doc) = doc_leading {
+                if let Some(last) = entries.last_mut() {
+                    last.leading = Some(match last.leading.take() {
+                        Some(reg) => doc.append(Document::Newline).append(reg),
+                        None => doc,
+                    });
+                }
+            }
         }
         let body = self.join_sibling_body(entries, span.end());
         Self::braced_body(header, body)

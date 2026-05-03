@@ -1,0 +1,13 @@
+---
+source: tests/spec/format/mod.rs
+description: "input: /// Enum doc\nenum Color {\n  /// Doc for R\n  R,\n  /// Doc for G\n  G,\n  /// Doc for B\n  B,\n}"
+---
+/// Enum doc
+enum Color {
+  /// Doc for R
+  R,
+  /// Doc for G
+  G,
+  /// Doc for B
+  B,
+}
