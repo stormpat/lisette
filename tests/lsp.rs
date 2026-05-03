@@ -1120,6 +1120,94 @@ fn main() {
 }
 
 #[tokio::test]
+async fn hover_match_arm_enum_variant_shows_enum_type() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+enum Color { Red, Green, Blue(string) }
+fn main() {
+  let c: Color = Color.Green
+  match c {
+    Color.Red => 0,
+    Color.Green => 1,
+    Color.Blue(_) => 2,
+  }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Hover on "Color" part of "Color.Red" in match arm pattern — should show
+    // the enum type, not the match expression's return type.
+    let hover = client.hover(TEST_URI, 4, 6).await;
+    assert!(
+        hover.is_some(),
+        "hover on match arm enum variant should return something"
+    );
+    let content = hover_content(&hover.unwrap());
+    assert!(
+        content.contains("Color"),
+        "match arm enum variant should show enum type 'Color', got: {content}"
+    );
+
+    // Same check for a variant with a field payload — hover on the variant name.
+    let hover = client.hover(TEST_URI, 6, 6).await;
+    assert!(
+        hover.is_some(),
+        "hover on match arm enum variant with payload should return something"
+    );
+    let content = hover_content(&hover.unwrap());
+    assert!(
+        content.contains("Color"),
+        "match arm enum variant with payload should show enum type 'Color', got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn hover_match_arm_literal_pattern_shows_type() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let x = 1
+  match x {
+    1 => 10,
+    2 => 20,
+    _ => 0,
+  }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Hover on literal `1` in match arm pattern.
+    let hover = client.hover(TEST_URI, 3, 4).await;
+    assert!(
+        hover.is_some(),
+        "hover on literal pattern should return something"
+    );
+    let content = hover_content(&hover.unwrap());
+    assert!(
+        content.contains("int"),
+        "literal pattern should show 'int', got: {content}"
+    );
+
+    // Hover on wildcard `_` in match arm pattern.
+    let hover = client.hover(TEST_URI, 5, 4).await;
+    assert!(
+        hover.is_some(),
+        "hover on wildcard pattern should return something"
+    );
+    let content = hover_content(&hover.unwrap());
+    assert!(
+        content.contains("int"),
+        "wildcard pattern should show 'int', got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn diagnostics_type_error() {
     let mut client = TestClient::new().await;
     client.initialize().await;

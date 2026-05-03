@@ -58,18 +58,28 @@ pub(crate) fn get_hover_type_and_span(
                     field_types,
                     ..
                 }),
-            ) => fields.iter().enumerate().find_map(|(i, field)| {
-                let field_ty = field_types.get(i).unwrap_or(fallback_ty);
-                get_pattern_element_type(field, typed_fields.get(i), field_ty, offset)
-            }),
+            ) => fields
+                .iter()
+                .enumerate()
+                .find_map(|(i, field)| {
+                    let field_ty = field_types.get(i).unwrap_or(fallback_ty);
+                    get_pattern_element_type(field, typed_fields.get(i), field_ty, offset)
+                })
+                .or_else(|| Some((fallback_ty.clone(), span))),
 
             (
                 Pattern::EnumVariant { fields, .. },
                 Some(TypedPattern::EnumStructVariant { variant_fields, .. }),
-            ) => fields.iter().enumerate().find_map(|(i, field)| {
-                let field_ty = variant_fields.get(i).map(|f| &f.ty).unwrap_or(fallback_ty);
-                get_pattern_element_type(field, None, field_ty, offset)
-            }),
+            ) => fields
+                .iter()
+                .enumerate()
+                .find_map(|(i, field)| {
+                    let field_ty = variant_fields.get(i).map(|f| &f.ty).unwrap_or(fallback_ty);
+                    get_pattern_element_type(field, None, field_ty, offset)
+                })
+                .or_else(|| Some((fallback_ty.clone(), span))),
+
+            (Pattern::EnumVariant { .. }, _) => Some((fallback_ty.clone(), span)),
 
             (Pattern::Struct { fields, .. }, Some(typed)) => {
                 let (field_defs, pattern_fields): (Vec<_>, _) = match typed {
@@ -162,6 +172,10 @@ pub(crate) fn get_hover_type_and_span(
                     );
                     Some((binding_ty, name_span))
                 })
+            }
+
+            (Pattern::Literal { .. }, _) | (Pattern::WildCard { .. }, _) => {
+                Some((fallback_ty.clone(), span))
             }
 
             _ => None,
