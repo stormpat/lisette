@@ -9986,3 +9986,35 @@ async fn diagnostics_toolchain_mismatch_surfaces_error() {
 
     client.shutdown().await;
 }
+
+#[tokio::test]
+async fn completion_dot_on_ref_variable() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+impl Point {
+  pub fn dist(self) -> int { self.x + self.y }
+}
+fn main() {
+  let p = &Point { x: 1, y: 2 }
+  p.dist()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 6, 4).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "dist"),
+        "should include 'dist' method through ref, got: {labels:?}"
+    );
+    assert!(
+        labels.iter().any(|l| l == "x"),
+        "should include 'x' field through ref, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
