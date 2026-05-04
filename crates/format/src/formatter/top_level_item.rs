@@ -274,13 +274,13 @@ impl<'a> Formatter<'a> {
             self.push_sibling_entry(&mut entries, variant.name_span.byte_offset, |s| {
                 s.enum_variant_body(variant)
             });
-            if let Some(doc) = doc_leading {
-                if let Some(last) = entries.last_mut() {
-                    last.leading = Some(match last.leading.take() {
-                        Some(reg) => doc.append(Document::Newline).append(reg),
-                        None => doc,
-                    });
-                }
+            if let Some(doc) = doc_leading
+                && let Some(last) = entries.last_mut()
+            {
+                last.leading = Some(match last.leading.take() {
+                    Some(reg) => doc.append(Document::Newline).append(reg),
+                    None => doc,
+                });
             }
         }
         let body = self.join_sibling_body(entries, span.end());
@@ -319,13 +319,13 @@ impl<'a> Formatter<'a> {
                     .append(value_doc)
                     .append(",")
             });
-            if let Some(doc) = doc_leading {
-                if let Some(last) = entries.last_mut() {
-                    last.leading = Some(match last.leading.take() {
-                        Some(reg) => doc.append(Document::Newline).append(reg),
-                        None => doc,
-                    });
-                }
+            if let Some(doc) = doc_leading
+                && let Some(last) = entries.last_mut()
+            {
+                last.leading = Some(match last.leading.take() {
+                    Some(reg) => doc.append(Document::Newline).append(reg),
+                    None => doc,
+                });
             }
         }
         let body = self.join_sibling_body(entries, span.end());
