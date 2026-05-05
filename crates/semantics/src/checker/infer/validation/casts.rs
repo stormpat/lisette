@@ -11,16 +11,13 @@ impl TaskState<'_> {
     ///
     /// Allowed conversions:
     /// - Numeric types (int, uint, float families) to any other numeric type,
-    ///   including types with numeric underlying types (e.g., `enum Duration: int64`)
-    /// - Integer <-> rune (but not byte -> rune or rune -> byte, which are blocked below)
-    /// - byte -> rune (safe widening: byte is 0-255, rune covers all Unicode code points)
+    ///   including types with numeric underlying types (e.g., `enum Duration: int64`).
     /// - rune -> string (produces a single-character UTF-8 string)
     /// - byte -> string (produces a single-character UTF-8 string)
+    /// - byte -> rune
     ///
     /// Explicitly blocked even though both sides are numeric:
     /// - rune -> byte/uint8 (rune is int32 and may not fit in a byte)
-    /// - string <-> Slice<byte> / Slice<rune>, including types with byte/rune slice
-    ///   underlying types (e.g., `type Bytes = Slice<byte>`)
     ///
     /// Complex types (complex64, complex128) are explicitly excluded.
     pub(crate) fn check_valid_cast(
