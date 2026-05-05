@@ -1,7 +1,7 @@
 use crate::checker::EnvResolve;
 use crate::store::Store;
 use syntax::ast::{Expression, Span};
-use syntax::types::Type;
+use syntax::types::{SimpleKind, Type};
 
 use crate::checker::TaskState;
 
@@ -12,7 +12,13 @@ impl TaskState<'_> {
     /// Allowed conversions:
     /// - Numeric types (int, uint, float families) to any other numeric type,
     ///   including types with numeric underlying types (e.g., `enum Duration: int64`)
-    /// - Integer <-> rune
+    /// - Integer <-> rune (but not byte -> rune or rune -> byte, which are blocked below)
+    /// - byte -> rune (safe widening: byte is 0-255, rune covers all Unicode code points)
+    /// - rune -> string (produces a single-character UTF-8 string)
+    /// - byte -> string (produces a single-character UTF-8 string)
+    ///
+    /// Explicitly blocked even though both sides are numeric:
+    /// - rune -> byte/uint8 (rune is int32 and may not fit in a byte)
     /// - string <-> Slice<byte> / Slice<rune>, including types with byte/rune slice
     ///   underlying types (e.g., `type Bytes = Slice<byte>`)
     ///
@@ -40,7 +46,26 @@ impl TaskState<'_> {
             return;
         }
 
+        if source_ty.is_rune()
+            && (target_ty.is_simple(SimpleKind::Byte) || target_ty.is_simple(SimpleKind::Uint8))
+        {
+            self.sink.push(diagnostics::infer::invalid_cast(
+                raw_source_ty,
+                raw_target_ty,
+                span,
+            ));
+            return;
+        }
+
         if source_ty.has_underlying_numeric_type() && target_ty.has_underlying_numeric_type() {
+            return;
+        }
+
+        if (source_ty.is_rune()
+            || source_ty.is_simple(SimpleKind::Byte)
+            || source_ty.is_simple(SimpleKind::Uint8))
+            && target_ty.is_string()
+        {
             return;
         }
 

@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/functions.rs
+description: "input: \nfn test() -> string {\n  'A' as string\n}\n"
+---
+package main
+
+func test() string {
+	return string('A')
+}

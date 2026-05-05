@@ -4695,6 +4695,17 @@ fn test() -> complex128 {
 }
 
 #[test]
+fn infer_invalid_cast_rune_to_byte() {
+    let input = r#"
+fn test() -> byte {
+  let r: rune = 'A';
+  r as byte
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_chained_cast() {
     let input = r#"
 fn test() -> int {

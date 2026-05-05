@@ -9,4 +9,4 @@ source: tests/ui/errors/mod.rs
    ·        ╰── cannot cast `bool` to `int`
  4 │ }
    ╰────
-  help: Casts are supported between numeric types, strings and byte/rune slices, concrete types and interfaces, and values and their type aliases · code: [infer.invalid_cast]
+  help: Casts are supported between: numeric types, byte/rune to string, string to byte/rune slices, byte to rune, and concrete types to interfaces · code: [infer.invalid_cast]
