@@ -4706,6 +4706,32 @@ fn test() -> byte {
 }
 
 #[test]
+fn infer_invalid_cast_custom_rune_to_byte() {
+    let input = r#"
+type MyRune = rune
+
+fn test() -> byte {
+  let r: MyRune = 'A';
+  r as byte
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_invalid_cast_rune_to_custom_byte() {
+    let input = r#"
+type MyByte = byte
+
+fn test() -> MyByte {
+  let r: rune = 'A';
+  r as MyByte
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_chained_cast() {
     let input = r#"
 fn test() -> int {

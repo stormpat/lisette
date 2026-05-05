@@ -895,6 +895,15 @@ impl Type {
         self.is_byte_slice() || self.is_rune_slice()
     }
 
+    pub fn has_underlying_rune(&self) -> bool {
+        self.underlying_numeric_type().is_some_and(|t| t.is_rune())
+    }
+
+    pub fn has_underlying_byte(&self) -> bool {
+        self.underlying_numeric_type()
+            .is_some_and(|t| t.is_simple(SimpleKind::Byte) || t.is_simple(SimpleKind::Uint8))
+    }
+
     pub fn has_byte_or_rune_slice_underlying(&self) -> bool {
         if self.is_byte_or_rune_slice() {
             return true;

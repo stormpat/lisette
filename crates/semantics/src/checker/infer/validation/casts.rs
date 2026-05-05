@@ -1,7 +1,7 @@
 use crate::checker::EnvResolve;
 use crate::store::Store;
 use syntax::ast::{Expression, Span};
-use syntax::types::{SimpleKind, Type};
+use syntax::types::Type;
 
 use crate::checker::TaskState;
 
@@ -46,9 +46,7 @@ impl TaskState<'_> {
             return;
         }
 
-        if source_ty.is_rune()
-            && (target_ty.is_simple(SimpleKind::Byte) || target_ty.is_simple(SimpleKind::Uint8))
-        {
+        if source_ty.has_underlying_rune() && target_ty.has_underlying_byte() {
             self.sink.push(diagnostics::infer::invalid_cast(
                 raw_source_ty,
                 raw_target_ty,
@@ -61,9 +59,7 @@ impl TaskState<'_> {
             return;
         }
 
-        if (source_ty.is_rune()
-            || source_ty.is_simple(SimpleKind::Byte)
-            || source_ty.is_simple(SimpleKind::Uint8))
+        if (source_ty.has_underlying_rune() || source_ty.has_underlying_byte())
             && target_ty.is_string()
         {
             return;

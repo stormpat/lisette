@@ -2029,9 +2029,7 @@ pub fn invalid_cast(source_ty: &Type, target_ty: &Type, span: Span) -> LisetteDi
         "Strings cannot be cast to numbers and require explicit conversion. Use `strconv.Atoi()` to parse.".into()
     } else if source_ty.is_complex() || target_ty.is_complex() {
         "Complex numbers cannot be cast directly. Use `real(c)` or `imaginary(c)` to extract components.".into()
-    } else if source_ty.is_rune()
-        && (target_ty.is_simple(SimpleKind::Byte) || target_ty.is_simple(SimpleKind::Uint8))
-    {
+    } else if source_ty.has_underlying_rune() && target_ty.has_underlying_byte() {
         "rune (int32) is wider than byte (uint8) and may not fit. Use an intermediate variable to cast via int first: `let n = r as int; n as byte`".into()
     } else {
         "Casts are supported between: numeric types, byte/rune to string, string to byte/rune slices, byte to rune, and concrete types to interfaces.".into()
