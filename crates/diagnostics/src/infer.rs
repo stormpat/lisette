@@ -2031,8 +2031,10 @@ pub fn invalid_cast(source_ty: &Type, target_ty: &Type, span: Span) -> LisetteDi
         "Complex numbers cannot be cast directly. Use `real(c)` or `imaginary(c)` to extract components.".into()
     } else if source_ty.has_underlying_rune() && target_ty.has_underlying_byte() {
         "rune (int32) is wider than byte (uint8) and may not fit. Use an intermediate variable to cast via int first: `let n = r as int; n as byte`".into()
+    } else if source_ty.has_underlying_byte() && target_ty.is_string() {
+        "A byte has two readings as a string. Use `[b] as string` to preserve the byte (may be invalid UTF-8), or cast through a rune to encode as a codepoint: `let r = b as rune; r as string`".into()
     } else {
-        "Casts are supported between: numeric types, byte/rune to string, string to byte/rune slices, byte to rune, and concrete types to interfaces.".into()
+        "Casts are supported between numeric types, between string and byte/rune slices, from rune to string, and from concrete types to interfaces.".into()
     };
 
     LisetteDiagnostic::error("Invalid cast")

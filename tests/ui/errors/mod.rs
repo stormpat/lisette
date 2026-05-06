@@ -4650,6 +4650,26 @@ fn test() -> int {
 }
 
 #[test]
+fn infer_invalid_cast_string_to_rune() {
+    let input = r#"
+fn test() -> rune {
+  "A" as rune
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_invalid_cast_string_to_byte() {
+    let input = r#"
+fn test() -> byte {
+  "A" as byte
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_invalid_cast_bool_to_int() {
     let input = r#"
 fn test() -> int {
@@ -4726,6 +4746,30 @@ type MyByte = byte
 fn test() -> MyByte {
   let r: rune = 'A';
   r as MyByte
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_invalid_cast_byte_to_string() {
+    let input = r#"
+fn test() -> string {
+  let b: byte = 65;
+  b as string
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_invalid_cast_custom_byte_to_string() {
+    let input = r#"
+type MyByte = byte
+
+fn test() -> string {
+  let b: MyByte = 65;
+  b as string
 }
 "#;
     assert_infer_error_snapshot!(input);

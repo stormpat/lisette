@@ -728,19 +728,6 @@ fn cast_byte_to_rune() {
 }
 
 #[test]
-fn cast_byte_to_string() {
-    infer(
-        r#"
-    fn main() {
-      let b: byte = 65;
-      let s: string = b as string;
-    }
-        "#,
-    )
-    .assert_no_errors();
-}
-
-#[test]
 fn cast_custom_rune_type_to_string() {
     infer(
         r#"
@@ -749,21 +736,6 @@ fn cast_custom_rune_type_to_string() {
     fn main() {
       let r: MyRune = 'A';
       let s: string = r as string;
-    }
-        "#,
-    )
-    .assert_no_errors();
-}
-
-#[test]
-fn cast_custom_byte_type_to_string() {
-    infer(
-        r#"
-    type MyByte = byte
-
-    fn main() {
-      let b: MyByte = 65;
-      let s: string = b as string;
     }
         "#,
     )

@@ -12,12 +12,13 @@ impl TaskState<'_> {
     /// Allowed conversions:
     /// - Numeric types (int, uint, float families) to any other numeric type,
     ///   including types with numeric underlying types (e.g., `enum Duration: int64`).
-    /// - rune -> string (produces a single-character UTF-8 string)
-    /// - byte -> string (produces a single-character UTF-8 string)
-    /// - byte -> rune
+    /// - rune -> string (UTF-8 encodes the codepoint)
+    /// - string <-> Slice<byte> / Slice<rune>
     ///
-    /// Explicitly blocked even though both sides are numeric:
+    /// Explicitly blocked:
     /// - rune -> byte/uint8 (rune is int32 and may not fit in a byte)
+    /// - byte -> string (ambiguous: byte vs codepoint reading;
+    ///   force `[b] as string` for raw, or cast through rune for codepoint)
     ///
     /// Complex types (complex64, complex128) are explicitly excluded.
     pub(crate) fn check_valid_cast(
@@ -56,9 +57,7 @@ impl TaskState<'_> {
             return;
         }
 
-        if (source_ty.has_underlying_rune() || source_ty.has_underlying_byte())
-            && target_ty.is_string()
-        {
+        if source_ty.has_underlying_rune() && target_ty.is_string() {
             return;
         }
 

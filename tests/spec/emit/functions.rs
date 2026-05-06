@@ -420,17 +420,6 @@ fn test() -> string {
 }
 
 #[test]
-fn cast_byte_to_string() {
-    let input = r#"
-fn test() -> string {
-  let b: byte = 65;
-  b as string
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
 fn cast_precedence_with_addition() {
     let input = r#"
 fn test() -> float64 {
