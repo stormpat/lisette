@@ -340,14 +340,12 @@ impl Emitter<'_> {
         needs_label: bool,
     ) {
         self.push_loop("_");
-        let pre_len = output.len();
-        let cond = self.emit_condition_operand(output, condition);
-        let has_setup = output.len() > pre_len;
-        if has_setup {
-            // Condition produced setup statements (temps) — they must
+        let (setup, cond) = self.capture_emission(output, |this, buf| {
+            this.emit_condition_operand(buf, condition)
+        });
+        if !setup.is_empty() {
+            // Condition produced setup statements (temps); they must
             // re-run each iteration, so move everything inside the loop.
-            let setup = output[pre_len..].to_string();
-            output.truncate(pre_len);
             let header = format!("for {{\n{}if !({}) {{ break }}\n", setup, cond);
             self.emit_labeled_loop(output, &header, body, needs_label);
         } else if matches!(
@@ -418,10 +416,7 @@ impl Emitter<'_> {
             } => self.emit_deref_lvalue(output, expression),
             Expression::Call { .. } if expression.get_type().is_ref() => {
                 let call_str = self.emit_operand(output, expression);
-                let tmp = self.fresh_var(Some("ref"));
-                self.declare(&tmp);
-                write_line!(output, "{} := {}", tmp, call_str);
-                tmp
+                self.hoist_tmp_value(output, "ref", &call_str)
             }
             _ => "_".to_string(),
         }
@@ -432,9 +427,7 @@ impl Emitter<'_> {
     fn emit_deref_lvalue(&mut self, output: &mut String, pointee: &Expression) -> String {
         let pointee_string = self.emit_operand(output, pointee);
         if matches!(pointee.unwrap_parens(), Expression::Call { .. }) {
-            let tmp = self.fresh_var(Some("ref"));
-            self.declare(&tmp);
-            write_line!(output, "{} := {}", tmp, pointee_string);
+            let tmp = self.hoist_tmp_value(output, "ref", &pointee_string);
             return format!("*{}", tmp);
         }
         format!("*{}", pointee_string)

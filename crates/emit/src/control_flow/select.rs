@@ -17,6 +17,7 @@ struct SelectReceiveContext<'a> {
     body: &'a Expression,
     default_body: Option<&'a Expression>,
     retry_var: Option<&'a str>,
+    element_ty: syntax::types::Type,
 }
 
 struct SelectPrep {
@@ -53,8 +54,8 @@ impl Emitter<'_> {
                 SelectArmPattern::Receive {
                     binding,
                     typed_pattern,
+                    receive_expression,
                     body,
-                    ..
                 } => {
                     let (channel, retry_var) = if let Some(shadow) =
                         prep.channel_shadows.get(i).and_then(|s| s.as_ref())
@@ -68,6 +69,7 @@ impl Emitter<'_> {
                         body,
                         default_body,
                         retry_var,
+                        element_ty: receive_expression.get_type().ok_type(),
                     };
                     self.emit_receive_arm(output, binding, typed_pattern.as_ref(), &receiver_ctx);
                 }
@@ -76,10 +78,12 @@ impl Emitter<'_> {
                     self.emit_send_arm_case(output, parts, body);
                 }
                 SelectArmPattern::MatchReceive {
-                    arms: match_arms, ..
+                    arms: match_arms,
+                    receive_expression,
                 } => {
                     let channel = prep.channel_operands[i].as_ref().unwrap();
-                    self.emit_match_receive_arm(output, match_arms, channel);
+                    let element_ty = receive_expression.get_type().ok_type();
+                    self.emit_match_receive_arm(output, match_arms, channel, &element_ty);
                 }
                 SelectArmPattern::WildCard { body } => {
                     output.push_str("default:\n");
@@ -137,12 +141,12 @@ impl Emitter<'_> {
                     let channel_has_call = Self::channel_expression_has_call(receive_expression);
                     let ch = self.emit_channel_operand(output, receive_expression);
                     if Self::is_some_pattern(binding) && needs_retry_loop {
-                        let shadow = self.hoist_temp(output, "ch", &ch);
+                        let shadow = self.hoist_tmp_value(output, "ch", &ch);
                         channel_operands.push(Some(ch));
                         channel_shadows.push(Some(shadow));
                     } else {
                         let ch = if needs_retry_loop && channel_has_call {
-                            self.hoist_temp(output, "ch", &ch)
+                            self.hoist_tmp_value(output, "ch", &ch)
                         } else {
                             ch
                         };
@@ -157,7 +161,7 @@ impl Emitter<'_> {
                     let channel_has_call = Self::channel_expression_has_call(receive_expression);
                     let ch = self.emit_channel_operand(output, receive_expression);
                     let ch = if needs_retry_loop && channel_has_call {
-                        self.hoist_temp(output, "ch", &ch)
+                        self.hoist_tmp_value(output, "ch", &ch)
                     } else {
                         ch
                     };
@@ -216,10 +220,10 @@ impl Emitter<'_> {
     }
 
     fn emit_ok_check(&mut self, output: &mut String, ok_var: &str, ctx: &SelectReceiveContext) {
-        let pre = output.len();
-        self.emit_in_position(output, ctx.body);
-        let body_empty = output.len() == pre;
-
+        let (body_content, ()) = self.capture_emission(output, |this, buf| {
+            this.emit_in_position(buf, ctx.body);
+        });
+        let body_empty = body_content.is_empty();
         let has_else = ctx.retry_var.is_some() || ctx.default_body.is_some();
 
         if body_empty && has_else {
@@ -229,8 +233,6 @@ impl Emitter<'_> {
         } else if body_empty {
             // Both branches empty, omit if/else entirely
         } else {
-            let body_content = output[pre..].to_string();
-            output.truncate(pre);
             write_line!(output, "if {} {{", ok_var);
             output.push_str(&body_content);
             if has_else {
@@ -275,7 +277,7 @@ impl Emitter<'_> {
         let guard = DiscardGuard::new(output, receiver_var);
         if let Some((pattern, typed)) = inner_pattern {
             let (checks, bindings) =
-                decision_tree::collect_pattern_info(self, pattern, typed, None);
+                decision_tree::collect_pattern_info(self, pattern, typed, &ctx.element_ty);
             if checks.is_empty() {
                 decision_tree::emit_tree_bindings(self, output, &bindings, receiver_var);
                 self.emit_in_position(output, ctx.body);
@@ -363,7 +365,7 @@ impl Emitter<'_> {
                         &receiver_var,
                         effective_pattern,
                         inner_typed,
-                        None,
+                        &ctx.element_ty,
                     );
                 }
             }
@@ -386,14 +388,14 @@ impl Emitter<'_> {
                 ch = cancel_deref_of_address(ch);
             }
             if ch_has_call {
-                ch = self.hoist_temp(output, "ch", &ch);
+                ch = self.hoist_tmp_value(output, "ch", &ch);
             }
             match member {
                 "send" if !args.is_empty() => {
                     let val_has_call = needs_hoist && contains_call(&args[0]);
                     let mut val = self.emit_composite_value(output, &args[0]);
                     if val_has_call {
-                        val = self.hoist_temp(output, "send_val", &val);
+                        val = self.hoist_tmp_value(output, "send_val", &val);
                     }
                     SendArmParts::Send(ch, val)
                 }
@@ -407,20 +409,10 @@ impl Emitter<'_> {
                 ch = cancel_deref_of_address(ch);
             }
             if expression_has_call {
-                ch = self.hoist_temp(output, "ch", &ch);
+                ch = self.hoist_tmp_value(output, "ch", &ch);
             }
             SendArmParts::Receive(ch)
         }
-    }
-
-    /// Hoist a value into a fresh `tmp := value` binding, registering the
-    /// temp as declared so later bindings in the same scope cannot reuse the
-    /// Go name with `:=` (which would error as "no new variables on left").
-    fn hoist_temp(&mut self, output: &mut String, hint: &str, value: &str) -> String {
-        let tmp = self.fresh_var(Some(hint));
-        write_line!(output, "{} := {}", tmp, value);
-        self.declare(&tmp);
-        tmp
     }
 
     /// Emit the `case` line and body for a pre-processed send arm.
@@ -444,6 +436,7 @@ impl Emitter<'_> {
         output: &mut String,
         match_arms: &[MatchArm],
         channel: &str,
+        element_ty: &syntax::types::Type,
     ) {
         self.scope.bindings.save();
 
@@ -478,6 +471,7 @@ impl Emitter<'_> {
             receiver_var_pattern,
             &case_var,
             needs_receiver_destructure,
+            element_ty,
         );
         let none_content = self.capture_scoped(output, |this, output| {
             Emitter::emit_none_arm_body(this, output, match_arms);
@@ -521,6 +515,7 @@ impl Emitter<'_> {
     /// Render the Some arm's body (including payload destructure when
     /// needed), returning the captured content so the caller can wrap it in
     /// an `if ok` guard alongside the None arm.
+    #[allow(clippy::too_many_arguments)]
     fn render_receive_some_arm(
         &mut self,
         output: &mut String,
@@ -529,6 +524,7 @@ impl Emitter<'_> {
         receiver_var_pattern: &Pattern,
         case_var: &str,
         needs_receiver_destructure: bool,
+        element_ty: &syntax::types::Type,
     ) -> Option<String> {
         self.capture_scoped(output, |this, output| {
             if !needs_receiver_destructure {
@@ -536,8 +532,12 @@ impl Emitter<'_> {
                 return;
             }
             let inner_typed = Self::unwrap_some_typed_pattern(some_arm.typed_pattern.as_ref());
-            let (checks, bindings) =
-                decision_tree::collect_pattern_info(this, receiver_var_pattern, inner_typed, None);
+            let (checks, bindings) = decision_tree::collect_pattern_info(
+                this,
+                receiver_var_pattern,
+                inner_typed,
+                element_ty,
+            );
             if checks.is_empty() {
                 decision_tree::emit_tree_bindings(this, output, &bindings, case_var);
                 this.emit_in_position(output, &some_arm.expression);
@@ -551,27 +551,6 @@ impl Emitter<'_> {
             Emitter::emit_none_arm_body(this, output, match_arms);
             output.push_str("}\n");
         })
-    }
-
-    /// Emit into a scoped buffer, returning the appended content (or `None`
-    /// if nothing was written). Used when the combine step needs to know
-    /// whether each arm produced any output before emitting the `if ok { ... }`
-    /// scaffolding around it.
-    fn capture_scoped<F>(&mut self, output: &mut String, f: F) -> Option<String>
-    where
-        F: FnOnce(&mut Self, &mut String),
-    {
-        let before = output.len();
-        self.enter_scope();
-        f(self, output);
-        self.exit_scope();
-        if output.len() > before {
-            let s = output[before..].to_string();
-            output.truncate(before);
-            Some(s)
-        } else {
-            None
-        }
     }
 
     /// Combine the rendered Some/None arm contents into `if ok { ... } else { ... }`

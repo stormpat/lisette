@@ -1265,11 +1265,14 @@ pub(super) fn compile_expanded_arms<'a>(
 
 /// Collect checks and bindings from a single pattern for use outside match
 /// emission (let-else, while-let, for-loop, complex let, function param).
+/// `subject_ty` is the static type of the scrutinee. Sites that pass a wrong
+/// type would silently miss root-level Go-interface type assertions, so the
+/// public entry takes it by reference rather than `Option<&Type>`.
 pub(crate) fn collect_pattern_info(
     emitter: &mut Emitter,
     pattern: &Pattern,
     typed: Option<&TypedPattern>,
-    path_ty: Option<&Type>,
+    subject_ty: &Type,
 ) -> (Vec<Check>, Vec<PatternBinding>) {
     let mut collector = PatternCollector::new();
     collect_checks_and_bindings(
@@ -1277,7 +1280,7 @@ pub(crate) fn collect_pattern_info(
         &AccessPath::root(),
         pattern,
         typed,
-        path_ty,
+        Some(subject_ty),
         &mut collector,
     );
     (collector.checks, collector.bindings)
@@ -1309,9 +1312,8 @@ pub(crate) fn apply_root_type_assertion<'s>(
 ) -> std::borrow::Cow<'s, str> {
     match take_root_type_assertion(checks) {
         Some(go_type) => {
-            let var = emitter.fresh_var(Some("asserted"));
-            emitter.declare(&var);
-            write_line!(output, "{} := {}.({})", var, subject, go_type);
+            let assertion = format!("{}.({})", subject, go_type);
+            let var = emitter.hoist_tmp_value(output, "asserted", &assertion);
             std::borrow::Cow::Owned(var)
         }
         None => std::borrow::Cow::Borrowed(subject),

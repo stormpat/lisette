@@ -42,13 +42,14 @@ impl Emitter<'_> {
             ..
         } = alternative
         {
-            let mut condition_buffer = String::new();
-            let condition_string = self.emit_condition_operand(&mut condition_buffer, condition);
+            let (setup, condition_string) = self.capture_emission(output, |this, buf| {
+                this.emit_condition_operand(buf, condition)
+            });
             let condition_string = wrap_if_struct_literal(condition_string);
-            if !condition_buffer.is_empty() {
+            if !setup.is_empty() {
                 self.emit_else_if_with_setup(
                     output,
-                    &condition_buffer,
+                    &setup,
                     &condition_string,
                     consequence,
                     next_alternative,
@@ -160,12 +161,13 @@ impl Emitter<'_> {
             var
         });
 
+        let scrutinee_ty = scrutinee.get_type();
         if let Pattern::Or { patterns, .. } = pattern
             && Self::pattern_has_bindings(pattern)
         {
             let mut alternatives: Vec<_> = patterns
                 .iter()
-                .map(|alt| decision_tree::collect_pattern_info(self, alt, None, None))
+                .map(|alt| decision_tree::collect_pattern_info(self, alt, None, &scrutinee_ty))
                 .collect();
 
             let unused_names: rustc_hash::FxHashSet<String> = alternatives
@@ -196,7 +198,7 @@ impl Emitter<'_> {
         }
 
         let (checks, bindings) =
-            decision_tree::collect_pattern_info(self, pattern, typed_pattern, None);
+            decision_tree::collect_pattern_info(self, pattern, typed_pattern, &scrutinee_ty);
         let condition = decision_tree::render_condition(&checks, &subject_var);
         write_line!(output, "if {} {{", condition);
         self.enter_scope();
