@@ -1,11 +1,11 @@
 use crate::Emitter;
-use crate::names::go_name;
+use crate::expressions::context::ExpressionContext;
 use crate::patterns::tree_emitter::TreeEmitter;
+use crate::placement::BodyPlace;
 use crate::types::abi::AbiShape;
 use crate::utils::DiscardGuard;
 use crate::write_line;
 use syntax::ast::{Expression, MatchArm, Pattern};
-use syntax::types::Type;
 
 impl Emitter<'_> {
     pub(crate) fn emit_match(
@@ -13,13 +13,13 @@ impl Emitter<'_> {
         output: &mut String,
         subject: &Expression,
         arms: &[MatchArm],
-        ty: &Type,
+        place: &BodyPlace,
     ) {
         if subject.get_type().is_never() {
             self.emit_statement(output, subject);
             return;
         }
-        if self.try_emit_fused_lowered_match(output, subject, arms) {
+        if self.try_emit_fused_lowered_match(output, subject, arms, place) {
             return;
         }
         let subject_ty = subject.get_type();
@@ -29,8 +29,8 @@ impl Emitter<'_> {
         } else {
             Some(DiscardGuard::new(output, &subject_var))
         };
-        let tree_emitter = TreeEmitter::new(self, arms, ty, subject_var, subject_ty);
-        tree_emitter.emit(output);
+        let tree_emitter = TreeEmitter::new(self, arms, subject_var, subject_ty);
+        tree_emitter.emit(output, place);
         if let Some(guard) = guard {
             guard.finish(output);
         }
@@ -43,6 +43,7 @@ impl Emitter<'_> {
         output: &mut String,
         subject: &Expression,
         arms: &[MatchArm],
+        place: &BodyPlace,
     ) -> bool {
         let Expression::Call {
             expression: callee, ..
@@ -86,36 +87,36 @@ impl Emitter<'_> {
         };
         let err_var = self.fresh_var(Some("ret"));
         self.declare(&err_var);
-        let call_str = self.emit_call(output, subject, None);
+        let call_str = self.emit_call(output, subject, None, ExpressionContext::value());
         match &val_var {
             Some(v) => write_line!(output, "{}, {} := {}", v, err_var, call_str),
             None => write_line!(output, "{} := {}", err_var, call_str),
         }
 
         write_line!(output, "if {} == nil {{", err_var);
-        self.scope.bindings.save();
+        self.scope.push_binding_frame();
         if let (Some(name), Some(val)) = (ok_binding, &val_var)
             && name != "_"
         {
             self.bind_fused(output, name, val);
         }
-        self.emit_in_position(output, &ok_arm.expression);
-        self.scope.bindings.restore();
+        self.emit_body_to_place(output, &ok_arm.expression, place);
+        self.scope.pop_binding_frame();
         output.push_str("} else {\n");
-        self.scope.bindings.save();
+        self.scope.push_binding_frame();
         if let Some(name) = err_binding
             && name != "_"
         {
             self.bind_fused(output, name, &err_var);
         }
-        self.emit_in_position(output, &err_arm.expression);
-        self.scope.bindings.restore();
+        self.emit_body_to_place(output, &err_arm.expression, place);
+        self.scope.pop_binding_frame();
         output.push_str("}\n");
         true
     }
 
     fn bind_fused(&mut self, output: &mut String, name: &str, value: &str) {
-        let go_name = self.scope.bindings.add(name, name);
+        let go_name = self.scope.bind(name, name);
         self.declare(&go_name);
         write_line!(output, "{} := {}", go_name, value);
     }
@@ -135,20 +136,16 @@ impl Emitter<'_> {
                 .iter()
                 .any(|arm| Emitter::pattern_binds_name(&arm.pattern, &name));
             if !has_collision && !name.contains('.') {
-                return self
-                    .scope
-                    .bindings
-                    .get(&name)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| go_name::escape_reserved(&name).into_owned());
+                return self.scope.resolve_or_escape(&name);
             }
         }
         if matches!(subject, Expression::Literal { .. }) {
-            return self.emit_operand(output, subject);
+            return self.emit_operand(output, subject, ExpressionContext::value());
         }
         let var = self.fresh_var(Some("subject"));
         self.declare(&var);
-        let subject_expression = self.emit_composite_value(output, subject);
+        let subject_expression =
+            self.emit_composite_value(output, subject, ExpressionContext::value());
         write_line!(output, "{} := {}", var, subject_expression);
         var
     }

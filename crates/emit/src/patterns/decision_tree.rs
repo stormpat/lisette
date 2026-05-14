@@ -164,20 +164,11 @@ impl Check {
                     joined
                 }
             }
-            // Type assertions at a root path are emitted via type switches; at
-            // nested paths, render as a boolean using Go's comma-ok form inside
-            // an immediately-invoked function literal.
-            Check::TypeAssert { path, go_type } => {
-                if path.is_root() {
-                    "false".to_string()
-                } else {
-                    format!(
-                        "func() bool {{ _, ok := {}.({}); return ok }}()",
-                        path.render(subject),
-                        go_type,
-                    )
-                }
-            }
+            Check::TypeAssert { path, go_type } => format!(
+                "func() bool {{ _, ok := {}.({}); return ok }}()",
+                path.render(subject),
+                go_type,
+            ),
         }
     }
 
@@ -212,36 +203,6 @@ impl Check {
             _ => None,
         }
     }
-
-    pub(crate) fn as_type_switch_case(&self) -> Option<(Vec<&str>, &AccessPath)> {
-        match self {
-            Check::TypeAssert { go_type, path } => Some((vec![go_type.as_str()], path)),
-            Check::Or { alternatives } => {
-                let [
-                    Check::TypeAssert {
-                        go_type,
-                        path: shared_path,
-                    },
-                ] = alternatives.first()?.as_slice()
-                else {
-                    return None;
-                };
-                let mut labels = Vec::with_capacity(alternatives.len());
-                labels.push(go_type.as_str());
-                for alt in &alternatives[1..] {
-                    let [Check::TypeAssert { go_type, path }] = alt.as_slice() else {
-                        return None;
-                    };
-                    if path != shared_path {
-                        return None;
-                    }
-                    labels.push(go_type.as_str());
-                }
-                Some((labels, shared_path))
-            }
-            _ => None,
-        }
-    }
 }
 
 /// A variable binding produced by a pattern match.
@@ -255,10 +216,44 @@ pub(crate) struct PatternBinding {
     pub path: AccessPath,
 }
 
-/// Accumulates checks and bindings during pattern compilation.
+/// Root-path Go-interface type assertion lifted out of `checks`.
+#[derive(Clone, Debug)]
+pub(crate) struct TypeAssertion {
+    pub path: AccessPath,
+    pub go_types: Vec<String>,
+}
+
+/// Result of collecting checks and bindings from a single pattern.
+pub(crate) struct PatternInfo {
+    pub root_assertion: Option<TypeAssertion>,
+    pub checks: Vec<Check>,
+    pub bindings: Vec<PatternBinding>,
+    pub effects: PatternEffects,
+}
+
+impl PatternInfo {
+    /// True when a downstream consumer will reference the asserted value.
+    fn requires_asserted_subject(&self) -> bool {
+        !self.checks.is_empty() || self.bindings.iter().any(|b| b.go_name.is_some())
+    }
+}
+
+/// Side effects (stdlib gate + Go imports) accumulated while walking a
+/// pattern. Alias for the crate-wide `EmitEffects` so analysis helpers
+/// outside `patterns/` can produce the same shape.
+pub(crate) type PatternEffects = crate::EmitEffects;
+
+/// Result of compiling a list of expanded arms into a `Decision`.
+pub(crate) struct CompiledDecision {
+    pub decision: Decision,
+    pub effects: PatternEffects,
+}
+
+/// Accumulates checks, bindings, and effects during pattern compilation.
 struct PatternCollector {
     checks: Vec<Check>,
     bindings: Vec<PatternBinding>,
+    effects: PatternEffects,
 }
 
 impl PatternCollector {
@@ -266,6 +261,7 @@ impl PatternCollector {
         Self {
             checks: Vec::new(),
             bindings: Vec::new(),
+            effects: PatternEffects::default(),
         }
     }
 }
@@ -293,6 +289,7 @@ pub(crate) enum Decision {
     Switch {
         path: AccessPath,
         kind: SwitchKind,
+        shape: SwitchShape,
         branches: Vec<SwitchBranch>,
         fallback: Option<Box<Decision>>,
     },
@@ -316,6 +313,86 @@ pub(crate) enum SwitchKind {
     TypeSwitch,
 }
 
+/// Structural shape of a switch site, chosen at build time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SwitchShape {
+    /// Type switch (case labels are Go type names).
+    TypeSwitch,
+    /// Two branches, `"true"`/`"false"` labels, no fallback, `kind == Value`.
+    Bool,
+    /// Two branches, no fallback, not Bool.
+    Binary,
+    /// One branch (any fallback presence).
+    SingleArm,
+    /// Everything else.
+    Multi,
+}
+
+fn classify_switch_shape(
+    kind: &SwitchKind,
+    branches: &[SwitchBranch],
+    fallback: &Option<Box<Decision>>,
+) -> SwitchShape {
+    if matches!(kind, SwitchKind::TypeSwitch) {
+        return SwitchShape::TypeSwitch;
+    }
+    let is_bool = matches!(kind, SwitchKind::Value)
+        && branches.len() == 2
+        && fallback.is_none()
+        && branches.iter().any(|b| b.case_label == "true")
+        && branches.iter().any(|b| b.case_label == "false");
+    if is_bool {
+        return SwitchShape::Bool;
+    }
+    if branches.len() == 2 && fallback.is_none() {
+        return SwitchShape::Binary;
+    }
+    if branches.len() == 1 {
+        return SwitchShape::SingleArm;
+    }
+    SwitchShape::Multi
+}
+
+/// True when a decision tree has an unconditional success path.
+pub(crate) fn decision_is_exhaustive(tree: &Decision) -> bool {
+    match tree {
+        Decision::Success { .. } => true,
+        Decision::Chain {
+            tests, fallback, ..
+        } => {
+            (matches!(fallback.as_ref(), Decision::Unreachable) && tests.len() > 1)
+                || decision_is_exhaustive(fallback)
+        }
+        Decision::Switch {
+            fallback, branches, ..
+        } => fallback.is_some() || !branches.is_empty(),
+        _ => false,
+    }
+}
+
+/// True when the tree has a terminal Success reachable without passing a guard.
+pub(crate) fn tree_has_unguarded_terminal(tree: &Decision) -> bool {
+    match tree {
+        Decision::Success { .. } => true,
+        Decision::Guard { failure, .. } => tree_has_unguarded_terminal(failure),
+        Decision::Chain {
+            tests, fallback, ..
+        } => {
+            tree_has_unguarded_terminal(fallback)
+                || (matches!(fallback.as_ref(), Decision::Unreachable)
+                    && tests
+                        .last()
+                        .is_some_and(|t| tree_has_unguarded_terminal(&t.decision)))
+        }
+        Decision::Switch {
+            fallback, branches, ..
+        } => fallback
+            .as_ref()
+            .map_or(!branches.is_empty(), |fb| tree_has_unguarded_terminal(fb)),
+        Decision::Unreachable => false,
+    }
+}
+
 /// A single branch in a Switch node.
 #[derive(Debug)]
 pub(crate) struct SwitchBranch {
@@ -336,9 +413,16 @@ pub(crate) struct ChainTest {
 #[derive(Clone)]
 struct ArmInfo {
     arm_index: usize,
+    root_assertion: Option<TypeAssertion>,
     checks: Vec<Check>,
     bindings: Vec<PatternBinding>,
     has_guard: bool,
+}
+
+impl ArmInfo {
+    fn is_catchall(&self) -> bool {
+        self.checks.is_empty() && self.root_assertion.is_none()
+    }
 }
 
 /// Build a Decision tree from a list of arm infos.
@@ -347,8 +431,10 @@ fn build_tree(arms: Vec<ArmInfo>) -> Decision {
         return Decision::Unreachable;
     }
 
+    let first_is_catchall = arms[0].is_catchall();
+
     // If the first arm has no checks (catchall), it matches unconditionally
-    if arms[0].checks.is_empty() && !arms[0].has_guard {
+    if first_is_catchall && !arms[0].has_guard {
         return Decision::Success {
             arm_index: arms[0].arm_index,
             bindings: arms[0].bindings.clone(),
@@ -356,7 +442,7 @@ fn build_tree(arms: Vec<ArmInfo>) -> Decision {
     }
 
     // If the first arm has no checks but has a guard, wrap in Guard node
-    if arms[0].checks.is_empty() && arms[0].has_guard {
+    if first_is_catchall && arms[0].has_guard {
         let rest = arms[1..].to_vec();
         return Decision::Guard {
             arm_index: arms[0].arm_index,
@@ -378,48 +464,54 @@ fn build_tree(arms: Vec<ArmInfo>) -> Decision {
 
 /// Try to build a Switch node from the arms.
 ///
-/// Returns Some(Switch) if ALL non-catchall arms have a single switchable
-/// check (EnumTag or Literal) on the same path, with no guards.
+/// Returns Some(Switch) if ALL non-catchall arms agree on a switchable shape:
+/// a root TypeAssertion (TypeSwitch), or a single same-path EnumTag/Literal
+/// first check (EnumTag/Value), with guards permitted only for TypeSwitch.
 fn try_build_switch(arms: &[ArmInfo]) -> Option<Decision> {
-    let first_checked_arm = arms.iter().find(|a| !a.checks.is_empty())?;
-    let first_check = first_checked_arm.checks.first()?;
+    let first_relevant = arms.iter().find(|a| !a.is_catchall())?;
 
-    let (kind, switch_path) = if first_check.as_enum_tag().is_some() {
-        (SwitchKind::EnumTag, first_check.path()?.clone())
-    } else if first_check.as_literal().is_some() {
-        (SwitchKind::Value, first_check.path()?.clone())
-    } else if let Some((_, path)) = first_check.as_type_switch_case() {
-        if !path.is_root() {
+    let (kind, switch_path) = if let Some(assertion) = &first_relevant.root_assertion {
+        (SwitchKind::TypeSwitch, assertion.path.clone())
+    } else {
+        let first_check = first_relevant.checks.first()?;
+        if first_check.as_enum_tag().is_some() {
+            (SwitchKind::EnumTag, first_check.path()?.clone())
+        } else if first_check.as_literal().is_some() {
+            (SwitchKind::Value, first_check.path()?.clone())
+        } else {
             return None;
         }
-        (SwitchKind::TypeSwitch, path.clone())
-    } else {
-        return None;
     };
 
     for arm in arms {
-        if arm.checks.is_empty() {
+        if arm.is_catchall() {
             continue;
         }
-        // Type switches handle guards inside the case body; other switches cannot.
         if arm.has_guard && !matches!(kind, SwitchKind::TypeSwitch) {
             return None;
         }
-        let first = arm.checks.first()?;
 
         let arm_path = match &kind {
             SwitchKind::EnumTag => {
+                if arm.root_assertion.is_some() {
+                    return None;
+                }
+                let first = arm.checks.first()?;
                 first.as_enum_tag()?;
                 first.path()?
             }
             SwitchKind::Value => {
+                if arm.root_assertion.is_some() {
+                    return None;
+                }
+                let first = arm.checks.first()?;
                 first.as_literal()?;
                 if arm.checks.len() != 1 {
                     return None;
                 }
                 first.path()?
             }
-            SwitchKind::TypeSwitch => first.as_type_switch_case()?.1,
+            SwitchKind::TypeSwitch => &arm.root_assertion.as_ref()?.path,
         };
         if arm_path != &switch_path {
             return None;
@@ -431,30 +523,29 @@ fn try_build_switch(arms: &[ArmInfo]) -> Option<Decision> {
     let mut fallback_arms = Vec::new();
 
     for arm in arms {
-        if arm.checks.is_empty() {
+        if arm.is_catchall() {
             fallback_arms.push(arm.clone());
             continue;
         }
 
-        let first_check = &arm.checks[0];
-        let (case_label, needs_stdlib) = match &kind {
+        let (case_label, needs_stdlib, inner_checks) = match &kind {
             SwitchKind::EnumTag => {
-                let (tag, needs) = first_check.as_enum_tag().unwrap();
-                (tag.to_string(), needs)
+                let (tag, needs) = arm.checks[0].as_enum_tag().unwrap();
+                (tag.to_string(), needs, arm.checks[1..].to_vec())
             }
             SwitchKind::Value => {
-                let lit = first_check.as_literal().unwrap();
-                (lit.to_string(), false)
+                let lit = arm.checks[0].as_literal().unwrap();
+                (lit.to_string(), false, arm.checks[1..].to_vec())
             }
             SwitchKind::TypeSwitch => {
-                let (labels, _) = first_check.as_type_switch_case().unwrap();
-                (labels.join(", "), false)
+                let assertion = arm.root_assertion.as_ref().unwrap();
+                (assertion.go_types.join(", "), false, arm.checks.clone())
             }
         };
-
         let inner_arm = ArmInfo {
             arm_index: arm.arm_index,
-            checks: arm.checks[1..].to_vec(),
+            root_assertion: None,
+            checks: inner_checks,
             bindings: arm.bindings.clone(),
             has_guard: arm.has_guard,
         };
@@ -468,7 +559,7 @@ fn try_build_switch(arms: &[ArmInfo]) -> Option<Decision> {
             });
     }
 
-    let branches = branch_order
+    let branches: Vec<SwitchBranch> = branch_order
         .into_iter()
         .map(|label| {
             let (needs_stdlib, inner_arms) = branch_map.remove(&label).unwrap();
@@ -499,9 +590,11 @@ fn try_build_switch(arms: &[ArmInfo]) -> Option<Decision> {
         Some(Box::new(build_tree(fallback_arms)))
     };
 
+    let shape = classify_switch_shape(&kind, &branches, &fallback);
     Some(Decision::Switch {
         path: switch_path,
         kind,
+        shape,
         branches,
         fallback,
     })
@@ -512,7 +605,7 @@ fn build_chain(arms: Vec<ArmInfo>) -> Decision {
     let mut tests = Vec::new();
 
     for (i, arm) in arms.iter().enumerate() {
-        if arm.checks.is_empty() && !arm.has_guard {
+        if arm.is_catchall() && !arm.has_guard {
             // This is a catchall — everything after it is unreachable
             let fallback = Decision::Success {
                 arm_index: arm.arm_index,
@@ -546,10 +639,11 @@ fn build_chain(arms: Vec<ArmInfo>) -> Decision {
             }
         };
 
-        tests.push(ChainTest {
-            checks: arm.checks.clone(),
-            decision,
-        });
+        let mut checks = arm.checks.clone();
+        if let Some(assertion) = arm.root_assertion.clone() {
+            checks.insert(0, type_assertion_to_check(assertion));
+        }
+        tests.push(ChainTest { checks, decision });
     }
 
     // No catchall found — remaining arms are all checked
@@ -559,12 +653,35 @@ fn build_chain(arms: Vec<ArmInfo>) -> Decision {
     }
 }
 
+/// Re-encode a lifted `TypeAssertion` back as a renderable `Check` for chain
+/// emission when a type switch cannot consolidate the arms.
+fn type_assertion_to_check(assertion: TypeAssertion) -> Check {
+    let TypeAssertion { path, mut go_types } = assertion;
+    if go_types.len() == 1 {
+        return Check::TypeAssert {
+            path,
+            go_type: go_types.pop().unwrap(),
+        };
+    }
+    Check::Or {
+        alternatives: go_types
+            .into_iter()
+            .map(|go_type| {
+                vec![Check::TypeAssert {
+                    path: path.clone(),
+                    go_type,
+                }]
+            })
+            .collect(),
+    }
+}
+
 /// Recursively walk a pattern, collecting checks and bindings.
 ///
 /// `path_ty` is the expected type of the value at `path` — used to detect
 /// when a struct pattern is matched against a Go interface (type switch).
 fn collect_checks_and_bindings(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     pattern: &Pattern,
     typed: Option<&TypedPattern>,
@@ -693,7 +810,7 @@ fn collect_checks_and_bindings(
 /// Handle or-patterns without bindings by collecting conditions from each
 /// alternative and combining with `||`.
 fn collect_or_pattern_checks(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     patterns: &[Pattern],
     typed: Option<&TypedPattern>,
@@ -708,29 +825,34 @@ fn collect_or_pattern_checks(
             _ => vec![None; patterns.len()],
         };
 
-        let alternatives: Vec<Vec<Check>> = patterns
+        let alt_collectors: Vec<PatternCollector> = patterns
             .iter()
             .enumerate()
             .map(|(i, p)| {
                 let mut alt_collector = PatternCollector::new();
                 let tc = typed_alternatives.get(i).copied().flatten();
                 collect_checks_and_bindings(emitter, path, p, tc, path_ty, &mut alt_collector);
-                alt_collector.checks
+                alt_collector
             })
             .collect();
 
-        if alternatives.iter().any(|checks| checks.is_empty()) {
+        if alt_collectors.iter().any(|c| c.checks.is_empty()) {
             return;
         }
 
-        collector.checks.push(Check::Or { alternatives });
+        for alt in &alt_collectors {
+            collector.effects.extend(&alt.effects);
+        }
+        collector.checks.push(Check::Or {
+            alternatives: alt_collectors.into_iter().map(|c| c.checks).collect(),
+        });
     }
 }
 
 /// Compute the access path for a struct field, handling enum struct variants
 /// and auto-pointer dereference.
 fn compute_struct_field_path(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     parent_path: &AccessPath,
     field: &StructFieldPattern,
     ty: &Type,
@@ -776,14 +898,16 @@ fn compute_struct_field_path(
 /// paths stay as-is and the type switch shadows the subject; at nested paths,
 /// child paths gain an `AssertedAs` segment so they reach the asserted value.
 fn interface_assert_child_path(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     pattern_ty: &Type,
     path_ty: Option<&Type>,
     collector: &mut PatternCollector,
 ) -> Option<AccessPath> {
-    path_ty.filter(|st| emitter.as_interface(st).is_some())?;
-    let go_type = emitter.go_type_as_string(pattern_ty);
+    path_ty.filter(|st| emitter.facts.as_interface(st).is_some())?;
+    let go_type_result = emitter.go_type(pattern_ty);
+    collector.effects.merge_from_go_type(&go_type_result);
+    let go_type = go_type_result.code;
     let child_path = if path.is_root() {
         path.clone()
     } else {
@@ -798,7 +922,7 @@ fn interface_assert_child_path(
 
 /// Collect checks and bindings for an enum variant pattern (tuple or tagged).
 fn collect_enum_variant_checks(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     pattern: &Pattern,
     typed: Option<&TypedPattern>,
@@ -850,7 +974,7 @@ fn collect_enum_variant_checks(
         let variant_name = go_name::unqualified_name(identifier);
         let module = go_name::module_of_type_id(id.as_str());
         let qualifier = emitter.go_pkg_qualifier(module);
-        let go_literal = if qualifier.is_empty() || qualifier == emitter.current_module() {
+        let go_literal = if qualifier.is_empty() || qualifier == emitter.facts.current_module() {
             variant_name.to_string()
         } else {
             format!("{}.{}", qualifier, variant_name)
@@ -875,7 +999,7 @@ fn collect_enum_variant_checks(
 
 /// Collect checks and bindings for a newtype struct pattern (single-field wrapper).
 fn collect_newtype_checks(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     variant: &EnumVariantData,
     collector: &mut PatternCollector,
@@ -883,8 +1007,9 @@ fn collect_newtype_checks(
     let Some(underlying_ty) = emitter.get_newtype_underlying(variant.ty) else {
         return;
     };
-    let go_underlying_ty = emitter.go_type_as_string(&underlying_ty);
-    let field_path = path.push(PathSegment::NewtypeCast(go_underlying_ty));
+    let go_underlying = emitter.go_type(&underlying_ty);
+    collector.effects.merge_from_go_type(&go_underlying);
+    let field_path = path.push(PathSegment::NewtypeCast(go_underlying.code));
     if let Some(field) = variant.fields.first() {
         collect_checks_and_bindings(
             emitter,
@@ -899,7 +1024,7 @@ fn collect_newtype_checks(
 
 /// Collect checks and bindings for a tuple struct pattern (positional fields).
 fn collect_tuple_struct_checks(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     fields: &[Pattern],
     typed_children: &[Option<&TypedPattern>],
@@ -928,7 +1053,7 @@ struct EnumVariantData<'a> {
 
 /// Collect checks and bindings for a tagged enum variant pattern.
 fn collect_tagged_enum_checks(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     variant: &EnumVariantData,
     collector: &mut PatternCollector,
@@ -937,11 +1062,11 @@ fn collect_tagged_enum_checks(
     let resolved = go_name::variant(
         variant.identifier,
         variant.ty,
-        emitter.current_module(),
+        emitter.facts.current_module(),
         alias.as_deref(),
     );
     if resolved.needs_stdlib {
-        emitter.flags.needs_stdlib = true;
+        collector.effects.needs_stdlib = true;
     }
     collector.checks.push(Check::EnumTag {
         path: path.clone(),
@@ -998,7 +1123,7 @@ fn collect_tagged_enum_checks(
 /// Detect whether a struct pattern is actually an enum struct variant,
 /// returning `(enum_id, variant_name)` if so.
 fn detect_enum_info(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     ty: &Type,
     identifier: &str,
     typed: Option<&TypedPattern>,
@@ -1023,7 +1148,7 @@ fn detect_enum_info(
 }
 
 fn collect_struct_checks(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     path: &AccessPath,
     pattern: &Pattern,
     typed: Option<&TypedPattern>,
@@ -1048,10 +1173,14 @@ fn collect_struct_checks(
         let enum_info = detect_enum_info(emitter, ty, identifier, typed);
         if enum_info.is_some() {
             let alias = emitter.module_alias_for_type(ty);
-            let resolved =
-                go_name::variant(identifier, ty, emitter.current_module(), alias.as_deref());
+            let resolved = go_name::variant(
+                identifier,
+                ty,
+                emitter.facts.current_module(),
+                alias.as_deref(),
+            );
             if resolved.needs_stdlib {
-                emitter.flags.needs_stdlib = true;
+                collector.effects.needs_stdlib = true;
             }
             collector.checks.push(Check::EnumTag {
                 path: path.clone(),
@@ -1190,9 +1319,12 @@ fn expand_interface_or_checks(arm_infos: Vec<ArmInfo>) -> Vec<ArmInfo> {
                 unreachable!()
             };
             for alt in alternatives {
+                let mut checks = alt.clone();
+                let root_assertion = extract_root_assertion(&mut checks);
                 result.push(ArmInfo {
                     arm_index: arm.arm_index,
-                    checks: alt.clone(),
+                    root_assertion,
+                    checks,
                     bindings: arm.bindings.clone(),
                     has_guard: arm.has_guard,
                 });
@@ -1204,28 +1336,23 @@ fn expand_interface_or_checks(arm_infos: Vec<ArmInfo>) -> Vec<ArmInfo> {
     result
 }
 
-/// Compile expanded arms into a decision tree.
+/// Compile expanded arms into a decision tree plus accumulated effects.
 pub(super) fn compile_expanded_arms<'a>(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     expanded: &'a [ExpandedArm<'a>],
     subject_ty: &Type,
-) -> Decision {
+) -> CompiledDecision {
+    let mut effects = PatternEffects::default();
     let arm_infos: Vec<ArmInfo> = expanded
         .iter()
         .map(|ea| {
-            let mut collector = PatternCollector::new();
-            collect_checks_and_bindings(
-                emitter,
-                &AccessPath::root(),
-                ea.pattern,
-                ea.typed_pattern,
-                Some(subject_ty),
-                &mut collector,
-            );
+            let info = collect_pattern_info(emitter, ea.pattern, ea.typed_pattern, subject_ty);
+            effects.extend(&info.effects);
             ArmInfo {
                 arm_index: ea.arm_index,
-                checks: collector.checks,
-                bindings: collector.bindings,
+                root_assertion: info.root_assertion,
+                checks: info.checks,
+                bindings: info.bindings,
                 has_guard: ea.has_guard,
             }
         })
@@ -1260,20 +1387,23 @@ pub(super) fn compile_expanded_arms<'a>(
         }
     }
 
-    build_tree(arm_infos)
+    CompiledDecision {
+        decision: build_tree(arm_infos),
+        effects,
+    }
 }
 
-/// Collect checks and bindings from a single pattern for use outside match
-/// emission (let-else, while-let, for-loop, complex let, function param).
-/// `subject_ty` is the static type of the scrutinee. Sites that pass a wrong
-/// type would silently miss root-level Go-interface type assertions, so the
-/// public entry takes it by reference rather than `Option<&Type>`.
+/// Collect checks, bindings, and any root type assertion from a single pattern
+/// for use outside match emission (let-else, while-let, for-loop, complex let,
+/// function param). `subject_ty` is the static type of the scrutinee; sites
+/// that pass a wrong type would silently miss root-level Go-interface type
+/// assertions, so the public entry takes it by reference rather than `Option`.
 pub(crate) fn collect_pattern_info(
-    emitter: &mut Emitter,
+    emitter: &Emitter,
     pattern: &Pattern,
     typed: Option<&TypedPattern>,
     subject_ty: &Type,
-) -> (Vec<Check>, Vec<PatternBinding>) {
+) -> PatternInfo {
     let mut collector = PatternCollector::new();
     collect_checks_and_bindings(
         emitter,
@@ -1283,45 +1413,151 @@ pub(crate) fn collect_pattern_info(
         Some(subject_ty),
         &mut collector,
     );
-    (collector.checks, collector.bindings)
+    let root_assertion = extract_root_assertion(&mut collector.checks);
+    PatternInfo {
+        root_assertion,
+        checks: collector.checks,
+        bindings: collector.bindings,
+        effects: collector.effects,
+    }
 }
 
-/// Pop a root-path `Check::TypeAssert` from `checks`. Most non-match callers
-/// want [`apply_root_type_assertion`] which handles the `asserted := s.(T)`
-/// emission; this lower-level form is for let-else, which folds the assertion
-/// into a comma-ok form.
-pub(crate) fn take_root_type_assertion(checks: &mut Vec<Check>) -> Option<String> {
-    let position = checks
-        .iter()
-        .position(|c| matches!(c, Check::TypeAssert { path, .. } if path.is_root()))?;
+/// Move a root-path type assertion out of `checks` into a `TypeAssertion`.
+/// Recognizes both a single `Check::TypeAssert` at root and a `Check::Or` whose
+/// alternatives are each a single root `TypeAssert` at the same path.
+fn extract_root_assertion(checks: &mut Vec<Check>) -> Option<TypeAssertion> {
+    let position = checks.iter().position(|c| match c {
+        Check::TypeAssert { path, .. } => path.is_root(),
+        Check::Or { alternatives } => alternatives.iter().all(
+            |alt| matches!(alt.as_slice(), [Check::TypeAssert { path, .. }] if path.is_root()),
+        ),
+        _ => false,
+    })?;
     match checks.remove(position) {
-        Check::TypeAssert { go_type, .. } => Some(go_type),
+        Check::TypeAssert { path, go_type } => Some(TypeAssertion {
+            path,
+            go_types: vec![go_type],
+        }),
+        Check::Or { alternatives } => {
+            let mut go_types = Vec::with_capacity(alternatives.len());
+            let mut shared_path: Option<AccessPath> = None;
+            for alt in alternatives {
+                let [Check::TypeAssert { path, go_type }] = alt.as_slice() else {
+                    unreachable!("predicate above confirmed shape")
+                };
+                if let Some(existing) = &shared_path {
+                    debug_assert_eq!(existing, path);
+                } else {
+                    shared_path = Some(path.clone());
+                }
+                go_types.push(go_type.clone());
+            }
+            Some(TypeAssertion {
+                path: shared_path.expect("at least one alternative"),
+                go_types,
+            })
+        }
         _ => unreachable!(),
     }
 }
 
-/// If `checks` contains a root `Check::TypeAssert` (concrete pattern against a
-/// Go-interface scrutinee), pop it, emit `asserted := subject.(T)`, and return
-/// the new subject. Otherwise borrow `subject` unchanged. Used by every
-/// non-match destructure path; let-else has its own comma-ok lowering.
-pub(crate) fn apply_root_type_assertion<'s>(
+/// Hoist a root type assertion as `asserted := subject.(T)` for irrefutable
+/// destructure paths; the pattern compiler has already verified the type.
+pub(super) fn apply_root_assertion<'s>(
     emitter: &mut Emitter,
     output: &mut String,
-    checks: &mut Vec<Check>,
+    info: &PatternInfo,
     subject: &'s str,
 ) -> std::borrow::Cow<'s, str> {
-    match take_root_type_assertion(checks) {
-        Some(go_type) => {
-            let assertion = format!("{}.({})", subject, go_type);
-            let var = emitter.hoist_tmp_value(output, "asserted", &assertion);
-            std::borrow::Cow::Owned(var)
+    let Some(assertion) = info.root_assertion.as_ref() else {
+        return std::borrow::Cow::Borrowed(subject);
+    };
+    if !info.requires_asserted_subject() {
+        return std::borrow::Cow::Borrowed(subject);
+    }
+    let [go_type] = assertion.go_types.as_slice() else {
+        unreachable!("multi-type root assertions only reach match destructure paths")
+    };
+    let expression = format!("{}.({})", subject, go_type);
+    let var = emitter.hoist_tmp_value(output, "asserted", &expression);
+    std::borrow::Cow::Owned(var)
+}
+
+/// Hoist a root type assertion as comma-ok for refutable contexts (while-let,
+/// select arms, or-pattern let-else). Returns `(effective_subject, ok_var)`.
+pub(super) fn apply_refutable_root_assertion<'s>(
+    emitter: &mut Emitter,
+    output: &mut String,
+    info: &PatternInfo,
+    subject: &'s str,
+) -> (std::borrow::Cow<'s, str>, Option<String>) {
+    let Some(assertion) = info.root_assertion.as_ref() else {
+        return (std::borrow::Cow::Borrowed(subject), None);
+    };
+    let needs_asserted = info.requires_asserted_subject();
+    match assertion.go_types.as_slice() {
+        [go_type] => {
+            let asserted_lhs = if needs_asserted {
+                let v = emitter.fresh_var(Some("asserted"));
+                emitter.declare(&v);
+                v
+            } else {
+                "_".to_string()
+            };
+            let ok = emitter.fresh_var(Some("ok"));
+            emitter.declare(&ok);
+            write_line!(
+                output,
+                "{}, {} := {}.({})",
+                asserted_lhs,
+                ok,
+                subject,
+                go_type
+            );
+            let effective = if needs_asserted {
+                std::borrow::Cow::Owned(asserted_lhs)
+            } else {
+                std::borrow::Cow::Borrowed(subject)
+            };
+            (effective, Some(ok))
         }
-        None => std::borrow::Cow::Borrowed(subject),
+        multiple => {
+            // No-binding interface or-pattern (`A | B`): no single asserted
+            // form is possible across types.
+            let oks: Vec<String> = multiple
+                .iter()
+                .map(|t| {
+                    let ok = emitter.fresh_var(Some("ok"));
+                    emitter.declare(&ok);
+                    write_line!(output, "_, {} := {}.({})", ok, subject, t);
+                    ok
+                })
+                .collect();
+            (
+                std::borrow::Cow::Borrowed(subject),
+                Some(format!("({})", oks.join(" || "))),
+            )
+        }
+    }
+}
+
+/// Combine an optional `ok` variable with rendered checks into a guard
+/// condition; returns `"true"` when both are absent.
+pub(super) fn compose_refutable_condition(
+    ok_var: Option<&str>,
+    checks: &[Check],
+    effective_subject: &str,
+) -> String {
+    let cond = render_condition(checks, effective_subject);
+    match ok_var {
+        None => cond,
+        Some(ok) if cond == "true" => ok.to_string(),
+        Some(ok) => format!("{} && {}", ok, cond),
     }
 }
 
 /// Render checks as a Go condition string.
-pub(crate) fn render_condition(checks: &[Check], subject_var: &str) -> String {
+pub(super) fn render_condition(checks: &[Check], subject_var: &str) -> String {
     if checks.is_empty() {
         return "true".to_string();
     }
@@ -1340,27 +1576,24 @@ pub(crate) fn emit_tree_bindings(
 ) {
     for binding in bindings {
         let Some(ref go_name) = binding.go_name else {
-            emitter.scope.bindings.add(&binding.lisette_name, "");
+            emitter.scope.bind(&binding.lisette_name, "");
             continue;
         };
 
         let access_expression = binding.path.render(subject_var);
 
-        if emitter.scope.bindings.has_go_name(go_name) {
+        if emitter.scope.has_binding_for_go_name(go_name) {
             let fresh = emitter.fresh_var(Some(&binding.lisette_name));
-            emitter.scope.bindings.add(&binding.lisette_name, &fresh);
+            emitter.scope.bind(&binding.lisette_name, &fresh);
             emitter.try_declare(&fresh);
             write_line!(output, "{} := {}", fresh, access_expression);
         } else {
-            let name = emitter
-                .scope
-                .bindings
-                .add(&binding.lisette_name, go_name.clone());
+            let name = emitter.scope.bind(&binding.lisette_name, go_name.clone());
             if emitter.try_declare(&name) {
                 write_line!(output, "{} := {}", name, access_expression);
             } else {
                 let fresh = emitter.fresh_var(Some(&binding.lisette_name));
-                emitter.scope.bindings.add(&binding.lisette_name, &fresh);
+                emitter.scope.bind(&binding.lisette_name, &fresh);
                 emitter.try_declare(&fresh);
                 write_line!(output, "{} := {}", fresh, access_expression);
             }
@@ -1371,7 +1604,7 @@ pub(crate) fn emit_tree_bindings(
 /// Emit bindings as Go `=` assignments (for pre-declared variables in or-patterns).
 /// Only emits for bindings that are already registered in the bindings map
 /// (i.e., pre-declared with `emit_binding_declarations_with_type`).
-pub(crate) fn emit_tree_assignments(
+pub(super) fn emit_tree_assignments(
     emitter: &mut Emitter,
     output: &mut String,
     bindings: &[PatternBinding],
@@ -1383,7 +1616,7 @@ pub(crate) fn emit_tree_assignments(
         }
 
         // Only assign to variables that were pre-declared
-        let Some(registered_name) = emitter.scope.bindings.get(&binding.lisette_name) else {
+        let Some(registered_name) = emitter.scope.resolve_binding(&binding.lisette_name) else {
             continue;
         };
         let name = registered_name.to_string();

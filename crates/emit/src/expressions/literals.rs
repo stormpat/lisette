@@ -1,8 +1,9 @@
 use std::fmt::Write;
 
 use crate::Emitter;
+use crate::expressions::context::ExpressionContext;
+use crate::expressions::emission::EmittedExpression;
 use crate::types::coercion::{Coercion, CoercionDirection};
-use crate::utils::Staged;
 use syntax::ast::{FormatStringPart, Literal};
 use syntax::types::Type;
 
@@ -46,7 +47,10 @@ impl Emitter<'_> {
             }
             Literal::FormatString(parts) => self.emit_format_string(output, parts),
             Literal::Slice(elems) => {
-                let stages: Vec<Staged> = elems.iter().map(|e| self.stage_composite(e)).collect();
+                let stages: Vec<EmittedExpression> = elems
+                    .iter()
+                    .map(|e| self.stage_composite(e, ExpressionContext::value()))
+                    .collect();
                 let elements = self.sequence(output, stages, "_v");
 
                 let elem_lisette_ty = ty
@@ -89,11 +93,11 @@ impl Emitter<'_> {
             .any(|p| matches!(p, FormatStringPart::Expression(_)));
 
         // Stage all expression parts for eval-order sequencing
-        let stages: Vec<Staged> = parts
+        let stages: Vec<EmittedExpression> = parts
             .iter()
             .filter_map(|p| {
                 if let FormatStringPart::Expression(e) = p {
-                    Some(self.stage_composite(e))
+                    Some(self.stage_composite(e, ExpressionContext::value()))
                 } else {
                     None
                 }
@@ -133,7 +137,7 @@ impl Emitter<'_> {
             return format!("\"{}\"", format_string);
         }
 
-        self.flags.needs_fmt = true;
+        self.requirements.require_fmt();
         if format_string == "%v" && args.len() == 1 {
             return format!("fmt.Sprint({})", args[0]);
         }

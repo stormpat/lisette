@@ -1,11 +1,11 @@
 use rustc_hash::FxHashSet as HashSet;
 
 use crate::Emitter;
+use crate::expressions::context::ExpressionContext;
 use crate::names::go_name;
-use crate::types::emitter::Position;
+use crate::placement::ValuePlace;
 use crate::types::native::NativeGoType;
-use crate::utils::{group_params, optimize_function_body, receiver_name, requires_temp_var};
-use crate::write_line;
+use crate::utils::{group_params, optimize_function_body, receiver_name};
 use syntax::ast::{
     Annotation, Binding, Expression, FunctionDefinition, Generic, Pattern, Span, TypedPattern,
 };
@@ -20,9 +20,10 @@ impl Emitter<'_> {
         output: &mut String,
         body: &Expression,
         should_return: bool,
+        return_ctx: &crate::ReturnContext,
     ) {
         self.push_const_frame();
-        self.emit_function_body_inner(output, body, should_return);
+        self.emit_function_body_inner(output, body, should_return, return_ctx);
         self.pop_const_frame();
     }
 
@@ -31,6 +32,7 @@ impl Emitter<'_> {
         output: &mut String,
         body: &Expression,
         should_return: bool,
+        return_ctx: &crate::ReturnContext,
     ) {
         let items: &[Expression] = if let Expression::Block { items, .. } = body {
             items
@@ -46,91 +48,11 @@ impl Emitter<'_> {
             self.emit_statement(output, item);
         }
 
-        let is_statement_only = matches!(
-            last,
-            Expression::Assignment { .. } | Expression::Let { .. } | Expression::Const { .. }
-        );
-
-        let needs_return = should_return
-            && !matches!(last, Expression::Return { .. })
-            && !is_statement_only
-            && !last.get_type().is_unit()
-            && !last.get_type().is_never();
-
-        if !needs_return {
-            self.emit_non_returning_tail(output, last, should_return, is_statement_only);
-            return;
+        if should_return {
+            self.emit_to_place(output, last, ValuePlace::Return(return_ctx));
+        } else {
+            self.emit_statement(output, last);
         }
-
-        if self.try_emit_lowered_tail_return(output, last) {
-            return;
-        }
-
-        if self.emit_wrapped_return(output, last) {
-            return;
-        }
-
-        self.emit_returning_tail(output, last);
-    }
-
-    /// Tail that doesn't itself produce a returned value: statement-only tails
-    /// (`let`/`const`/assignment), unit/never-typed tails, or explicit `Return`.
-    /// Emits the tail as a statement, then appends a `panic("unreachable")` for
-    /// non-Go never tails and a zero-value `return` when the function needs a
-    /// typed return value but the tail couldn't provide one.
-    fn emit_non_returning_tail(
-        &mut self,
-        output: &mut String,
-        last: &Expression,
-        should_return: bool,
-        is_statement_only: bool,
-    ) {
-        self.emit_statement(output, last);
-        if should_return && last.get_type().is_never() && !Self::is_go_never(last) {
-            output.push_str("panic(\"unreachable\")\n");
-        }
-        let last_is_unit_expr = !is_statement_only
-            && !matches!(last, Expression::Return { .. })
-            && last.get_type().is_unit();
-        if should_return
-            && (is_statement_only || last_is_unit_expr)
-            && self.return_lowering.ty().is_some_and(|ty| !ty.is_unit())
-        {
-            let return_ty = self.return_lowering.ty().cloned().unwrap();
-            let zero = self.zero_value(&return_ty);
-            write_line!(output, "return {}", zero);
-        }
-    }
-
-    /// Tail that produces the function's return value. Value-shaped tails
-    /// flow through `emit_value` + coercion; branching/block/loop shapes emit
-    /// into a tail position that writes `return` at the leaves.
-    fn emit_returning_tail(&mut self, output: &mut String, last: &Expression) {
-        self.with_position(Position::Tail, |this| {
-            if !requires_temp_var(last) {
-                let expression = this.emit_value(output, last);
-                let return_ty = this.return_lowering.ty().cloned();
-                let expression =
-                    this.apply_type_coercion(output, return_ty.as_ref(), last, expression);
-                output.push_str(&this.wrap_value(&expression));
-                return;
-            }
-            match last {
-                Expression::If { .. } | Expression::Match { .. } | Expression::Select { .. } => {
-                    this.emit_branching_directly(output, last);
-                }
-                Expression::IfLet { .. } => {
-                    unreachable!("IfLet should be desugared to Match before emit")
-                }
-                Expression::Block { .. }
-                | Expression::Loop { .. }
-                | Expression::Propagate { .. } => {
-                    let expression = this.emit_operand(output, last);
-                    output.push_str(&this.wrap_value(&expression));
-                }
-                _ => unreachable!("requires_temp_var returned true for unexpected expression"),
-            }
-        });
     }
 
     pub(crate) fn emit_lambda(
@@ -138,13 +60,9 @@ impl Emitter<'_> {
         params: &[Binding],
         body: &Expression,
         ty: &Type,
+        ctx: ExpressionContext<'_>,
     ) -> String {
-        let saved_declared = std::mem::take(&mut self.scope.declared);
-        let saved_scope_depth = self.scope.scope_depth;
-        self.scope.declared = vec![HashSet::default()];
-        self.scope.scope_depth = 0;
-
-        self.scope.bindings.save();
+        let frame = self.scope.enter_isolated_function();
 
         let mut destructure_bindings: Vec<(String, &Pattern, Option<&TypedPattern>, &Type)> =
             vec![];
@@ -156,7 +74,7 @@ impl Emitter<'_> {
                     if let Some(go_name) = self.go_name_for_binding(&p.pattern) {
                         self.declare_param(identifier, go_name)
                     } else {
-                        self.scope.bindings.add(identifier, "_");
+                        self.scope.bind(identifier, "_");
                         "_".to_string()
                     }
                 } else if matches!(&p.pattern, Pattern::WildCard { .. }) {
@@ -176,15 +94,17 @@ impl Emitter<'_> {
             })
             .collect();
 
+        let argument_flows_to_unknown = ctx.argument_flows_to_unknown();
+        let suppress_lowering = ctx.forces_tagged_go_function();
+
         let has_return = matches!(ty, Type::Function { return_type, .. }
             if !(return_type.is_unit()
                 || return_type.is_variable()
-                || (self.arg_flows_to_unknown && return_type.is_never())));
+                || (argument_flows_to_unknown && return_type.is_never())));
 
         // When the lambda flows into a Go-prelude generic callback that
         // expects the unlowered single-return form, suppress the lambda's
         // own return-type lowering so signature and body match.
-        let suppress_lowering = self.suppress_go_fn_short_circuit;
         let return_ty_string = if has_return {
             match ty {
                 Type::Function { return_type, .. } => {
@@ -204,37 +124,34 @@ impl Emitter<'_> {
 
         let should_return = has_return;
 
-        let new_lowering = if let Type::Function { return_type, .. } = ty {
-            let return_ty = return_type.as_ref().clone();
-            let plan = if suppress_lowering {
-                crate::FnLoweringPlan::for_tagged_lambda(return_ty)
-            } else {
-                crate::FnLoweringPlan::for_fn(self, return_ty)
-            };
-            crate::ReturnLowering::Function(plan)
-        } else {
-            self.return_lowering.clone()
+        let return_ctx = match ty {
+            Type::Function { return_type, .. } => {
+                let return_ty = return_type.as_ref().clone();
+                if suppress_lowering {
+                    crate::ReturnContext::Tagged(return_ty)
+                } else {
+                    self.return_context_for_type(return_ty)
+                }
+            }
+            _ => crate::ReturnContext::None,
         };
-        let saved_return_lowering = std::mem::replace(&mut self.return_lowering, new_lowering);
-        let saved_suppress = std::mem::replace(&mut self.suppress_go_fn_short_circuit, false);
-        let saved_flows = std::mem::replace(&mut self.arg_flows_to_unknown, false);
 
         let mut body_string = String::new();
-
-        for (temp_name, pattern, typed, param_ty) in &destructure_bindings {
-            self.emit_pattern_bindings(&mut body_string, temp_name, pattern, *typed, param_ty);
-        }
-
-        self.emit_function_body(&mut body_string, body, should_return);
+        self.with_scope_return_context_fallback(return_ctx.clone(), |this| {
+            for (temp_name, pattern, typed, param_ty) in &destructure_bindings {
+                this.emit_irrefutable_pattern_site(
+                    &mut body_string,
+                    crate::patterns::sites::PatternSubject::for_value(temp_name.clone()),
+                    pattern,
+                    *typed,
+                    param_ty,
+                );
+            }
+            this.emit_function_body(&mut body_string, body, should_return, &return_ctx);
+        });
         optimize_function_body(&mut body_string);
 
-        self.scope.declared = saved_declared;
-        self.scope.scope_depth = saved_scope_depth;
-        self.scope.bindings.restore();
-
-        self.return_lowering = saved_return_lowering;
-        self.suppress_go_fn_short_circuit = saved_suppress;
-        self.arg_flows_to_unknown = saved_flows;
+        self.scope.exit_isolated_function(frame);
 
         format!(
             "func({}){} {{\n{}}}",
@@ -247,10 +164,10 @@ impl Emitter<'_> {
     /// Bind and declare a parameter. If the natural post-escape Go name is
     /// already declared in this scope, pick a fresh Go name so later identifier lookups in the body resolve to the renamed slot.
     fn declare_param(&mut self, lisette_name: &str, raw_go_name: impl Into<String>) -> String {
-        let go_id = self.scope.bindings.add(lisette_name, raw_go_name);
+        let go_id = self.scope.bind(lisette_name, raw_go_name);
         let go_id = if self.is_declared(&go_id) {
             let fresh = self.fresh_var(Some(lisette_name));
-            self.scope.bindings.add(lisette_name, fresh)
+            self.scope.bind(lisette_name, fresh)
         } else {
             go_id
         };
@@ -280,11 +197,7 @@ impl Emitter<'_> {
 
         let directive = self.maybe_line_directive(&function_definition.name_span);
 
-        let plan = crate::FnLoweringPlan::for_fn(self, function_definition.return_type.clone());
-        let saved_return_lowering = std::mem::replace(
-            &mut self.return_lowering,
-            crate::ReturnLowering::Function(plan),
-        );
+        let return_ctx = self.return_context_for_type(function_definition.return_type.clone());
 
         let (function_definition, receiver) =
             self.change_go_builtin_methods(function_definition, receiver);
@@ -304,12 +217,8 @@ impl Emitter<'_> {
             go_name::snake_to_camel(&function_definition.name)
         } else if receiver.is_some() {
             go_name::escape_keyword(&function_definition.name).into_owned()
-        } else if let Some(remapped) = self
-            .module
-            .escape_remap
-            .get(function_definition.name.as_str())
-        {
-            remapped.clone()
+        } else if let Some(remapped) = self.module.escape_remap(function_definition.name.as_str()) {
+            remapped.to_string()
         } else {
             go_name::escape_reserved(&function_definition.name).into_owned()
         };
@@ -339,42 +248,54 @@ impl Emitter<'_> {
             parts.push(generics_str);
         }
 
-        let saved_absorbed =
-            self.detect_absorbed_ref_generics(params_to_process, &function_definition.generics);
-
-        let (params_string, deferred_patterns) = self.emit_function_params(params_to_process);
-        parts.push(params_string);
-
-        let return_ty = if function_definition.return_type.is_unit() {
-            String::new()
-        } else if let Some(shape) = self.classify_direct_emission(&function_definition.return_type)
-        {
-            self.render_lowered_return_ty(&shape, &function_definition.return_type)
-        } else {
-            self.go_type_as_string(&function_definition.return_type)
-        };
-
-        if !return_ty.is_empty() {
-            parts.push(return_ty);
-        }
-
-        let signature = parts.join(" ");
-
         let mut body = String::new();
+        let signature = self.with_absorbed_ref_generics(
+            params_to_process,
+            &function_definition.generics,
+            |this| {
+                let (params_string, deferred_patterns) =
+                    this.emit_function_params(params_to_process);
+                parts.push(params_string);
 
-        for (var_name, pattern, typed, param_ty) in deferred_patterns {
-            self.emit_pattern_bindings(&mut body, &var_name, &pattern, typed.as_ref(), &param_ty);
-        }
+                let return_ty = if function_definition.return_type.is_unit() {
+                    String::new()
+                } else if let Some(shape) =
+                    this.classify_direct_emission(&function_definition.return_type)
+                {
+                    this.render_lowered_return_ty(&shape, &function_definition.return_type)
+                } else {
+                    this.go_type_as_string(&function_definition.return_type)
+                };
 
-        self.emit_function_body(
-            &mut body,
-            &function_definition.body,
-            !function_definition.return_type.is_unit(),
+                if !return_ty.is_empty() {
+                    parts.push(return_ty);
+                }
+
+                let signature = parts.join(" ");
+                let should_return = !function_definition.return_type.is_unit();
+
+                this.with_scope_return_context_fallback(return_ctx.clone(), |this| {
+                    for (var_name, pattern, typed, param_ty) in deferred_patterns {
+                        this.emit_irrefutable_pattern_site(
+                            &mut body,
+                            crate::patterns::sites::PatternSubject::for_value(var_name),
+                            &pattern,
+                            typed.as_ref(),
+                            &param_ty,
+                        );
+                    }
+
+                    this.emit_function_body(
+                        &mut body,
+                        &function_definition.body,
+                        should_return,
+                        &return_ctx,
+                    );
+                });
+                signature
+            },
         );
         optimize_function_body(&mut body);
-
-        self.return_lowering = saved_return_lowering;
-        self.module.absorbed_ref_generics = saved_absorbed;
 
         let trimmed_body = body.trim_end();
         if trimmed_body.is_empty() {
@@ -455,21 +376,22 @@ impl Emitter<'_> {
 
         let receiver_part = format!("({} {})", receiver_var, ty_string);
 
-        self.scope.bindings.add("self", receiver_var.clone());
+        self.scope.bind("self", receiver_var.clone());
         self.declare(&receiver_var);
 
         (Some(receiver_var), Some(receiver_part))
     }
 
-    /// Detect Ref<T> parameters where T is a bounded generic and populate
-    /// absorbed_ref_generics. Returns the previous value for restoration.
-    fn detect_absorbed_ref_generics(
+    fn with_absorbed_ref_generics<F, R>(
         &mut self,
         params: &[Binding],
         generics: &[Generic],
-    ) -> HashSet<String> {
-        let saved = self.module.absorbed_ref_generics.clone();
-        self.module.absorbed_ref_generics.clear();
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let saved = std::mem::take(&mut self.function_state);
         let bounded_generics: HashSet<&str> = generics
             .iter()
             .filter(|g| !g.bounds.is_empty())
@@ -481,10 +403,13 @@ impl Emitter<'_> {
                 && let Type::Parameter(name) = &inner
                 && bounded_generics.contains(name.as_ref())
             {
-                self.module.absorbed_ref_generics.insert(name.to_string());
+                self.function_state
+                    .record_absorbed_ref_generic(name.to_string());
             }
         }
-        saved
+        let result = f(self);
+        self.function_state = saved;
+        result
     }
 
     fn emit_function_params(
@@ -520,7 +445,7 @@ impl Emitter<'_> {
                 if param.ty.is_ref()
                     && let Some(inner) = param.ty.inner()
                     && let Type::Parameter(name) = &inner
-                    && self.module.absorbed_ref_generics.contains(name.as_ref())
+                    && self.function_state.is_absorbed_ref_generic(name.as_ref())
                 {
                     inner
                 } else {

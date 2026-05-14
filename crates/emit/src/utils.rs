@@ -187,20 +187,6 @@ pub(crate) fn try_flip_comparison(expression: &str) -> Option<String> {
     Some(format!("{}{}{}", lhs, flipped, rhs))
 }
 
-pub(crate) fn requires_temp_var(expression: &Expression) -> bool {
-    matches!(
-        expression,
-        Expression::If { .. }
-            | Expression::IfLet { .. }
-            | Expression::Match { .. }
-            | Expression::Block { .. }
-            | Expression::Loop { .. }
-            | Expression::Propagate { .. }
-            | Expression::TryBlock { .. }
-            | Expression::Select { .. }
-    )
-}
-
 /// Whether an expression contains a function call (i.e. is side-effectful).
 /// Temp-lifted forms (if/match/block) return false — after emission they're
 /// just variable names.
@@ -216,7 +202,14 @@ pub(crate) fn contains_call(expression: &Expression) -> bool {
             expression, index, ..
         } => contains_call(expression) || contains_call(index),
         Expression::Tuple { elements, .. } => elements.iter().any(contains_call),
-        e if requires_temp_var(e) => false,
+        Expression::If { .. }
+        | Expression::IfLet { .. }
+        | Expression::Match { .. }
+        | Expression::Block { .. }
+        | Expression::Loop { .. }
+        | Expression::Propagate { .. }
+        | Expression::TryBlock { .. }
+        | Expression::Select { .. } => false,
         _ => false,
     }
 }
@@ -235,26 +228,6 @@ pub(crate) fn is_order_sensitive(expression: &Expression) -> bool {
 /// re-evaluate.
 pub(crate) fn observable_after_mutation(expression: &Expression) -> bool {
     !matches!(expression.unwrap_parens(), Expression::Literal { .. })
-}
-
-/// Result of emitting a sub-expression to a separate buffer.
-pub(crate) struct Staged {
-    pub setup: String,
-    pub value: String,
-    /// Recapture before later sibling setup runs. Only set for inline values
-    /// (empty setup); a non-empty setup already bound `value` to a temp.
-    pub needs_capture: bool,
-}
-
-impl Staged {
-    pub(crate) fn new(setup: String, value: String, expression: &Expression) -> Self {
-        let needs_capture = setup.is_empty() && observable_after_mutation(expression);
-        Self {
-            setup,
-            value,
-            needs_capture,
-        }
-    }
 }
 
 /// Guard that snapshots the output length and inserts `_ = var\n` on `finish()`

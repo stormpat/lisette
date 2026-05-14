@@ -1,4 +1,5 @@
 use crate::Emitter;
+use crate::expressions::context::ExpressionContext;
 use crate::names::go_name;
 use syntax::ast::{Expression, Generic, Literal, UnaryOperator};
 use syntax::types::Type;
@@ -41,7 +42,7 @@ impl Emitter<'_> {
 
         if let Type::Nominal { id, .. } = underlying
             && let Some((module, _)) = id.split_once('.')
-            && module != self.current_module
+            && !self.facts.is_current_module(module)
             && module != go_name::PRELUDE_MODULE
             && !go_name::is_go_import(module)
         {
@@ -69,23 +70,25 @@ impl Emitter<'_> {
         expression: &Expression,
         ty: &Type,
     ) -> String {
-        let target_name = match self.module.escape_remap.get(identifier) {
-            Some(remapped) => remapped.clone(),
-            None => identifier.to_string(),
-        };
-        let initial_go_name = self.scope.bindings.add(identifier, target_name);
+        let target_name = self
+            .module
+            .escape_remap(identifier)
+            .unwrap_or(identifier)
+            .to_string();
+        let initial_go_name = self.scope.bind(identifier, target_name);
         let go_identifier = if self.try_declare(&initial_go_name) {
             initial_go_name
         } else {
             let fresh = self.fresh_var(Some(identifier));
-            self.scope.bindings.add(identifier, &fresh);
+            self.scope.bind(identifier, &fresh);
             self.try_declare(&fresh);
             fresh
         };
         let ty_str = self.go_type_as_string(ty);
 
         let mut output = String::new();
-        let expression_string = self.emit_operand(&mut output, expression);
+        let expression_string =
+            self.emit_operand(&mut output, expression, ExpressionContext::value());
         let value = if expression_string.is_empty() {
             "struct{}{}"
         } else {
@@ -114,8 +117,7 @@ impl Emitter<'_> {
             Expression::Identifier { value, .. } => {
                 let resolved = self
                     .scope
-                    .bindings
-                    .get(value.as_str())
+                    .resolve_binding(value.as_str())
                     .unwrap_or(value.as_str());
                 self.is_go_const_binding(resolved)
             }

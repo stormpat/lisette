@@ -136,10 +136,10 @@ impl Emitter<'_> {
     pub(crate) fn go_type_as_string(&mut self, ty: &Type) -> String {
         let result = self.go_type(ty);
         if result.needs_stdlib {
-            self.flags.needs_stdlib = true;
+            self.requirements.require_stdlib();
         }
         for go_import in &result.go_imports {
-            self.ensure_imported.insert(go_import.clone());
+            self.requirements.require_go_import(go_import.clone());
         }
         result.code
     }
@@ -222,11 +222,11 @@ impl Emitter<'_> {
         }
 
         if let Some((module, _)) = qualified_name.split_once('.')
-            && module != self.current_module
+            && !self.facts.is_current_module(module)
             && module != go_name::PRELUDE_MODULE
             && !go_name::is_go_import(module)
         {
-            let go_path = format!("{}/{}", self.ctx.go_module, module);
+            let go_path = self.facts.go_import_path(module);
             let mut result = if params.is_empty() {
                 GoType::with_go_import(name.clone(), go_path)
             } else {
@@ -322,7 +322,7 @@ impl Emitter<'_> {
 
         let escaped = go_name::escape_keyword(unqualified);
 
-        if module == self.current_module || module == go_name::PRELUDE_MODULE {
+        if self.facts.is_current_module(module) || module == go_name::PRELUDE_MODULE {
             escaped.into_owned()
         } else {
             let pkg = self.go_pkg_qualifier(module);
@@ -368,14 +368,22 @@ impl Emitter<'_> {
         }
     }
 
-    pub(crate) fn zero_value(&self, ty: &Type) -> String {
-        if self.as_interface(ty).is_some() {
-            return "nil".to_string();
+    pub(crate) fn emit_zero_return(&mut self, output: &mut String, ty: &Type) {
+        let (zero, effects) = self.zero_value(ty);
+        self.requirements.apply_effects(&effects);
+        crate::write_line!(output, "return {}", zero);
+    }
+
+    pub(crate) fn zero_value(&self, ty: &Type) -> (String, crate::EmitEffects) {
+        let mut effects = crate::EmitEffects::default();
+        if self.facts.is_interface(ty) {
+            return ("nil".to_string(), effects);
         }
 
         let go_ty = self.go_type(ty);
+        effects.merge_from_go_type(&go_ty);
 
-        match go_ty.code.as_str() {
+        let value = match go_ty.code.as_str() {
             "int" | "int8" | "int16" | "int32" | "int64" | "uint" | "uint8" | "uint16"
             | "uint32" | "uint64" | "uintptr" | "byte" | "rune" => "0".to_string(),
             "float32" | "float64" => "0.0".to_string(),
@@ -393,16 +401,17 @@ impl Emitter<'_> {
                 "nil".to_string()
             }
             _ => format!("*new({})", go_ty.code),
-        }
+        };
+        (value, effects)
     }
 
     pub(crate) fn annotation_to_go_type(&mut self, annotation: &Annotation) -> String {
         let result = self.go_type_from_annotation(annotation);
         if result.needs_stdlib {
-            self.flags.needs_stdlib = true;
+            self.requirements.require_stdlib();
         }
         for go_import in &result.go_imports {
-            self.ensure_imported.insert(go_import.clone());
+            self.requirements.require_go_import(go_import.clone());
         }
         result.code
     }

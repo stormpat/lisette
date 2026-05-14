@@ -1,9 +1,10 @@
 use super::NativeCallContext;
 use crate::Emitter;
 use crate::expressions::access::index_access::range_var_bounds;
+use crate::expressions::context::ExpressionContext;
+use crate::expressions::emission::EmittedExpression;
 use crate::names::go_name;
 use crate::types::native::NativeGoType;
-use crate::utils::Staged;
 use syntax::ast::Expression;
 use syntax::types::peel_to_range_type;
 
@@ -242,10 +243,10 @@ pub(super) fn try_inline_native_method(
 impl Emitter<'_> {
     pub(super) fn apply_inline_import(&mut self, import: InlineImport) {
         match import {
-            InlineImport::Slices => self.flags.needs_slices = true,
-            InlineImport::Strings => self.flags.needs_strings = true,
-            InlineImport::Maps => self.flags.needs_maps = true,
-            InlineImport::Stdlib => self.flags.needs_stdlib = true,
+            InlineImport::Slices => self.requirements.require_slices(),
+            InlineImport::Strings => self.requirements.require_strings(),
+            InlineImport::Maps => self.requirements.require_maps(),
+            InlineImport::Stdlib => self.requirements.require_stdlib(),
             InlineImport::None => {}
         }
     }
@@ -263,9 +264,9 @@ impl Emitter<'_> {
             return self.emit_string_substring(output, expression, ctx.args);
         }
 
-        let mut all_stages: Vec<Staged> =
+        let mut all_stages: Vec<EmittedExpression> =
             Vec::with_capacity(1 + ctx.args.len() + ctx.spread.is_some() as usize);
-        all_stages.push(self.stage_operand(expression));
+        all_stages.push(self.stage_operand(expression, ExpressionContext::value()));
         all_stages.extend(self.stage_native_method_args(ctx.function, ctx.args));
 
         let combine = Self::variadic_combine_for(ctx.function, ctx.spread, 1);
@@ -306,7 +307,7 @@ impl Emitter<'_> {
 
         let mut new_args = vec![receiver];
         new_args.extend(emitted_args);
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
         let fn_name = format!(
             "{}.{}{}",
             go_name::GO_STDLIB_PKG,
@@ -351,7 +352,7 @@ impl Emitter<'_> {
             }
         }
 
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
         let fn_name = format!(
             "{}.{}{}",
             go_name::GO_STDLIB_PKG,
@@ -373,7 +374,7 @@ impl Emitter<'_> {
         receiver_expr: &Expression,
         args: &[Expression],
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
         let arg = &args[0];
         let is_ref_receiver = receiver_expr.get_type().is_ref();
         let deref = |raw: &str| -> String {
@@ -391,12 +392,12 @@ impl Emitter<'_> {
             ..
         } = arg
         {
-            let mut stages = vec![self.stage_operand(receiver_expr)];
+            let mut stages = vec![self.stage_operand(receiver_expr, ExpressionContext::value())];
             if let Some(s) = start.as_deref() {
-                stages.push(self.stage_operand(s));
+                stages.push(self.stage_operand(s, ExpressionContext::value()));
             }
             if let Some(e) = end.as_deref() {
-                stages.push(self.stage_operand(e));
+                stages.push(self.stage_operand(e, ExpressionContext::value()));
             }
             let values = self.sequence(output, stages, "_arg");
             let mut bounds = values.iter().skip(1);
@@ -420,7 +421,7 @@ impl Emitter<'_> {
         let range_kind = peel_to_range_type(&arg_ty)
             .and_then(|t| t.get_name())
             .expect("substring arg should resolve to a known range type");
-        let receiver_staged = self.stage_operand(receiver_expr);
+        let receiver_staged = self.stage_operand(receiver_expr, ExpressionContext::value());
         let range_staged = self.stage_or_capture(arg, "range");
         let values = self.sequence(output, vec![receiver_staged, range_staged], "_arg");
         let (start, end) = range_var_bounds(&values[1], range_kind);

@@ -6,9 +6,11 @@ use syntax::types::{CompoundKind, SimpleKind, Type, unqualified_name};
 
 use crate::Emitter;
 use crate::definitions::enum_layout;
+use crate::expressions::context::ExpressionContext;
+use crate::expressions::emission::EmittedExpression;
 use crate::go_name;
 use crate::types::coercion::{Coercion, CoercionDirection};
-use crate::utils::{Staged, observable_after_mutation};
+use crate::utils::observable_after_mutation;
 use crate::write_line;
 
 /// Context for emitting a struct literal or enum variant construction.
@@ -44,6 +46,7 @@ impl Emitter<'_> {
         field_assignments: &[StructFieldAssignment],
         spread: &StructSpread,
         ty: &Type,
+        expression_ctx: ExpressionContext<'_>,
     ) -> String {
         let ctx = self.analyze_struct_call(name, ty);
 
@@ -55,9 +58,9 @@ impl Emitter<'_> {
         });
 
         let is_go_struct = Self::is_go_imported_type(ty);
-        let stages: Vec<Staged> = field_assignments
+        let stages: Vec<EmittedExpression> = field_assignments
             .iter()
-            .map(|f| self.stage_composite(&f.value))
+            .map(|f| self.stage_composite(&f.value, ExpressionContext::value()))
             .collect();
         let emitted_values = self.sequence(output, stages, "_field");
         let mut field_names: Vec<String> = Vec::new();
@@ -122,10 +125,10 @@ impl Emitter<'_> {
                         field_pairs.push((go_field_name, zero));
                     }
                 }
-                self.emit_struct_literal(&ctx.go_type, &field_pairs)
+                self.emit_struct_literal(&ctx.go_type, &field_pairs, expression_ctx)
             }
             StructSpread::ZeroFill { .. } | StructSpread::None => {
-                self.emit_struct_literal(&ctx.go_type, &field_pairs)
+                self.emit_struct_literal(&ctx.go_type, &field_pairs, expression_ctx)
             }
         }
     }
@@ -152,7 +155,7 @@ impl Emitter<'_> {
                         variants, generics, ..
                     },
                 ..
-            }) = self.ctx.definitions.get(enum_ctx.enum_id.as_str())
+            }) = self.facts.definition(enum_ctx.enum_id.as_str())
             else {
                 return None;
             };
@@ -173,7 +176,7 @@ impl Emitter<'_> {
             ty: def_ty,
             body: DefinitionBody::Struct { fields, .. },
             ..
-        }) = self.ctx.definitions.get(id.as_str())
+        }) = self.facts.definition(id.as_str())
         else {
             return None;
         };
@@ -185,15 +188,15 @@ impl Emitter<'_> {
         ))
     }
     fn go_imported_zero(&mut self, ty: &Type, id: &str) -> String {
-        if self.as_interface(ty).is_some() || self.resolve_to_function_type(ty).is_some() {
+        if self.facts.is_interface(ty) || self.facts.resolve_to_function_type(ty).is_some() {
             return "nil".to_string();
         }
         let go_ty = self.go_type_as_string(ty);
         let is_struct_like = matches!(
-            self.ctx.definitions.get(id).map(|d| &d.body),
+            self.facts.definition(id).map(|d| &d.body),
             Some(DefinitionBody::Struct { .. })
         ) || matches!(
-            self.ctx.definitions.get(id).map(|d| &d.body),
+            self.facts.definition(id).map(|d| &d.body),
             Some(DefinitionBody::TypeAlias { annotation, .. }) if annotation.is_opaque()
         );
         if is_struct_like {
@@ -238,7 +241,7 @@ impl Emitter<'_> {
                         .first()
                         .map(|a| self.go_type_as_string(a))
                         .unwrap_or_else(|| "any".to_string());
-                    self.flags.needs_stdlib = true;
+                    self.requirements.require_stdlib();
                     return format!("{}.MakeOptionNone[{}]()", go_name::GO_STDLIB_PKG, inner);
                 }
                 if go_name::is_go_import(id.as_str()) {
@@ -259,7 +262,7 @@ impl Emitter<'_> {
                             (go_name, self.lisette_zero(&field_ty))
                         })
                         .collect();
-                    return self.emit_struct_literal(&go_ty, &pairs);
+                    return self.emit_struct_literal(&go_ty, &pairs, ExpressionContext::value());
                 }
                 if let Some(underlying) = ty.get_underlying() {
                     return self.lisette_zero(underlying);
@@ -361,7 +364,7 @@ impl Emitter<'_> {
         // Use resolve_variant for correct tag constant — handles cross-module
         let tag_constant = self.resolve_variant(name, enum_id);
 
-        let pointer_fields = if let Some(layout) = self.module.enum_layouts.get(enum_id) {
+        let pointer_fields = if let Some(layout) = self.module.enum_layout(enum_id) {
             if let Some(variant) = layout.get_variant(&variant_name) {
                 variant
                     .fields
@@ -387,13 +390,17 @@ impl Emitter<'_> {
     fn add_enum_imports_if_needed(&mut self, name: &str, enum_id: &str) {
         let enum_module = go_name::module_of_type_id(enum_id);
 
-        if enum_module != self.current_module {
+        if !self.facts.is_current_module(enum_module) {
             self.require_module_import(enum_module);
         }
 
         let parts: Vec<&str> = name.split('.').collect();
         if parts.len() == 3 {
-            let module = self.resolve_alias_to_module(parts[0]).to_string();
+            let module = self
+                .module
+                .module_for_alias(parts[0])
+                .unwrap_or(parts[0])
+                .to_string();
             self.require_module_import(&module);
         }
     }
@@ -416,7 +423,12 @@ impl Emitter<'_> {
         }
     }
 
-    pub(crate) fn emit_struct_literal(&self, ty: &str, fields: &[(String, String)]) -> String {
+    pub(crate) fn emit_struct_literal(
+        &self,
+        ty: &str,
+        fields: &[(String, String)],
+        ctx: ExpressionContext<'_>,
+    ) -> String {
         let raw = if fields.is_empty() {
             format!("{}{{}}", ty)
         } else if fields.len() == 1 {
@@ -433,7 +445,7 @@ impl Emitter<'_> {
         // Generic composite literals (`Type[Args]{...}`) need inner parens in
         // condition contexts because gofmt strips outer condition parens for
         // generics, producing invalid Go in `if`/`for`/`switch`.
-        if self.in_condition && ty.contains('[') {
+        if ctx.is_condition() && ty.contains('[') {
             format!("({})", raw)
         } else {
             raw
@@ -448,7 +460,7 @@ impl Emitter<'_> {
         field_side_effects: &[bool],
     ) -> String {
         if fields.is_empty() {
-            return self.emit_operand(output, base);
+            return self.emit_operand(output, base, ExpressionContext::value());
         }
 
         let fields: Vec<(String, String)> = fields
@@ -464,7 +476,7 @@ impl Emitter<'_> {
             })
             .collect();
 
-        let base_string = self.emit_operand(output, base);
+        let base_string = self.emit_operand(output, base, ExpressionContext::value());
         let tmp = self.hoist_tmp_value(output, "copy", &base_string);
 
         for (name, value) in &fields {

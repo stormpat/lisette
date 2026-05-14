@@ -1,10 +1,11 @@
 use rustc_hash::FxHashMap as HashMap;
 
 use crate::Emitter;
+use crate::expressions::context::ExpressionContext;
+use crate::expressions::emission::EmittedExpression;
 use crate::names::generics::extract_type_mapping;
 use crate::names::go_name;
 use crate::types::native::NativeGoType;
-use crate::utils::Staged;
 use syntax::ast::{Annotation, Expression, Literal};
 use syntax::program::ReceiverCoercion;
 use syntax::types::Type;
@@ -18,7 +19,7 @@ impl Emitter<'_> {
         receiver_ty: &Type,
     ) -> Option<String> {
         let method_key = format!("{}.{}", qualified_name, member);
-        let definition_ty = self.ctx.definitions.get(method_key.as_str())?.ty().clone();
+        let definition_ty = self.facts.definition(method_key.as_str())?.ty().clone();
 
         let Type::Forall { vars, body } = &definition_ty else {
             return None;
@@ -105,9 +106,9 @@ impl Emitter<'_> {
             Type::Function { params, .. } => params.clone(),
             _ => Vec::new(),
         };
-        let mut all_stages: Vec<Staged> =
+        let mut all_stages: Vec<EmittedExpression> =
             Vec::with_capacity(1 + args.len() + spread.is_some() as usize);
-        all_stages.push(self.stage_operand(receiver));
+        all_stages.push(self.stage_operand(receiver, ExpressionContext::value()));
         for (i, arg) in args.iter().enumerate() {
             all_stages.push(self.stage_prelude_arg(arg, formal_params.get(i)));
         }
@@ -154,9 +155,8 @@ impl Emitter<'_> {
 
         let method_key = format!("{}.{}", qualified_name, member);
         let is_public = self
-            .ctx
-            .definitions
-            .get(method_key.as_str())
+            .facts
+            .definition(method_key.as_str())
             .map(|d| d.visibility().is_public())
             .unwrap_or(false)
             || self.method_needs_export(member);
@@ -184,7 +184,10 @@ impl Emitter<'_> {
             go_name::escape_keyword(method).into_owned()
         };
 
-        let stages: Vec<Staged> = args.iter().map(|a| self.stage_composite(a)).collect();
+        let stages: Vec<EmittedExpression> = args
+            .iter()
+            .map(|a| self.stage_composite(a, ExpressionContext::value()))
+            .collect();
 
         let combine = Self::variadic_combine_for(function, spread, 0);
         let emitted_all = self.sequence_with_spread(output, stages, spread, false, "_arg", combine);

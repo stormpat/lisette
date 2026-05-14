@@ -1,9 +1,10 @@
 use crate::Emitter;
 use crate::control_flow::branching::wrap_if_struct_literal;
+use crate::expressions::context::ExpressionContext;
 use crate::is_order_sensitive;
 use crate::names::go_name;
+use crate::placement::BodyPlace;
 use crate::types::coercion::{Coercion, CoercionDirection};
-use crate::types::emitter::Position;
 use crate::write_line;
 use syntax::ast::{BinaryOperator, Expression, Literal, UnaryOperator};
 use syntax::parse::TUPLE_FIELDS;
@@ -25,7 +26,8 @@ impl Emitter<'_> {
                 ..
             } => self.emit_let(output, binding, value, else_block.as_deref(), *mutable),
             Expression::Return { expression, .. } => {
-                self.emit_return(output, expression);
+                let return_ctx = self.scope_return_context_fallback().clone();
+                self.emit_return(output, expression, &return_ctx);
             }
             Expression::Assignment {
                 target,
@@ -43,25 +45,11 @@ impl Emitter<'_> {
                     output.push_str("continue\n");
                 }
             }
-            Expression::If {
-                condition,
-                consequence,
-                alternative,
-                ..
-            } => {
-                self.with_position(Position::Statement, |this| {
-                    this.emit_if(output, condition, consequence, alternative)
-                });
+            Expression::If { .. } | Expression::Match { .. } => {
+                self.emit_branching_directly(output, expression, &BodyPlace::Statement);
             }
             Expression::IfLet { .. } => {
                 unreachable!("IfLet should be desugared to Match before emit")
-            }
-            Expression::Match {
-                subject, arms, ty, ..
-            } => {
-                self.with_position(Position::Statement, |this| {
-                    this.emit_match(output, subject, arms, ty)
-                });
             }
             Expression::Loop {
                 body, needs_label, ..
@@ -106,8 +94,8 @@ impl Emitter<'_> {
                 self.emit_for_loop(output, binding, iterable, body, *needs_label);
                 self.pop_loop();
             }
-            Expression::Select { arms, .. } => {
-                self.with_position(Position::Statement, |this| this.emit_select(output, arms));
+            Expression::Select { .. } => {
+                self.emit_branching_directly(output, expression, &BodyPlace::Statement);
             }
             Expression::Block { .. } => {
                 output.push_str("{\n");
@@ -140,23 +128,17 @@ impl Emitter<'_> {
             }
             _ => {
                 let unwrapped = expression.unwrap_parens();
-                match unwrapped {
-                    Expression::Task { .. } | Expression::Defer { .. } => {
-                        let emitted = self.emit_operand(output, unwrapped);
-                        if !emitted.is_empty() {
-                            write_line!(output, "{}", emitted);
-                        }
+                if matches!(
+                    unwrapped,
+                    Expression::Task { .. } | Expression::Defer { .. }
+                ) {
+                    let emitted = self.emit_operand(output, unwrapped, ExpressionContext::value());
+                    if !emitted.is_empty() {
+                        write_line!(output, "{}", emitted);
                     }
-                    Expression::Call { .. } => {
-                        self.emit_discard(output, unwrapped);
-                    }
-                    _ => {
-                        let emitted = self.emit_operand(output, expression);
-                        if !emitted.is_empty() && emitted != "struct{}{}" {
-                            write_line!(output, "_ = {}", emitted);
-                        }
-                    }
+                    return;
                 }
+                self.emit_discard(output, unwrapped);
             }
         }
     }
@@ -232,7 +214,7 @@ impl Emitter<'_> {
             };
             write_line!(output, "{}{}", target_str, inc_op);
         } else {
-            let rhs_str = self.emit_operand(output, rhs);
+            let rhs_str = self.emit_operand(output, rhs, ExpressionContext::value());
             write_line!(output, "{} {}= {}", target_str, op, rhs_str);
         }
     }
@@ -241,7 +223,7 @@ impl Emitter<'_> {
         let Expression::Identifier { value, .. } = target.unwrap_parens() else {
             return false;
         };
-        match self.scope.bindings.get(value) {
+        match self.scope.resolve_binding(value) {
             Some(go_name) => go_name == "_",
             None => value == "_",
         }
@@ -269,7 +251,7 @@ impl Emitter<'_> {
             _ => None,
         };
 
-        let rhs_staged = self.stage_composite(value);
+        let rhs_staged = self.stage_composite(value, ExpressionContext::value());
         let rhs_has_setup = !rhs_staged.setup.is_empty();
 
         let target_str = if is_order_sensitive(target) {
@@ -302,42 +284,13 @@ impl Emitter<'_> {
 
     fn emit_break_statement(&mut self, output: &mut String, value: Option<&Expression>) {
         if let Some(val) = value {
-            let val_str = self.emit_value(output, val);
-            // When propagation (e.g. `Err(...)? / None?`) emits a direct `return`,
-            // emit_value returns "". Skip assignment and break since the function
-            // has already returned.
-            if val_str.is_empty() && matches!(val, Expression::Propagate { .. }) {
-                return;
-            }
-            self.bind_break_value(output, val, &val_str);
+            self.emit_to_place(output, val, crate::placement::ValuePlace::BreakValue);
+            return;
         }
         if let Some(label) = self.current_loop_label() {
             write_line!(output, "break {}", label);
         } else {
             output.push_str("break\n");
-        }
-    }
-
-    /// Bind a `break` value to the enclosing loop's result var, or discard it.
-    /// Unit-typed calls are emitted as a statement before the `struct{}{}` store
-    /// to preserve side effects.
-    fn bind_break_value(&mut self, output: &mut String, val: &Expression, val_str: &str) {
-        let assign_var = self.current_loop_result_var().map(str::to_string);
-        let Some(var) = assign_var else {
-            if !val_str.is_empty() {
-                write_line!(output, "_ = {}", val_str);
-            }
-            return;
-        };
-        let is_unit_call =
-            val.get_type().is_unit() && matches!(val.unwrap_parens(), Expression::Call { .. });
-        if is_unit_call {
-            if !val_str.is_empty() {
-                write_line!(output, "{}", val_str);
-            }
-            write_line!(output, "{} = struct{{}}{{}}", var);
-        } else if !val_str.is_empty() {
-            write_line!(output, "{} = {}", var, val_str);
         }
     }
 
@@ -350,7 +303,7 @@ impl Emitter<'_> {
     ) {
         self.push_loop("_");
         let (setup, cond) = self.capture_emission(output, |this, buf| {
-            this.emit_condition_operand(buf, condition)
+            this.emit_operand(buf, condition, ExpressionContext::value().condition())
         });
         if !setup.is_empty() {
             // Condition produced setup statements (temps); they must
@@ -381,10 +334,9 @@ impl Emitter<'_> {
         match expression {
             Expression::Identifier { value, .. } => self
                 .scope
-                .bindings
-                .get(value)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| value.to_string()),
+                .resolve_binding(value)
+                .unwrap_or(value)
+                .to_string(),
             Expression::DotAccess {
                 expression, member, ..
             } => {
@@ -394,9 +346,9 @@ impl Emitter<'_> {
                     ..
                 } = expression.as_ref()
                 {
-                    self.emit_operand(output, inner)
+                    self.emit_operand(output, inner, ExpressionContext::value())
                 } else {
-                    self.emit_operand(output, expression)
+                    self.emit_operand(output, expression, ExpressionContext::value())
                 };
                 let expression_ty = expression.get_type();
                 self.format_dot_access_lvalue(&base_str, &expression_ty, member)
@@ -410,12 +362,12 @@ impl Emitter<'_> {
                     ..
                 } = expression.as_ref()
                 {
-                    let inner_str = self.emit_operand(output, inner);
+                    let inner_str = self.emit_operand(output, inner, ExpressionContext::value());
                     format!("(*{})", inner_str)
                 } else {
-                    self.emit_operand(output, expression)
+                    self.emit_operand(output, expression, ExpressionContext::value())
                 };
-                let index_str = self.emit_operand(output, index);
+                let index_str = self.emit_operand(output, index, ExpressionContext::value());
                 format!("{}[{}]", expression_string, index_str)
             }
             Expression::Unary {
@@ -424,7 +376,7 @@ impl Emitter<'_> {
                 ..
             } => self.emit_deref_lvalue(output, expression),
             Expression::Call { .. } if expression.get_type().is_ref() => {
-                let call_str = self.emit_operand(output, expression);
+                let call_str = self.emit_operand(output, expression, ExpressionContext::value());
                 self.hoist_tmp_value(output, "ref", &call_str)
             }
             _ => "_".to_string(),
@@ -434,7 +386,7 @@ impl Emitter<'_> {
     /// Emit `*X` lvalue form, capturing the pointee into a temp if it's a
     /// call (Go requires an addressable operand for deref-assignment).
     fn emit_deref_lvalue(&mut self, output: &mut String, pointee: &Expression) -> String {
-        let pointee_string = self.emit_operand(output, pointee);
+        let pointee_string = self.emit_operand(output, pointee, ExpressionContext::value());
         if matches!(pointee.unwrap_parens(), Expression::Call { .. }) {
             let tmp = self.hoist_tmp_value(output, "ref", &pointee_string);
             return format!("*{}", tmp);
@@ -502,10 +454,10 @@ impl Emitter<'_> {
                     ..
                 } = base.as_ref()
                 {
-                    let inner_str = self.emit_operand(output, inner);
+                    let inner_str = self.emit_operand(output, inner, ExpressionContext::value());
                     format!("(*{})", inner_str)
                 } else {
-                    self.emit_operand(output, base)
+                    self.emit_operand(output, base, ExpressionContext::value())
                 };
                 // When the RHS produces temp statements (if/match/block used as value),
                 // the index must be captured even for simple identifiers — the RHS
@@ -518,7 +470,7 @@ impl Emitter<'_> {
                 let index_str = if index_needs_capture {
                     self.emit_force_capture(output, index, "idx")
                 } else {
-                    self.emit_operand(output, index)
+                    self.emit_operand(output, index, ExpressionContext::value())
                 };
                 format!("{}[{}]", base_str, index_str)
             }
@@ -533,7 +485,7 @@ impl Emitter<'_> {
                     ..
                 } = base.as_ref()
                 {
-                    self.emit_operand(output, inner)
+                    self.emit_operand(output, inner, ExpressionContext::value())
                 } else if is_order_sensitive(base) {
                     self.emit_left_value_capturing(output, base, rhs_has_setup)
                 } else {

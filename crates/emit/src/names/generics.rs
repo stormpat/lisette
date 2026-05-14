@@ -42,11 +42,11 @@ pub(crate) fn receiver_generics_string(generics: &[Generic]) -> String {
 
 impl Emitter<'_> {
     pub(crate) fn merge_impl_bounds(&self, type_name: &str, generics: &[Generic]) -> Vec<Generic> {
-        let Some(impl_generics) = self.module.impl_bounds.get(type_name) else {
+        let Some(impl_generics) = self.module.impl_bounds(type_name) else {
             return generics.to_vec();
         };
 
-        if self.module.unconstrained_impl_receivers.contains(type_name) {
+        if self.module.has_unconstrained_impl_receiver(type_name) {
             return generics.to_vec();
         }
 
@@ -139,7 +139,7 @@ impl Emitter<'_> {
         let Some(Definition {
             body: DefinitionBody::Interface { definition },
             ..
-        }) = self.ctx.definitions.get(peeled.as_str())
+        }) = self.facts.definition(peeled.as_str())
         else {
             return HashSet::default();
         };
@@ -181,7 +181,7 @@ impl Emitter<'_> {
         if let Some(Definition {
             body: DefinitionBody::Enum { variants, .. },
             ..
-        }) = self.ctx.definitions.get(enum_id)
+        }) = self.facts.definition(enum_id)
         {
             let types = variants.iter().flat_map(|v| v.fields.iter().map(|f| &f.ty));
             Self::collect_map_key_generics(types, generic_names)

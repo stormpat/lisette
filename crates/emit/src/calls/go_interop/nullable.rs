@@ -1,5 +1,6 @@
 use crate::Emitter;
 use crate::control_flow::fallible::{Fallible, FallibleEmitter, OPTION_SOME_TAG};
+use crate::expressions::context::ExpressionContext;
 use crate::write_line;
 use syntax::ast::Expression;
 use syntax::types::Type;
@@ -11,7 +12,7 @@ impl Emitter<'_> {
         call_expression: &Expression,
         option_ty: &Type,
     ) -> String {
-        let call_str = self.emit_call(output, call_expression, None);
+        let call_str = self.emit_call(output, call_expression, None, ExpressionContext::value());
         self.emit_comma_ok_wrapping(output, &call_str, option_ty, true)
     }
 
@@ -22,7 +23,7 @@ impl Emitter<'_> {
         option_ty: &Type,
         sentinel: i64,
     ) -> String {
-        let call_str = self.emit_call(output, call_expression, None);
+        let call_str = self.emit_call(output, call_expression, None, ExpressionContext::value());
         self.emit_sentinel_wrapping(output, &call_str, option_ty, sentinel)
     }
 
@@ -35,7 +36,7 @@ impl Emitter<'_> {
         option_ty: &Type,
         sentinel: i64,
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
         let raw = self.hoist_tmp_value(output, "ret", call_str);
         let inner_ty_str = self.go_type_as_string(&option_ty.ok_type());
         let option_var = self.fresh_var(Some("option"));
@@ -62,11 +63,11 @@ impl Emitter<'_> {
         option_ty: &Type,
         tuple_flattened: bool,
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
 
         let inner_ty = option_ty.ok_type();
         let inner_tuple_arity = inner_ty.tuple_arity();
-        let needs_nilable_validation = self.is_nullable_option(option_ty);
+        let needs_nilable_validation = self.facts.is_nullable_option(option_ty);
 
         let needs_complex =
             needs_nilable_validation || (tuple_flattened && inner_tuple_arity.is_some());
@@ -115,7 +116,7 @@ impl Emitter<'_> {
 
         let condition = if self.is_interface_option(option_ty) {
             format!("{} && !lisette.IsNilInterface({})", ok_var, val_vars[0])
-        } else if self.is_nullable_option(option_ty) {
+        } else if self.facts.is_nullable_option(option_ty) {
             format!("{} && {} != nil", ok_var, val_vars[0])
         } else {
             ok_var.clone()
@@ -144,7 +145,7 @@ impl Emitter<'_> {
         raw_value: &str,
         option_ty: &Type,
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
 
         let inner_ty = option_ty.ok_type();
         let inner_ty_str = self.go_type_as_string(&inner_ty);
@@ -180,7 +181,7 @@ impl Emitter<'_> {
         let unwrapped_var = self.fresh_var(Some("unwrap"));
         self.declare(&unwrapped_var);
 
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
 
         write_line!(output, "{} := {}", opt_var, option_value);
         write_line!(output, "var {} {}", unwrapped_var, go_inner_ty);
@@ -198,7 +199,7 @@ impl Emitter<'_> {
         ptr_value: &str,
         option_ty: &Type,
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
         let inner_ty_str = self.go_type_as_string(&option_ty.ok_type());
         let option_var = self.fresh_var(Some("option"));
         self.declare(&option_var);
@@ -227,7 +228,7 @@ impl Emitter<'_> {
         let ptr_var = self.fresh_var(Some("ptr"));
         self.declare(&ptr_var);
 
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
 
         write_line!(output, "{} := {}", opt_var, option_value);
         write_line!(output, "var {} *{}", ptr_var, go_inner_ty);
@@ -245,7 +246,7 @@ impl Emitter<'_> {
         collection_ty: &Type,
         elem_option_ty: &Type,
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
 
         let lisette_collection_ty = self.go_type_as_string(collection_ty);
         let src_var = self.fresh_var(Some("src"));
@@ -309,7 +310,7 @@ impl Emitter<'_> {
         collection_ty: &Type,
         elem_option_ty: &Type,
     ) -> String {
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
 
         let is_map = collection_ty.has_name("Map");
         let is_pointer_bridged = self.is_non_nilable_option(elem_option_ty);
@@ -388,7 +389,7 @@ impl Emitter<'_> {
         call_expression: &Expression,
         option_ty: &Type,
     ) -> String {
-        let call_str = self.emit_call(output, call_expression, None);
+        let call_str = self.emit_call(output, call_expression, None, ExpressionContext::value());
 
         let raw_var = self.hoist_tmp_value(output, "raw", &call_str);
 

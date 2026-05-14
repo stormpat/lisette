@@ -3,10 +3,11 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::NativeCallContext;
 use crate::Emitter;
+use crate::expressions::context::ExpressionContext;
+use crate::expressions::emission::EmittedExpression;
 use crate::names::go_name;
 use crate::types::coercion::{Coercion, CoercionDirection};
 use crate::types::native::NativeGoType;
-use crate::utils::Staged;
 use syntax::ast::{Annotation, Expression, StructKind};
 use syntax::program::{CallKind, Definition, DefinitionBody};
 use syntax::types::{
@@ -27,7 +28,7 @@ impl Emitter<'_> {
             if !seen.insert(id.clone()) {
                 break;
             }
-            let Some(def) = self.ctx.definitions.get(id.as_str()) else {
+            let Some(def) = self.facts.definition(id.as_str()) else {
                 break;
             };
             if !matches!(def.body, DefinitionBody::TypeAlias { .. }) {
@@ -137,7 +138,7 @@ impl Emitter<'_> {
                 let capacity = ctx
                     .args
                     .first()
-                    .map(|a| self.emit_operand(output, a))
+                    .map(|a| self.emit_operand(output, a, ExpressionContext::value()))
                     .unwrap_or_else(|| "0".to_string());
                 Some(format!("make(chan {}, {})", elem, capacity))
             }
@@ -158,6 +159,7 @@ impl Emitter<'_> {
         output: &mut String,
         call_expression: &Expression,
         call_ty: Option<&Type>,
+        ctx: ExpressionContext<'_>,
     ) -> String {
         let Expression::Call {
             expression: callee,
@@ -178,7 +180,7 @@ impl Emitter<'_> {
         match call_kind {
             Some(CallKind::TupleStructConstructor) => {
                 if let Some(result) =
-                    self.try_emit_tuple_struct_call(output, function, args, call_ty)
+                    self.try_emit_tuple_struct_call(output, function, args, call_ty, ctx)
                 {
                     return result;
                 }
@@ -196,7 +198,7 @@ impl Emitter<'_> {
             ) => {
                 let native_type = NativeGoType::from_kind(kind);
                 let method = self.extract_native_method_name(function);
-                let ctx = NativeCallContext {
+                let native_ctx = NativeCallContext {
                     function,
                     args,
                     spread,
@@ -205,7 +207,7 @@ impl Emitter<'_> {
                     native_type: &native_type,
                     method,
                 };
-                return self.emit_native_call(output, &ctx);
+                return self.emit_native_call(output, &native_ctx);
             }
             Some(CallKind::ReceiverMethodUfcs { is_public }) => {
                 let method = self.extract_receiver_ufcs_method(function);
@@ -216,7 +218,7 @@ impl Emitter<'_> {
             _ => {}
         }
 
-        self.emit_regular_call(output, function, args, type_args, call_ty, spread)
+        self.emit_regular_call(output, call_expression, call_ty, ctx)
     }
 
     fn extract_native_method_name<'a>(&self, function: &'a Expression) -> &'a str {
@@ -295,10 +297,9 @@ impl Emitter<'_> {
     }
 
     fn lookup_definition_type(&self, primary: &str, fallback: Option<&str>) -> Option<Type> {
-        self.ctx
-            .definitions
-            .get(primary)
-            .or_else(|| fallback.and_then(|f| self.ctx.definitions.get(f)))
+        self.facts
+            .definition(primary)
+            .or_else(|| fallback.and_then(|f| self.facts.definition(f)))
             .map(|d| d.ty().clone())
     }
 
@@ -306,17 +307,17 @@ impl Emitter<'_> {
         let function = function.unwrap_parens();
         match function {
             Expression::Identifier { value, .. } => {
-                let qualified = format!("{}.{}", self.current_module, value);
+                let qualified = self.facts.qualified_current(value);
                 self.lookup_definition_type(&qualified, Some(value.as_str()))
             }
             Expression::DotAccess {
                 expression, member, ..
             } => {
                 if let Expression::Identifier { value, .. } = expression.as_ref() {
-                    let module_name = self.resolve_alias_to_module(value);
+                    let module_name = self.module.module_for_alias(value).unwrap_or(value);
                     let qualified = format!("{}.{}", module_name, member);
                     // Try as Type.method in current module (e.g. Box.make → main.Box.make)
-                    let local = format!("{}.{}.{}", self.current_module, value, member);
+                    let local = self.facts.qualified_current_member(value, member);
                     return self.lookup_definition_type(&qualified, Some(&local));
                 }
                 if let Expression::DotAccess {
@@ -328,7 +329,10 @@ impl Emitter<'_> {
                         value: module_name, ..
                     } = inner_expression.as_ref()
                 {
-                    let module_name = self.resolve_alias_to_module(module_name);
+                    let module_name = self
+                        .module
+                        .module_for_alias(module_name)
+                        .unwrap_or(module_name);
                     let qualified = format!("{}.{}.{}", module_name, type_name, member);
                     return self.lookup_definition_type(&qualified, None);
                 }
@@ -346,7 +350,7 @@ impl Emitter<'_> {
             return HashSet::default();
         };
 
-        let Some(layout) = self.module.enum_layouts.get(&enum_id) else {
+        let Some(layout) = self.module.enum_layout(&enum_id) else {
             return HashSet::default();
         };
 
@@ -379,14 +383,14 @@ impl Emitter<'_> {
                 let variant = unqualified_name(value);
                 let enum_name = unqualified_name(&enum_id);
                 let qualified = format!("{}.{}", enum_name, variant);
-                if self.globals.make_function_names.contains_key(&qualified) {
+                if self.facts.has_make_function_name(&qualified) {
                     return Some((enum_id, variant.to_string()));
                 }
                 if let Type::Function { params, .. } = ty.unwrap_forall() {
-                    for key in self.globals.make_function_names.keys() {
+                    for key in self.facts.make_function_keys() {
                         if let Some((e_name, v_name)) = key.split_once('.')
                             && e_name == enum_name
-                            && let Some(layout) = self.module.enum_layouts.get(&enum_id)
+                            && let Some(layout) = self.module.enum_layout(&enum_id)
                             && let Some(v) = layout.get_variant(v_name)
                             && v.fields.len() == params.len()
                         {
@@ -407,7 +411,7 @@ impl Emitter<'_> {
                 } = expression.as_ref()
                 {
                     let qualified = format!("{}.{}", enum_name, member);
-                    if self.globals.make_function_names.contains_key(&qualified) {
+                    if self.facts.has_make_function_name(&qualified) {
                         let enum_id = enum_id_from_type(ty)?;
                         return Some((enum_id, member.to_string()));
                     }
@@ -417,7 +421,7 @@ impl Emitter<'_> {
                 } = expression.as_ref()
                 {
                     let qualified = format!("{}.{}", type_name, member);
-                    if self.globals.make_function_names.contains_key(&qualified) {
+                    if self.facts.has_make_function_name(&qualified) {
                         let enum_id = enum_id_from_type(ty)?;
                         return Some((enum_id, member.to_string()));
                     }
@@ -438,6 +442,7 @@ impl Emitter<'_> {
         function: &Expression,
         args: &[Expression],
         call_ty: Option<&Type>,
+        ctx: ExpressionContext<'_>,
     ) -> Option<String> {
         let ty = function.get_type();
 
@@ -461,7 +466,7 @@ impl Emitter<'_> {
                     ..
                 },
             ..
-        }) = self.ctx.definitions.get(id.as_str())
+        }) = self.facts.definition(id.as_str())
         else {
             return None;
         };
@@ -485,7 +490,10 @@ impl Emitter<'_> {
         };
 
         let go_ty = self.go_type_as_string(&return_ty);
-        let stages: Vec<Staged> = args.iter().map(|a| self.stage_composite(a)).collect();
+        let stages: Vec<EmittedExpression> = args
+            .iter()
+            .map(|a| self.stage_composite(a, ExpressionContext::value()))
+            .collect();
         let values = self.sequence(output, stages, "_arg");
 
         let field_pairs: Vec<(String, String)> = field_tys
@@ -502,7 +510,7 @@ impl Emitter<'_> {
             })
             .collect();
 
-        Some(self.emit_struct_literal(&go_ty, &field_pairs))
+        Some(self.emit_struct_literal(&go_ty, &field_pairs, ctx))
     }
 
     fn emit_assert_type(
@@ -521,9 +529,9 @@ impl Emitter<'_> {
         };
         let arg_expression = args
             .first()
-            .map(|a| self.emit_composite_value(output, a))
+            .map(|a| self.emit_composite_value(output, a, ExpressionContext::value()))
             .unwrap_or_default();
-        self.flags.needs_stdlib = true;
+        self.requirements.require_stdlib();
         format!(
             "{}.AssertType[{}]({})",
             go_name::GO_STDLIB_PKG,
@@ -540,18 +548,17 @@ impl Emitter<'_> {
         if self.is_local_binding(function) {
             return None;
         }
-        let qualified = format!("{}.{}", self.current_module, value);
+        let qualified = self.facts.qualified_current(value);
         let prelude_qualified = format!("prelude.{}", value);
-        self.ctx
-            .definitions
-            .get(qualified.as_str())
-            .or_else(|| self.ctx.definitions.get(prelude_qualified.as_str()))
+        self.facts
+            .definition(qualified.as_str())
+            .or_else(|| self.facts.definition(prelude_qualified.as_str()))
             .and_then(|d| d.go_name())
     }
 
     fn is_local_binding(&self, function: &Expression) -> bool {
         if let Expression::Identifier { value, .. } = function {
-            self.scope.bindings.get(value).is_some()
+            self.scope.resolve_binding(value).is_some()
         } else {
             false
         }
@@ -569,7 +576,7 @@ impl Emitter<'_> {
         }
         params
             .iter()
-            .any(|p| self.as_interface(p).is_some() || self.is_function_alias(p))
+            .any(|p| self.facts.is_interface(p) || self.is_function_alias(p))
             .then(|| self.format_type_args(params))
     }
 
