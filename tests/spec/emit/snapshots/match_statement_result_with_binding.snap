@@ -9,20 +9,16 @@ import lisette "github.com/ivov/lisette/prelude"
 func use_value(_ int) {}
 
 func divide(a, b int) lisette.Result[int, string] {
-	var tmp_1 lisette.Result[int, string]
 	if b == 0 {
-		tmp_1 = lisette.MakeResultErr[int, string]("err")
-	} else {
-		tmp_1 = lisette.MakeResultOk[int, string](a / b)
+		return lisette.MakeResultErr[int, string]("err")
 	}
-	return tmp_1
+	return lisette.MakeResultOk[int, string](a / b)
 }
 
 func test() {
 	subject_1 := divide(10, 2)
 	if subject_1.Tag == lisette.ResultOk {
-		v := subject_1.OkVal
-		use_value(v)
+		use_value(subject_1.OkVal)
 	} else {
 		use_value(0)
 	}
