@@ -118,7 +118,7 @@ impl Emitter<'_> {
         method: &str,
         is_public: bool,
     ) -> String {
-        let module = type_id.split_once('.').map(|(m, _)| m);
+        let module = type_id.contains('.').then(|| module_part(type_id));
         let computed_alias = match module {
             Some(m) if self.facts.is_foreign_module(m) => Some(self.require_module_import(m)),
             _ => None,

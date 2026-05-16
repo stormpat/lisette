@@ -148,14 +148,26 @@ pub fn unqualified_name(id: &str) -> &str {
     id.rsplit('.').next().unwrap_or(id)
 }
 
-/// Extract the module part of a dot-qualified identifier — the first
-/// segment, before any dot.
+/// Extract the module part of a dot-qualified identifier.
 ///
 /// `"main.Point.sum"` → `"main"`, `"prelude.Option"` → `"prelude"`,
 /// `"foo"` → `"foo"`. For `go:net/http.Handler`-style ids, returns
 /// `"go:net/http"`. When the id has no dot at all, returns the id
 /// itself (the caller is responsible for handling the no-module case).
+///
+/// Handle Go import ids with slashes (e.g. `"go:github.com/jackc/pgx/v5.TxIsoLevel"`),
+/// here the module boundary is the first `.` that appears
+/// after the last `/`, not the first `.` in the entire string (which would
+/// otherwise split `"github.com"` into `"github"` + `".com/..."`).
 pub fn module_part(id: &str) -> &str {
+    if id.starts_with("go:")
+        && let Some(slash_pos) = id.rfind('/')
+    {
+        if let Some(dot_offset) = id[slash_pos..].find('.') {
+            return &id[..slash_pos + dot_offset];
+        }
+        return id;
+    }
     id.split('.').next().unwrap_or(id)
 }
 
