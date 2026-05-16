@@ -399,6 +399,31 @@ pub type IntSlice = Slice<int>
 }
 
 #[test]
+fn third_party_typed_constant_domain_import_path() {
+    // Regression: module_part() split on the first '.' in the type ID, turning
+    // "go:github.com/jackc/pgx/v5.TxIsoLevel" into "go:github" and emitting
+    // `import "github"` instead of `import "github.com/jackc/pgx/v5"`.
+    // Accessing a typed constant (Go's `type T string` + const pattern,
+    // represented as a value_enum in Lisette) requires resolving the module
+    // from the type's ID — unlike plain function calls which use the import
+    // alias directly from the file's AST.
+    let input = r#"
+import "go:github.com/jackc/pgx/v5"
+
+fn test() {
+  let _ = pgx.TxIsoLevel.Serializable
+}
+"#;
+    let typedef = r#"// Package: pgx
+
+pub enum TxIsoLevel: string {
+  Serializable = "serializable",
+}
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:github.com/jackc/pgx/v5", typedef)]);
+}
+
+#[test]
 fn import_filter_handles_apostrophe_in_doc_comments() {
     let input = r#"
 import "go:fmt"

@@ -1,0 +1,11 @@
+---
+source: tests/spec/emit/imports.rs
+description: "input: \nimport \"go:github.com/jackc/pgx/v5\"\n\nfn test() {\n  let _ = pgx.TxIsoLevel.Serializable\n}\n"
+---
+package main
+
+import pgx "github.com/jackc/pgx/v5"
+
+func test() {
+	_ = pgx.Serializable
+}
