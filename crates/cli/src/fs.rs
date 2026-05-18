@@ -212,6 +212,88 @@ impl Loader for LocalFileSystem {
 mod tests {
     use super::*;
     use std::fs as stdfs;
+    use syntax::program::File;
+
+    fn make_file(name: &str) -> File {
+        File::new(".", name, "", vec![], 0)
+    }
+
+    #[test]
+    fn go_filename_plain() {
+        assert_eq!(make_file("main.lis").go_filename(), "main.go");
+    }
+
+    #[test]
+    fn go_filename_strips_path_prefix() {
+        assert_eq!(make_file("src/main.lis").go_filename(), "main.go");
+    }
+
+    #[test]
+    fn go_filename_nested_path() {
+        assert_eq!(
+            make_file("src/utils/helpers.lis").go_filename(),
+            "helpers.go"
+        );
+    }
+
+    #[test]
+    fn plain_path_inside_cwd() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        assert_eq!(
+            relative_to_cwd_with(&cwd.join("src/main.lis"), Some(cwd)),
+            Some("src/main.lis".to_string())
+        );
+    }
+
+    #[test]
+    fn file_at_cwd_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        assert_eq!(
+            relative_to_cwd_with(&cwd.join("main.lis"), Some(cwd)),
+            Some("main.lis".to_string())
+        );
+    }
+
+    #[test]
+    fn strips_leading_dot_slash() {
+        // Simulates Path::new(".").join("src/main.lis") → "./src/main.lis"
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        assert_eq!(
+            relative_to_cwd_with(&cwd.join("./src/main.lis"), Some(cwd)),
+            Some("src/main.lis".to_string())
+        );
+    }
+
+    #[test]
+    fn strips_mid_path_dot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path();
+        assert_eq!(
+            relative_to_cwd_with(&cwd.join("src/./main.lis"), Some(cwd)),
+            Some("src/main.lis".to_string())
+        );
+    }
+
+    #[test]
+    fn path_outside_cwd_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        assert_eq!(
+            relative_to_cwd_with(&other.path().join("main.lis"), Some(tmp.path())),
+            None
+        );
+    }
+
+    #[test]
+    fn unknown_cwd_returns_none() {
+        assert_eq!(
+            relative_to_cwd_with(Path::new("/any/path/main.lis"), None),
+            None
+        );
+    }
 
     fn write_file(dir: &Path, name: &str, content: &str) -> PathBuf {
         let path = dir.join(name);
