@@ -3,7 +3,7 @@ use std::{
     ffi::OsStr,
     fs::{File, read_dir, read_to_string, remove_file},
     io::{self, BufRead, BufReader},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use semantics::loader::{Files, Loader};
@@ -11,6 +11,7 @@ use semantics::store::ENTRY_MODULE_ID;
 
 pub struct LocalFileSystem {
     search_paths: Vec<PathBuf>,
+    display_cwd: Option<PathBuf>,
 }
 
 impl LocalFileSystem {
@@ -22,6 +23,7 @@ impl LocalFileSystem {
 
         Self {
             search_paths: vec![current_path, stdlib_path],
+            display_cwd: std::env::current_dir().ok(),
         }
     }
 
@@ -36,10 +38,18 @@ impl LocalFileSystem {
             let path = entry.path();
 
             if path.extension().is_some_and(|e| e == "lis")
-                && let Some(filename) = path.file_name().and_then(|s| s.to_str())
                 && let Ok(source) = read_to_string(&path)
             {
-                files.insert(filename.to_string(), source);
+                let key =
+                    relative_to_cwd_with(&path, self.display_cwd.as_deref()).unwrap_or_else(|| {
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_default()
+                            .to_string()
+                    });
+                if !key.is_empty() {
+                    files.insert(key, source);
+                }
             }
         }
 
@@ -47,10 +57,39 @@ impl LocalFileSystem {
     }
 }
 
-/// Translate module ID to filesystem path (entry module maps to current directory)
+/// Returns path relative to the cwd, with bare "." components stripped.
+/// Returns None if the cwd is unknown or the path lies outside it.
+pub fn relative_to_cwd(path: &Path) -> Option<String> {
+    relative_to_cwd_with(path, std::env::current_dir().ok().as_deref())
+}
+
+fn relative_to_cwd_with(path: &Path, cwd: Option<&Path>) -> Option<String> {
+    let cwd = cwd?;
+    let full = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+    let rel = full.strip_prefix(cwd).ok()?;
+    // Strip bare "." path components ("./src/main.lis" becomes "src/main.lis").
+    let normalized: PathBuf = rel
+        .components()
+        .filter(|c| *c != Component::CurDir)
+        .collect();
+    let s = normalized.to_str()?;
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
+/// Translate module ID to filesystem path.  The entry module maps to the
+/// search-path root itself (empty string) so that search_path.join("")
+/// equals search_path without introducing a trailing ./ component.
 fn to_fs_path(folder_name: &str) -> &str {
     if folder_name == ENTRY_MODULE_ID {
-        "."
+        ""
     } else {
         folder_name
     }
@@ -152,9 +191,14 @@ pub fn collect_lis_filepaths_recursive(dir: &Path) -> Vec<PathBuf> {
 
 impl Loader for LocalFileSystem {
     fn scan_folder(&self, folder_name: &str) -> Files {
-        let folder_name = to_fs_path(folder_name);
+        let fs_name = to_fs_path(folder_name);
         for search_path in &self.search_paths {
-            let folder_path = search_path.join(folder_name);
+            let folder_path = if fs_name.is_empty() {
+                search_path.clone()
+            } else {
+                search_path.join(fs_name)
+            };
+
             let files = self.collect_files(&folder_path);
 
             if !files.is_empty() {

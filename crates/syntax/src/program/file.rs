@@ -98,7 +98,11 @@ impl File {
     }
 
     pub fn go_filename(&self) -> String {
-        std::path::Path::new(&self.name)
+        let base = std::path::Path::new(&self.name)
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new(&self.name));
+
+        std::path::Path::new(base)
             .with_extension("go")
             .display()
             .to_string()

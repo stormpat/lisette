@@ -239,11 +239,6 @@ fn run_standalone(file: &str, args: Vec<String>, debug: bool) -> i32 {
         return 1;
     }
 
-    let filename = file_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main.lis");
-
     let compile_config = CompileConfig {
         target_phase: CompilePhase::Emit,
         go_module: "lis-standalone".to_string(),
@@ -262,7 +257,7 @@ fn run_standalone(file: &str, args: Vec<String>, debug: bool) -> i32 {
     }
 
     let no_loader = NoLoader;
-    let result = compile(&source, filename, &compile_config, &no_loader);
+    let result = compile(&source, file, &compile_config, &no_loader);
 
     let filter = Filter {
         errors_only: false,

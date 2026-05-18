@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use deps::TypedefLocator;
 use diagnostics::render::{self, Filter};
-use lisette::fs::LocalFileSystem;
+use lisette::fs::{LocalFileSystem, relative_to_cwd};
 use lisette::pipeline::{CompileConfig, CompilePhase, CompileResult, compile};
 
 use crate::cli_error;
@@ -161,10 +161,13 @@ fn compile_single_file(
         }
     };
 
-    let filename = file_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main.lis");
+    let filename = relative_to_cwd(file_path).unwrap_or_else(|| {
+        file_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main.lis")
+            .to_string()
+    });
 
     let config = CompileConfig {
         target_phase: CompilePhase::Check,
@@ -179,10 +182,9 @@ fn compile_single_file(
     let working_dir = file_path.parent().and_then(|p| p.to_str()).unwrap_or(".");
 
     let fs = LocalFileSystem::new(working_dir);
-    let result = compile(&source, filename, &config, &fs);
-    let display_filename = file_path.display().to_string();
+    let result = compile(&source, &filename, &config, &fs);
 
-    Some((result, source, display_filename))
+    Some((result, source, filename))
 }
 
 fn check_loose_dir(dir: &Path, filter: &Filter) -> i32 {

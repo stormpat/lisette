@@ -210,7 +210,11 @@ fn all_go_outputs_exist(module_id: &str, cached_files: &[CachedFile], project_ro
 
     for cached_file in cached_files {
         if cached_file.name.ends_with(".lis") && !cached_file.name.ends_with(".d.lis") {
-            let go_name = cached_file.name.replace(".lis", ".go");
+            let go_name = std::path::Path::new(&cached_file.name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&cached_file.name)
+                .replace(".lis", ".go");
             if !target_dir.join(&go_name).exists() {
                 return false;
             }

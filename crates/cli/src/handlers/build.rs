@@ -8,7 +8,7 @@ use crate::go_cli;
 use crate::lock::acquire_target_lock;
 use crate::workspace::WorkspaceBindgen;
 use diagnostics::render::{self, Filter};
-use lisette::fs::{LocalFileSystem, prune_orphan_go_files};
+use lisette::fs::{LocalFileSystem, prune_orphan_go_files, relative_to_cwd};
 use lisette::pipeline::{CompileConfig, CompilePhase, compile};
 
 pub fn build(path: Option<String>, debug: bool, quiet: bool) -> i32 {
@@ -110,12 +110,13 @@ pub(super) fn build_locked(prep: &BuildPrep, debug: bool, quiet: bool) -> i32 {
         }
     };
 
-    let display_path = std::env::current_dir()
-        .ok()
-        .and_then(|cwd| main_lis.strip_prefix(&cwd).ok().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| main_lis.to_path_buf());
-
-    let filename = "main.lis";
+    let filename = relative_to_cwd(&main_lis).unwrap_or_else(|| {
+        main_lis
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main.lis")
+            .to_string()
+    });
 
     let project_name = go_module_name.rsplit('/').next().unwrap_or(go_module_name);
 
@@ -146,9 +147,8 @@ pub(super) fn build_locked(prep: &BuildPrep, debug: bool, quiet: bool) -> i32 {
     let source_dir = main_lis.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let local_fs = LocalFileSystem::new(source_dir);
 
-    let result = compile(&main_lis_source, filename, &compile_config, &local_fs);
+    let result = compile(&main_lis_source, &filename, &compile_config, &local_fs);
 
-    let filename = display_path.display().to_string();
     let filter = Filter {
         errors_only: false,
         warnings_only: false,
