@@ -74,16 +74,16 @@ impl<'source> Parser<'source> {
             while self.can_start_annotation() {
                 type_params.push(self.parse_annotation());
                 match self.current_token().kind {
-                    RightAngleBracket => break,
+                    RightAngleBracket | ShiftRight => break,
                     Comma => self.next(),
                     _ => break,
                 }
-                if self.is(RightAngleBracket) {
+                if self.is_right_angle_like() {
                     self.track_error("expected type", "Add a type or remove the trailing comma.");
                 }
             }
 
-            if !self.advance_if(RightAngleBracket) {
+            if !self.advance_if_right_angle() {
                 self.track_error("expected `>`", "Add `>` to close the type arguments.");
             }
 
@@ -167,12 +167,14 @@ impl<'source> Parser<'source> {
 
         let mut generics = vec![];
 
-        while self.is_not(RightAngleBracket) {
+        while !self.is_right_angle_like() {
             generics.push(self.parse_generic());
             self.expect_comma_or(RightAngleBracket);
         }
 
-        self.ensure(RightAngleBracket);
+        if !self.advance_if_right_angle() {
+            self.ensure(RightAngleBracket);
+        }
 
         generics
     }
@@ -192,7 +194,7 @@ impl<'source> Parser<'source> {
             return vec![];
         }
 
-        if self.is(RightAngleBracket) || self.is(Comma) {
+        if self.is_right_angle_like() || self.is(Comma) {
             self.track_error(
                 "expected bound after `:`",
                 "Provide a bound like `T: Display`.",
@@ -202,9 +204,9 @@ impl<'source> Parser<'source> {
 
         let mut bounds = vec![];
 
-        while self.is_not(RightAngleBracket) && self.is_not(Comma) {
+        while !self.is_right_angle_like() && self.is_not(Comma) {
             bounds.push(self.parse_annotation());
-            if self.is(RightAngleBracket) || self.is(Comma) {
+            if self.is_right_angle_like() || self.is(Comma) {
                 break;
             }
             if !self.advance_if(Plus) {
@@ -214,7 +216,7 @@ impl<'source> Parser<'source> {
                 );
                 break;
             }
-            if self.is(RightAngleBracket) || self.is(Comma) {
+            if self.is_right_angle_like() || self.is(Comma) {
                 self.track_error(
                     "expected bound after `+`",
                     "Provide a bound or remove the trailing `+`.",

@@ -511,14 +511,16 @@ impl<'source> Parser<'source> {
 
             type_args.push(self.parse_annotation());
 
-            if self.is(RightAngleBracket) {
+            if self.is_right_angle_like() {
                 break;
             }
 
             self.ensure(Comma);
         }
 
-        self.ensure(RightAngleBracket);
+        if !self.advance_if_right_angle() {
+            self.ensure(RightAngleBracket);
+        }
 
         type_args
     }
@@ -529,6 +531,12 @@ impl<'source> Parser<'source> {
             Minus => BinaryOperator::Subtraction,
             Star => BinaryOperator::Multiplication,
             Slash => BinaryOperator::Division,
+            Ampersand => BinaryOperator::BitwiseAnd,
+            Pipe => BinaryOperator::BitwiseOr,
+            Caret => BinaryOperator::BitwiseXor,
+            AndNot => BinaryOperator::BitwiseAndNot,
+            ShiftLeft => BinaryOperator::ShiftLeft,
+            ShiftRight => BinaryOperator::ShiftRight,
             LeftAngleBracket => BinaryOperator::LessThan,
             LessThanOrEqual => BinaryOperator::LessThanOrEqual,
             RightAngleBracket => BinaryOperator::GreaterThan,
@@ -544,7 +552,7 @@ impl<'source> Parser<'source> {
                 self.track_error(format!(
                     "expected binary operator, found {}",
                     self.current_token().kind
-                ), "Binary operators: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`.");
+                ), "Binary operators: `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`.");
                 BinaryOperator::Addition // meaningless fallback
             }
         };
@@ -1070,6 +1078,12 @@ impl<'source> Parser<'source> {
             StarEqual => Some(BinaryOperator::Multiplication),
             SlashEqual => Some(BinaryOperator::Division),
             PercentEqual => Some(BinaryOperator::Remainder),
+            AmpersandEqual => Some(BinaryOperator::BitwiseAnd),
+            PipeEqual => Some(BinaryOperator::BitwiseOr),
+            CaretEqual => Some(BinaryOperator::BitwiseXor),
+            AndNotEqual => Some(BinaryOperator::BitwiseAndNot),
+            ShiftLeftEqual => Some(BinaryOperator::ShiftLeft),
+            ShiftRightEqual => Some(BinaryOperator::ShiftRight),
             _ => None,
         };
 
@@ -1541,6 +1555,12 @@ impl<'source> Parser<'source> {
                     | LessThanOrEqual
                     | GreaterThanOrEqual
                     | AmpersandDouble
+                    | Ampersand
+                    | Pipe
+                    | Caret
+                    | AndNot
+                    | ShiftLeft
+                    | ShiftRight
                     | Pipeline
                     | Equal
                     | PlusEqual
@@ -1548,6 +1568,12 @@ impl<'source> Parser<'source> {
                     | StarEqual
                     | SlashEqual
                     | PercentEqual
+                    | AmpersandEqual
+                    | PipeEqual
+                    | CaretEqual
+                    | AndNotEqual
+                    | ShiftLeftEqual
+                    | ShiftRightEqual
                     | DotDot
                     | DotDotEqual
                     | As

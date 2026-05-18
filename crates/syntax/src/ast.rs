@@ -1756,6 +1756,7 @@ pub enum FormatStringPart {
 pub enum UnaryOperator {
     Negative,
     Not,
+    BitwiseNot,
     Deref,
 }
 
@@ -1765,6 +1766,12 @@ pub enum BinaryOperator {
     Subtraction,
     Multiplication,
     Division,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseAndNot,
+    ShiftLeft,
+    ShiftRight,
     LessThan,
     LessThanOrEqual,
     GreaterThan,
@@ -1785,6 +1792,12 @@ impl std::fmt::Display for BinaryOperator {
             BinaryOperator::Multiplication => "*",
             BinaryOperator::Division => "/",
             BinaryOperator::Remainder => "%",
+            BinaryOperator::BitwiseAnd => "&",
+            BinaryOperator::BitwiseOr => "|",
+            BinaryOperator::BitwiseXor => "^",
+            BinaryOperator::BitwiseAndNot => "&^",
+            BinaryOperator::ShiftLeft => "<<",
+            BinaryOperator::ShiftRight => ">>",
             BinaryOperator::Equal => "==",
             BinaryOperator::NotEqual => "!=",
             BinaryOperator::LessThan => "<",

@@ -177,6 +177,7 @@ impl Emitter<'_> {
         let op_str = match operator {
             UnaryOperator::Negative => "-",
             UnaryOperator::Not => "!",
+            UnaryOperator::BitwiseNot => "^",
             UnaryOperator::Deref => "*",
         };
         format!("{}{}", op_str, expression)
@@ -301,6 +302,12 @@ fn is_numeric_binary_op(operator: &BinaryOperator) -> bool {
             | Multiplication
             | Division
             | Remainder
+            | BitwiseAnd
+            | BitwiseOr
+            | BitwiseXor
+            | BitwiseAndNot
+            | ShiftLeft
+            | ShiftRight
             | LessThan
             | LessThanOrEqual
             | GreaterThan

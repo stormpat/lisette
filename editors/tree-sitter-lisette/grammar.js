@@ -508,7 +508,7 @@ module.exports = grammar({
     )),
 
     unary_expression: $ => prec(PREC.unary, seq(
-      choice('-', alias($._bang, '!')),
+      choice('-', '^', alias($._bang, '!')),
       $._expression,
     )),
 
@@ -534,8 +534,8 @@ module.exports = grammar({
         [PREC.and, '&&'],
         [PREC.or, '||'],
         [PREC.comparative, choice('==', '!=', '<=', '>=')],
-        [PREC.additive, choice('+', '-')],
-        [PREC.multiplicative, choice('*', '/', '%')],
+        [PREC.additive, choice('+', '-', '|', '^')],
+        [PREC.multiplicative, choice('*', '/', '%', '<<', '>>', '&', '&^')],
       ];
 
       return choice(
@@ -567,7 +567,7 @@ module.exports = grammar({
 
     compound_assignment_expression: $ => prec.left(PREC.assign, seq(
       field('left', $._expression),
-      field('operator', choice('+=', '-=', '*=', '/=', '%=')),
+      field('operator', choice('+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '&^=', '<<=', '>>=')),
       field('right', $._expression),
     )),
 

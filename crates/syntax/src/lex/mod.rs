@@ -143,6 +143,12 @@ impl<'source> Lexer<'source> {
                 | TokenKind::MinusEqual
                 | TokenKind::StarEqual
                 | TokenKind::SlashEqual
+                | TokenKind::AmpersandEqual
+                | TokenKind::PipeEqual
+                | TokenKind::CaretEqual
+                | TokenKind::AndNotEqual
+                | TokenKind::ShiftLeftEqual
+                | TokenKind::ShiftRightEqual
                 | TokenKind::Else
                 | TokenKind::LeftCurlyBrace
                 | TokenKind::RightCurlyBrace

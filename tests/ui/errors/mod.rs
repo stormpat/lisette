@@ -2460,7 +2460,7 @@ fn test() {
 fn parse_error_recovery_multi_arg() {
     let input = r#"
 fn test() {
-  foo(a, b^c, d);
+  foo(a, b@c, d);
 }
 "#;
     assert_parse_error_snapshot!(input);
@@ -6457,45 +6457,6 @@ fn test() -> Option<int> {
 }
 "#;
     assert_infer_error_snapshot!(input);
-}
-
-#[test]
-fn parse_unsupported_bitwise_and() {
-    let input = r#"
-fn test() {
-  let a = 1
-  let b = 2
-  let c = a & b
-  let _ = c
-}
-"#;
-    assert_parse_error_snapshot!(input);
-}
-
-#[test]
-fn parse_unsupported_bitwise_or() {
-    let input = r#"
-fn test() {
-  let a = 1
-  let b = 2
-  let c = a | b
-  let _ = c
-}
-"#;
-    assert_parse_error_snapshot!(input);
-}
-
-#[test]
-fn parse_unsupported_bitwise_xor() {
-    let input = r#"
-fn test() {
-  let a = 1
-  let b = 2
-  let c = a ^ b
-  let _ = c
-}
-"#;
-    assert_parse_error_snapshot!(input);
 }
 
 #[test]

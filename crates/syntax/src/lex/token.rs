@@ -56,6 +56,12 @@ pub enum TokenKind {
     StarEqual,
     SlashEqual,
     PercentEqual,
+    AmpersandEqual,
+    PipeEqual,
+    CaretEqual,
+    ShiftLeftEqual,  // <<=
+    ShiftRightEqual, // >>=
+    AndNotEqual,     // &^=
     Caret,
     Percent,
     Bang,
@@ -67,6 +73,9 @@ pub enum TokenKind {
     DotDotEqual,
     Ellipsis,
     Backtick,
+    ShiftLeft,  // <<
+    ShiftRight, // >>
+    AndNot,     // &^ - Short hand for `x & (^y)` in Go
     Function,
     Let,
     If,
@@ -151,6 +160,12 @@ impl fmt::Display for TokenKind {
             StarEqual => "`*=`",
             SlashEqual => "`/=`",
             PercentEqual => "`%=`",
+            AmpersandEqual => "`&=`",
+            PipeEqual => "`|=`",
+            CaretEqual => "`^=`",
+            ShiftLeftEqual => "`<<=`",
+            ShiftRightEqual => "`>>=`",
+            AndNotEqual => "`&^=`",
             Caret => "`^`",
             Percent => "`%`",
             Bang => "`!`",
@@ -162,6 +177,9 @@ impl fmt::Display for TokenKind {
             DotDotEqual => "`..=`",
             Ellipsis => "`...`",
             Backtick => "`` ` ``",
+            ShiftLeft => "`<<`",
+            ShiftRight => "`>>`",
+            AndNot => "`&^`",
             Function => "`fn`",
             Let => "`let`",
             If => "`if`",
@@ -275,6 +293,9 @@ impl TokenKind {
         match (c1, c2, c3) {
             ('.', '.', '=') => Some(TokenKind::DotDotEqual),
             ('.', '.', '.') => Some(TokenKind::Ellipsis),
+            ('<', '<', '=') => Some(TokenKind::ShiftLeftEqual),
+            ('>', '>', '=') => Some(TokenKind::ShiftRightEqual),
+            ('&', '^', '=') => Some(TokenKind::AndNotEqual),
             _ => None,
         }
     }
@@ -298,6 +319,12 @@ impl TokenKind {
             ('*', '=') => Some(StarEqual),
             ('/', '=') => Some(SlashEqual),
             ('%', '=') => Some(PercentEqual),
+            ('&', '=') => Some(AmpersandEqual),
+            ('|', '=') => Some(PipeEqual),
+            ('^', '=') => Some(CaretEqual),
+            ('&', '^') => Some(AndNot),
+            ('<', '<') => Some(ShiftLeft),
+            ('>', '>') => Some(ShiftRight),
             _ => None,
         }
     }

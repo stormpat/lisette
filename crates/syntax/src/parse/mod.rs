@@ -37,6 +37,7 @@ impl ParseResult {
 pub struct Parser<'source> {
     stream: TokenStream<'source>,
     previous_token: Token<'source>,
+    pending_right_angle: Option<u32>,
     pub errors: Vec<ParseError>,
     file_id: u32,
     in_control_flow_header: bool,
@@ -73,6 +74,7 @@ impl<'source> Parser<'source> {
         let mut parser = Parser {
             stream,
             previous_token: first_token,
+            pending_right_angle: None,
             errors: Default::default(),
             file_id,
             in_control_flow_header: false,
@@ -234,6 +236,14 @@ impl<'source> Parser<'source> {
     }
 
     fn current_token(&self) -> Token<'source> {
+        if let Some(byte_offset) = self.pending_right_angle {
+            return Token {
+                kind: TokenKind::RightAngleBracket,
+                text: ">",
+                byte_offset,
+                byte_length: 1,
+            };
+        }
         self.stream.peek()
     }
 
@@ -248,6 +258,10 @@ impl<'source> Parser<'source> {
 
     fn next(&mut self) {
         self.previous_token = self.current_token();
+        if self.pending_right_angle.take().is_some() {
+            self.skip_comments();
+            return;
+        }
         self.stream.consume();
         self.skip_comments();
     }
@@ -350,6 +364,33 @@ impl<'source> Parser<'source> {
         }
     }
 
+    fn is_right_angle_like(&self) -> bool {
+        matches!(self.current_token().kind, RightAngleBracket | ShiftRight)
+    }
+
+    fn advance_if_right_angle(&mut self) -> bool {
+        let token = self.current_token();
+        match token.kind {
+            RightAngleBracket => {
+                self.next();
+                true
+            }
+            ShiftRight => {
+                self.previous_token = Token {
+                    kind: RightAngleBracket,
+                    text: ">",
+                    byte_offset: token.byte_offset,
+                    byte_length: 1,
+                };
+                self.stream.consume();
+                self.pending_right_angle = Some(token.byte_offset + 1);
+                self.skip_comments();
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn span_from_token(&self, token: Token<'source>) -> ast::Span {
         ast::Span::new(self.file_id, token.byte_offset, token.byte_length)
     }
@@ -386,6 +427,14 @@ impl<'source> Parser<'source> {
                             && self.stream.peek_ahead(position + 3).kind == LeftParen);
                 }
                 RightAngleBracket => depth -= 1,
+                ShiftRight if depth <= 2 => {
+                    let next = self.stream.peek_ahead(position + 1).kind;
+                    return next == LeftParen
+                        || (next == Dot
+                            && self.stream.peek_ahead(position + 2).kind == Identifier
+                            && self.stream.peek_ahead(position + 3).kind == LeftParen);
+                }
+                ShiftRight => depth -= 2,
                 LeftParen => {
                     let mut paren_depth = 1;
                     position += 1;

@@ -144,6 +144,19 @@ impl TaskState<'_> {
                 self.unify(store, &bool_ty, &operand_expected_ty, &span);
                 bool_ty
             }
+            BitwiseNot => {
+                let resolved = operand_expected_ty.resolve_in(&self.env);
+                if resolved.is_error()
+                    || matches!(resolved, Type::Var { .. })
+                    || is_integer_type(&resolved, &self.env)
+                {
+                    operand_expected_ty.clone()
+                } else {
+                    self.sink
+                        .push(diagnostics::infer::not_integer(&resolved, operand_span));
+                    operand_expected_ty.clone()
+                }
+            }
             Deref => {
                 let inner_ty = self.new_type_var();
                 let ref_ty = self.type_reference(inner_ty.clone());
@@ -536,6 +549,41 @@ impl TaskState<'_> {
                 }
             }
 
+            BitwiseAnd | BitwiseOr | BitwiseXor | BitwiseAndNot => {
+                let left_resolved = left_operand_ty.resolve_in(&self.env);
+                let right_resolved = right_operand_ty.resolve_in(&self.env);
+
+                if let Some(result_ty) = self.try_operation_with_numeric_alias(
+                    operator,
+                    &left_resolved,
+                    &right_resolved,
+                    &span,
+                ) {
+                    result_ty
+                } else {
+                    let left_ok =
+                        self.ensure_integer_for_binary(operator, left_operand_ty, left_span);
+                    let right_ok =
+                        self.ensure_integer_for_binary(operator, right_operand_ty, right_span);
+                    if left_ok && right_ok {
+                        self.unify_binary_operands(
+                            store,
+                            operator,
+                            left_operand_ty,
+                            right_operand_ty,
+                            &span,
+                        );
+                    }
+                    left_operand_ty.clone()
+                }
+            }
+
+            ShiftLeft | ShiftRight => {
+                self.ensure_integer_for_binary(operator, left_operand_ty, left_span);
+                self.ensure_integer_for_binary(operator, right_operand_ty, right_span);
+                left_operand_ty.clone()
+            }
+
             Pipeline => {
                 panic!("Pipeline operator should have been desugared before type inference")
             }
@@ -563,6 +611,27 @@ impl TaskState<'_> {
         }
         if !resolved_ty.is_numeric() {
             self.sink.push(diagnostics::infer::not_numeric_for_binary(
+                operator,
+                &resolved_ty,
+                *span,
+            ));
+            return false;
+        }
+        true
+    }
+
+    fn ensure_integer_for_binary(
+        &mut self,
+        operator: &BinaryOperator,
+        ty: &Type,
+        span: &Span,
+    ) -> bool {
+        let resolved_ty = self.env.resolve(ty);
+        if matches!(resolved_ty, Type::Var { .. } | Type::Error) {
+            return true;
+        }
+        if !is_integer_type(&resolved_ty, &self.env) {
+            self.sink.push(diagnostics::infer::not_integer_for_binary(
                 operator,
                 &resolved_ty,
                 *span,
@@ -798,8 +867,9 @@ fn is_float_literal(expression: &Expression) -> bool {
 }
 
 fn is_integer_type(ty: &Type, env: &crate::checker::TypeEnv) -> bool {
-    matches!(
-        ty.resolve_in(env).get_name(),
+    let resolved = ty.resolve_in(env);
+    let direct_match = matches!(
+        resolved.get_name(),
         Some(
             "int"
                 | "int8"
@@ -811,10 +881,38 @@ fn is_integer_type(ty: &Type, env: &crate::checker::TypeEnv) -> bool {
                 | "uint16"
                 | "uint32"
                 | "uint64"
+                | "uintptr"
                 | "byte"
                 | "rune"
         )
-    )
+    );
+
+    if direct_match {
+        return true;
+    }
+
+    resolved
+        .underlying_numeric_type()
+        .is_some_and(|underlying| {
+            matches!(
+                underlying.get_name(),
+                Some(
+                    "int"
+                        | "int8"
+                        | "int16"
+                        | "int32"
+                        | "int64"
+                        | "uint"
+                        | "uint8"
+                        | "uint16"
+                        | "uint32"
+                        | "uint64"
+                        | "uintptr"
+                        | "byte"
+                        | "rune"
+                )
+            )
+        })
 }
 
 fn is_cast_expression(expression: &Expression) -> bool {

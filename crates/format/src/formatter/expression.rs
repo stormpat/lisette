@@ -507,6 +507,12 @@ impl<'a> Formatter<'a> {
             Multiplication => "*",
             Division => "/",
             Remainder => "%",
+            BitwiseAnd => "&",
+            BitwiseOr => "|",
+            BitwiseXor => "^",
+            BitwiseAndNot => "&^",
+            ShiftLeft => "<<",
+            ShiftRight => ">>",
             LessThan => "<",
             LessThanOrEqual => "<=",
             GreaterThan => ">",
@@ -576,6 +582,7 @@ impl<'a> Formatter<'a> {
         match operator {
             UnaryOperator::Negative => Document::str("-").append(self.expression(expression)),
             UnaryOperator::Not => Document::str("!").append(self.expression(expression)),
+            UnaryOperator::BitwiseNot => Document::str("^").append(self.expression(expression)),
             UnaryOperator::Deref => self.expression(expression).append(".*"),
         }
     }

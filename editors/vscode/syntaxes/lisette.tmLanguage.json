@@ -249,20 +249,16 @@
           "match": "&&|\\|\\|"
         },
         {
+          "name": "keyword.operator.bitwise.lisette",
+          "match": "<<|>>|&\\^|\\^|\\||&"
+        },
+        {
           "name": "keyword.operator.assignment.lisette",
-          "match": "\\+=|-=|\\*=|/=|%=|="
+          "match": "<<=|>>=|&\\^=|\\^=|\\|=|&=|\\+=|-=|\\*=|/=|%=|="
         },
         {
           "name": "keyword.operator.arithmetic.lisette",
           "match": "[+\\-*/%]"
-        },
-        {
-          "name": "keyword.operator.reference.lisette",
-          "match": "&"
-        },
-        {
-          "name": "punctuation.separator.pipe.lisette",
-          "match": "\\|"
         },
         {
           "name": "keyword.operator.propagation.lisette",

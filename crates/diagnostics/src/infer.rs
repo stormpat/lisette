@@ -887,6 +887,13 @@ pub fn not_numeric(ty: &Type, span: Span) -> LisetteDiagnostic {
         .with_help("The negation operator `-` can only be used with `int` or `float`")
 }
 
+pub fn not_integer(ty: &Type, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Type mismatch")
+        .with_infer_code("type_mismatch")
+        .with_span_label(&span, format!("expected integer type, found `{}`", ty))
+        .with_help("The bitwise complement operator `^` can only be used with integer types")
+}
+
 pub fn not_numeric_for_binary(
     operator: &BinaryOperator,
     ty: &Type,
@@ -897,6 +904,20 @@ pub fn not_numeric_for_binary(
         .with_span_label(&span, format!("expected `int` or `float`, found `{}`", ty))
         .with_help(format!(
             "The `{}` operator can only be used with `int` or `float`",
+            operator
+        ))
+}
+
+pub fn not_integer_for_binary(
+    operator: &BinaryOperator,
+    ty: &Type,
+    span: Span,
+) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Type mismatch")
+        .with_infer_code("type_mismatch")
+        .with_span_label(&span, format!("expected integer type, found `{}`", ty))
+        .with_help(format!(
+            "The `{}` operator can only be used with integer types",
             operator
         ))
 }
@@ -1906,6 +1927,11 @@ fn operator_verb(operator: &BinaryOperator) -> &'static str {
         BinaryOperator::Multiplication => "multiply",
         BinaryOperator::Division => "divide",
         BinaryOperator::Remainder => "get remainder of",
+        BinaryOperator::BitwiseAnd
+        | BinaryOperator::BitwiseOr
+        | BinaryOperator::BitwiseXor
+        | BinaryOperator::BitwiseAndNot => "apply bitwise operator to",
+        BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => "shift",
         BinaryOperator::Equal | BinaryOperator::NotEqual => "compare",
         BinaryOperator::LessThan
         | BinaryOperator::LessThanOrEqual
@@ -1922,7 +1948,14 @@ fn operator_help(op: &BinaryOperator) -> &'static str {
         BinaryOperator::Subtraction
         | BinaryOperator::Multiplication
         | BinaryOperator::Division
-        | BinaryOperator::Remainder => "requires both operands to have the same numeric type",
+        | BinaryOperator::Remainder
+        | BinaryOperator::BitwiseAnd
+        | BinaryOperator::BitwiseOr
+        | BinaryOperator::BitwiseXor
+        | BinaryOperator::BitwiseAndNot => "requires both operands to have the same integer type",
+        BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => {
+            "requires integer operands (the result type comes from the left operand)"
+        }
         BinaryOperator::Equal | BinaryOperator::NotEqual => {
             "requires both operands to have the same type"
         }
