@@ -47,9 +47,7 @@ impl LocalFileSystem {
                             .unwrap_or_default()
                             .to_string()
                     });
-                if !key.is_empty() {
-                    files.insert(key, source);
-                }
+                files.insert(key, source);
             }
         }
 
@@ -84,9 +82,9 @@ fn relative_to_cwd_with(path: &Path, cwd: Option<&Path>) -> Option<String> {
     }
 }
 
-/// Translate module ID to filesystem path.  The entry module maps to the
-/// search-path root itself (empty string) so that search_path.join("")
-/// equals search_path without introducing a trailing ./ component.
+/// Translate module ID to filesystem path.  The entry module returns an empty
+/// string so that `scan_folder` uses the search path directly rather than
+/// joining with `"."`, which would introduce spurious `./` components.
 fn to_fs_path(folder_name: &str) -> &str {
     if folder_name == ENTRY_MODULE_ID {
         ""
