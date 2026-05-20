@@ -236,7 +236,7 @@ impl<'a> Emitter<'a> {
                 .iter()
                 .map(|(file_id, file)| {
                     let path = if file.module_id == analysis.entry_module_id {
-                        format!("src/{}", file.name)
+                        file.name.clone()
                     } else {
                         format!("{}/{}", file.module_id, file.name)
                     };
