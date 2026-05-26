@@ -1,0 +1,12 @@
+---
+source: tests/ui/lint/mod.rs
+---
+  [error] Comparison with NaN
+   ╭─[test.lis:5:11]
+ 4 │   let x: float64 = 1.0
+ 5 │   let _ = x == math.NaN()
+   ·           ───────┬───────
+   ·                  ╰── always false
+ 6 │ }
+   ╰────
+  help: NaN is unequal to every value including itself. Use `math.IsNaN(x)` to test for NaN · code: [infer.nan_comparison]
