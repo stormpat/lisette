@@ -1,0 +1,14 @@
+---
+source: tests/spec/emit/types.rs
+assertion_line: 342
+description: "input: \nfn foo<T>(args: T) -> T {\n  args\n}\n\nfn test() {\n  let result = foo<Unknown>(\"Lilian\")\n}\n"
+---
+package main
+
+func foo[T any](args T) T {
+	return args
+}
+
+func test() {
+	_ = foo[any]("Lilian")
+}
