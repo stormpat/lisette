@@ -277,6 +277,9 @@ impl Planner<'_> {
     }
 
     fn unqualify_name(&self, id: &str) -> String {
+        if id == "Unknown" {
+            return "any".to_string();
+        }
         let (module, unqualified) = if let Some(rest) = id.strip_prefix(go_name::GO_IMPORT_PREFIX) {
             let Some((path, ty)) = rest.rsplit_once('.') else {
                 return go_name::escape_keyword(id).into_owned();

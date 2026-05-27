@@ -343,6 +343,20 @@ fn main() -> int {
 }
 
 #[test]
+fn generic_fn_explicit_unknown_type_arg() {
+    let input = r#"
+fn foo<T>(args: T) -> T {
+  args
+}
+
+fn test() {
+  let result = foo<Unknown>("Lilian")
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn generic_enum_variant_non_t_data_needs_type_arg() {
     let input = r#"
 enum MyResult<T> {

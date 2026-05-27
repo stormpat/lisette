@@ -126,6 +126,17 @@ fn test() -> Slice<int> {
 }
 
 #[test]
+fn slice_new_unknown_element_explicit_type_arg() {
+    let input = r#"
+fn test() {
+  let mut s = Slice.new<Unknown>()
+  s = s.append("Lilian")
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn slice_new_with_void_function_element() {
     let input = r#"
 fn test() -> Slice<fn(int)> {
@@ -420,6 +431,17 @@ fn map_new() {
     let input = r#"
 fn test() -> Map<string, int> {
   Map.new<string, int>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn map_new_unknown_value_explicit_type_args() {
+    let input = r#"
+fn test() {
+  let mut m = Map.new<string, Unknown>()
+  m["key"] = "value"
 }
 "#;
     assert_emit_snapshot!(input);
