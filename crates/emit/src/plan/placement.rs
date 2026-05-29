@@ -199,6 +199,12 @@ impl Planner<'_> {
             return;
         }
 
+        if value.get_type().as_import_namespace().is_some()
+            || self.is_enum_type_namespace_alias(value)
+        {
+            return;
+        }
+
         if let Expression::Propagate { expression, .. } = unwrapped {
             self.emit_propagate(output, expression, Some("_"), return_ctx, fx);
             return;

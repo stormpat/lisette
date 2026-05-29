@@ -822,6 +822,7 @@ import "go:fmt"
 
 fn function() {
   let m = time.Month
+  let _ = time.Month
   fmt.Println("march", m.March)
 }
 "#;
