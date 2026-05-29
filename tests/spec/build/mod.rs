@@ -6197,7 +6197,7 @@ pub enum Color {
 import "go:fmt"
 import "utils"
 
-fn function() {
+fn main() {
   let u = utils
   let c = utils.Color
   fmt.Println("rgb via namespace", u.Color.RGB)

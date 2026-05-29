@@ -152,7 +152,18 @@ impl Planner<'_> {
         let is_prelude = enum_module == go_name::PRELUDE_MODULE;
         let is_cross_module = !self.facts.is_current_module(enum_module) && !is_prelude;
 
-        if is_cross_module && !matches!(expression, Expression::Identifier { .. }) {
+        let is_direct_enum_access = matches!(expression, Expression::Identifier { .. })
+            || matches!(
+                expression,
+                Expression::DotAccess {
+                    expression: inner,
+                    member: type_name,
+                    ..
+                } if inner.get_type().as_import_namespace().is_some()
+                    && unqualified_name(enum_id) == type_name.as_str()
+            );
+
+        if is_cross_module && !is_direct_enum_access {
             return None;
         }
 

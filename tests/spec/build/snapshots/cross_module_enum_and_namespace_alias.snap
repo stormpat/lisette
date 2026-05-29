@@ -1,9 +1,18 @@
 ---
 source: tests/spec/build/mod.rs
-assertion_line: 6209
 ---
 // === main.go ===
 package main
+
+import (
+	"fmt"
+	"github.com/user/myproject/utils"
+)
+
+func main() {
+	fmt.Println("rgb via namespace", utils.MakeColorRGB())
+	fmt.Println("rgb via type alias", utils.MakeColorRGB())
+}
 
 
 // === utils/color.go ===
