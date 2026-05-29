@@ -815,6 +815,20 @@ fn main() {
 }
 
 #[test]
+fn interop_go_value_enum_type_alias() {
+    let input = r#"
+import "go:time"
+import "go:fmt"
+
+fn function() {
+  let m = time.Month
+  fmt.Println("march", m.March)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn interop_value_enum_nested_module() {
     let input = r#"
 import "go:debug/dwarf"

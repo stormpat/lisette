@@ -278,6 +278,33 @@ impl Planner<'_> {
         Some(go_name)
     }
 
+    /// Returns true when `expression` is a module-enum type access used as a
+    /// namespace alias (e.g. `utils.Color`). Such expressions resolve to Go
+    /// type names, not values, so they cannot be emitted as Go variables.
+    pub(crate) fn is_enum_type_namespace_alias(&self, expression: &Expression) -> bool {
+        let Expression::DotAccess {
+            expression: inner,
+            member,
+            ..
+        } = expression
+        else {
+            return false;
+        };
+
+        let inner_ty = inner.get_type();
+
+        let Some(module) = inner_ty.as_import_namespace() else {
+            return false;
+        };
+
+        let qualified = format!("{}.{}", module, member);
+
+        matches!(
+            self.facts.definition(qualified.as_str()),
+            Some(def) if matches!(def.body, DefinitionBody::Enum { .. } | DefinitionBody::ValueEnum { .. })
+        )
+    }
+
     /// Instance method used as a value (e.g. `lib.Point.area` callback →
     /// `lib.Point.Area` Go method expression).
     pub(crate) fn emit_instance_method_value_dot(

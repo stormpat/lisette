@@ -1,0 +1,15 @@
+---
+source: tests/spec/emit/interop_matrix.rs
+assertion_line: 828
+description: "input: \nimport \"go:time\"\nimport \"go:fmt\"\n\nfn function() {\n  let m = time.Month\n  fmt.Println(\"march\", m.March)\n}\n"
+---
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func function() {
+	fmt.Println("march", time.March)
+}

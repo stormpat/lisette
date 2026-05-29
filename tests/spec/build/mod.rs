@@ -6175,3 +6175,36 @@ fn main() {
         "a single-field tuple is a newtype with no F0 field; got: {codes:?}"
     );
 }
+
+#[test]
+fn cross_module_enum_and_namespace_alias() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        "utils",
+        "color.lis",
+        r#"
+pub enum Color {
+  RGB,
+}
+"#,
+    );
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+import "utils"
+
+fn function() {
+  let u = utils
+  let c = utils.Color
+  fmt.Println("rgb via namespace", u.Color.RGB)
+  fmt.Println("rgb via type alias", c.RGB)
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
+}

@@ -1,0 +1,35 @@
+---
+source: tests/spec/build/mod.rs
+assertion_line: 6209
+---
+// === main.go ===
+package main
+
+
+// === utils/color.go ===
+package utils
+
+import "fmt"
+
+func MakeColorRGB() Color {
+	return Color{Tag: ColorRGB}
+}
+
+type ColorTag int
+
+const (
+	ColorRGB ColorTag = iota
+)
+
+type Color struct {
+	Tag ColorTag
+}
+
+func (c Color) String() string {
+	switch c.Tag {
+	case ColorRGB:
+		return "Color.RGB"
+	default:
+		return fmt.Sprintf("Color(%d)", c.Tag)
+	}
+}
