@@ -7728,3 +7728,75 @@ fn main() {
         result.errors
     );
 }
+
+#[test]
+fn infer_enum_type_alias_used_as_value() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        "utils",
+        "color.lis",
+        r#"
+pub enum Color {
+  RGB,
+}
+"#,
+    );
+
+    let source = r#"
+import "go:fmt"
+import "utils"
+
+fn main() {
+  let c = utils.Color
+  fmt.Println(c)
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+
+    let result = infer_module("main", fs);
+    assert_multimodule_infer_error_snapshot!(result, source);
+}
+
+#[test]
+fn infer_enum_type_via_module_alias_used_as_value() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        "utils",
+        "color.lis",
+        r#"
+pub enum Color {
+  RGB,
+}
+"#,
+    );
+
+    let source = r#"
+import "go:fmt"
+import "utils"
+
+fn main() {
+  let u = utils
+  fmt.Println(u.Color)
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+
+    let result = infer_module("main", fs);
+    assert_multimodule_infer_error_snapshot!(result, source);
+}
+
+#[test]
+fn infer_go_value_enum_type_alias_used_as_value() {
+    let input = r#"
+import "go:time"
+import "go:fmt"
+
+fn main() {
+  let m = time.Month
+  fmt.Println(m)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
