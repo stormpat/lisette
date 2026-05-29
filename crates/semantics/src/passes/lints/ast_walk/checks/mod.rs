@@ -10,6 +10,8 @@ mod identical_if_branches;
 mod invisible_in_string;
 mod match_literal_collection;
 mod naming;
+mod needless_bool;
+mod needless_return;
 mod replaceable_with_zero_fill;
 mod rest_only_slice_pattern;
 mod self_assignment;
@@ -19,6 +21,7 @@ mod uninterpolated_fstring;
 mod unnecessary_raw_string;
 mod unsigned_comparison;
 mod verbose_failure_propagation;
+mod waitgroup_add_in_task;
 
 pub use bool_literal_comparison::check_bool_literal_comparison;
 pub use double_negation::check_double_negation;
@@ -33,6 +36,8 @@ pub use invisible_in_string::{
 };
 pub use match_literal_collection::check_match_literal_collection;
 pub use naming::{check_expression_naming, check_pattern_naming};
+pub use needless_bool::check_needless_bool;
+pub use needless_return::check_needless_return;
 pub use replaceable_with_zero_fill::check_replaceable_with_zero_fill;
 pub use rest_only_slice_pattern::check_rest_only_slice_pattern;
 pub use self_assignment::check_self_assignment;
@@ -44,3 +49,4 @@ pub use unnecessary_raw_string::{
 };
 pub use unsigned_comparison::check_unsigned_comparison;
 pub use verbose_failure_propagation::check_verbose_failure_propagation;
+pub use waitgroup_add_in_task::check_waitgroup_add_in_task;

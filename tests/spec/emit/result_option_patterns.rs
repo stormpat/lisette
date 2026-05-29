@@ -1002,6 +1002,28 @@ fn main() {
 }
 
 #[test]
+fn lisette_function_returning_result_tuple_uses_packed_abi() {
+    let input = r#"
+fn pair<A, B>(a: A, b: B) -> Result<(A, B), error> {
+  Ok((a, b))
+}
+
+fn test() {
+  match pair<int, string>(1, "x") {
+    Ok((first, second)) => {
+      let _ = first
+      let _ = second
+    },
+    Err(e) => {
+      let _ = e
+    },
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn complex_number_with_typed_float_multiplication() {
     let input = r#"
 import "go:fmt"
@@ -1148,10 +1170,9 @@ fn test() -> Option<()> {
 fn wrapped_return_temp_no_collision() {
     let input = r#"
 fn foo() -> Option<int> {
-  return if true { Some(1) } else { None };
   let tmp_1 = 7;
   let _ = tmp_1;
-  None
+  return if true { Some(1) } else { None };
 }
 
 fn main() {

@@ -667,6 +667,163 @@ fn main() {
 }
 
 #[test]
+fn needless_return_simple() {
+    assert_lint_snapshot!(
+        r#"
+fn five() -> int {
+  return 5
+}
+
+fn main() {
+  let _ = five()
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_after_statements() {
+    assert_lint_snapshot!(
+        r#"
+fn doubled(n: int) -> int {
+  let x = n * 2
+  return x
+}
+
+fn main() {
+  let _ = doubled(3)
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_if_else_branches() {
+    assert_lint_snapshot!(
+        r#"
+fn sign(n: int) -> int {
+  if n > 0 {
+    return 1
+  } else {
+    return 2
+  }
+}
+
+fn main() {
+  let _ = sign(3)
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_match_arms() {
+    assert_lint_snapshot!(
+        r#"
+fn label(n: int) -> string {
+  match n {
+    0 => return "zero",
+    _ => return "other",
+  }
+}
+
+fn main() {
+  let _ = label(0)
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_early_return_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn clamp(n: int) -> int {
+  if n > 0 {
+    return 1
+  }
+  n + 1
+}
+
+fn main() {
+  let _ = clamp(1)
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_in_loop_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn first_positive(xs: Slice<int>) -> int {
+  for x in xs {
+    if x > 0 {
+      return x
+    }
+  }
+  0
+}
+
+fn main() {
+  let _ = first_positive([1])
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_bare_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn greet() {
+  return
+}
+
+fn main() {
+  greet()
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_let_else_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn unwrap_or_zero(x: Option<int>) -> int {
+  let Some(v) = x else {
+    return 0
+  }
+  v
+}
+
+fn main() {
+  let _ = unwrap_or_zero(Some(3))
+}
+"#
+    );
+}
+
+#[test]
+fn needless_return_in_lambda_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn apply() -> int {
+  let f = || {
+    return 1
+  }
+  f()
+}
+
+fn main() {
+  let _ = apply()
+}
+"#
+    );
+}
+
+#[test]
 fn nan_comparison_equal() {
     assert_lint_snapshot!(
         r#"
@@ -913,6 +1070,62 @@ fn main() {
 }
 
 #[test]
+fn needless_bool_true_false() {
+    assert_lint_snapshot!(
+        r#"
+fn main() {
+  let a = 5;
+  let b = 10;
+  let x = if a > b { true } else { false };
+  let _ = x
+}
+"#
+    );
+}
+
+#[test]
+fn needless_bool_false_true() {
+    assert_lint_snapshot!(
+        r#"
+fn main() {
+  let a = 5;
+  let b = 10;
+  let x = if a > b { false } else { true };
+  let _ = x
+}
+"#
+    );
+}
+
+#[test]
+fn needless_bool_non_bool_branches_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let a = 5;
+  let b = 10;
+  let x = if a > b { 1 } else { 0 };
+  let _ = x
+}
+"#
+    );
+}
+
+#[test]
+fn needless_bool_branch_not_literal_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let a = 5;
+  let b = 10;
+  let x = if a > b { true } else { a < b };
+  let _ = x
+}
+"#
+    );
+}
+
+#[test]
 fn repeated_if_condition_simple() {
     assert_lint_snapshot!(
         r#"
@@ -994,6 +1207,210 @@ fn repeated_if_condition_simple_if_else_no_warning() {
 fn main() {
   let x = 5;
   let _ = if x > 0 { 1 } else { 2 }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_comparison() {
+    assert_lint_snapshot!(
+        r#"
+fn main() {
+  let n = 5;
+  while n < 10 {
+    let _ = n
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_negated_flag() {
+    assert_lint_snapshot!(
+        r#"
+fn main() {
+  let done = false;
+  while !done {
+    let _ = done
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_mutated_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let mut i = 0;
+  while i < 10 {
+    i = i + 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_partial_mutation_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let mut a = 0;
+  let b = 5;
+  while a < b {
+    a = a + 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_break_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let n = 5;
+  while n < 10 {
+    let _ = n
+    break
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_return_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let n = 5;
+  while n < 10 {
+    return
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_call_in_condition_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn check() -> bool { true }
+
+fn main() {
+  while check() {
+    let _ = 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_literal_condition_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  while true {
+    let _ = 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_try_scoped_propagate() {
+    assert_lint_snapshot!(
+        r#"
+fn may_fail() -> Result<int, string> { Ok(1) }
+
+fn main() {
+  let n = 5;
+  while n < 10 {
+    let _ = try { may_fail()? }
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_function_propagate_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn may_fail() -> Result<int, string> { Ok(1) }
+
+fn run() -> Result<int, string> {
+  let n = 5;
+  while n < 10 {
+    let _ = may_fail()?
+  }
+  Ok(0)
+}
+
+fn main() {
+  let _ = run()
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_diverging_call_in_try_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn may_fail() -> Result<int, string> { Ok(1) }
+fn diverge() -> Never { panic("x") }
+
+fn run() {
+  let n = 5;
+  while n < 10 {
+    let _ = try {
+      let _ = may_fail()?
+      diverge()
+    }
+  }
+}
+
+fn main() {
+  run()
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_deref_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+fn main() {
+  let mut x = 0;
+  let r = &x;
+  while r.* < 10 {
+    x = x + 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn unchanging_loop_condition_task_return() {
+    assert_lint_snapshot!(
+        r#"
+fn main() {
+  let n = 5;
+  while n < 10 {
+    task { return }
+  }
 }
 "#
     );
@@ -1742,8 +2159,8 @@ pub fn foo() -> int {
 fn no_dead_code_when_return_is_last() {
     assert_no_lint_warnings!(
         r#"
-pub fn foo() -> int {
-  return 42
+pub fn foo() {
+  return
 }
 "#
     );
@@ -1826,11 +2243,11 @@ pub fn foo() -> int {
 fn no_dead_code_when_only_one_branch_returns() {
     assert_no_lint_warnings!(
         r#"
-pub fn foo() -> int {
+pub fn foo() {
   if true {
-    return 1
+    return
   } else {
-    2
+    ()
   }
 }
 "#
@@ -1857,10 +2274,10 @@ pub fn foo(x: int) -> int {
 fn no_dead_code_when_not_all_match_arms_diverge() {
     assert_no_lint_warnings!(
         r#"
-pub fn foo(x: int) -> int {
+pub fn foo(x: int) {
   match x {
-    0 => return 0,
-    _ => 1,
+    0 => { return },
+    _ => (),
   }
 }
 "#
@@ -4923,10 +5340,10 @@ import "go:fmt"
 
 fn main() {
   let ch = Channel.new<int>()
-  let done = false
+  let mut done = false
   while !done {
     select {
-      let Some(v) = ch.receive() => fmt.Println(v),
+      let Some(v) = ch.receive() => { fmt.Println(v); done = true },
       _ => {},
     }
   }
@@ -5315,7 +5732,7 @@ fn dup_arg_calls_with_side_effects_no_warning() {
 import "go:math"
 
 fn next() -> float64 {
-  return 1.0
+  1.0
 }
 
 fn main() {
@@ -5559,6 +5976,95 @@ fn non_json_channel_field_no_warning() {
         r#"
 pub struct Job {
   ch: Channel<int>,
+}
+"#
+    );
+}
+
+#[test]
+fn waitgroup_add_in_task() {
+    assert_lint_snapshot!(
+        r#"
+import "go:sync"
+
+fn main() {
+  let mut wg = sync.WaitGroup {}
+  task {
+    wg.Add(1)
+    wg.Done()
+  }
+  wg.Wait()
+}
+"#
+    );
+}
+
+#[test]
+fn waitgroup_add_before_task_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+import "go:sync"
+
+fn main() {
+  let mut wg = sync.WaitGroup {}
+  wg.Add(1)
+  task {
+    wg.Done()
+  }
+  wg.Wait()
+}
+"#
+    );
+}
+
+#[test]
+fn waitgroup_add_in_task_not_waited_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+import "go:sync"
+
+fn main() {
+  let mut wg = sync.WaitGroup {}
+  task {
+    wg.Add(1)
+    wg.Done()
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn waitgroup_negative_add_in_task_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+import "go:sync"
+
+fn main() {
+  let mut wg = sync.WaitGroup {}
+  wg.Add(1)
+  task {
+    wg.Add(-1)
+  }
+  wg.Wait()
+}
+"#
+    );
+}
+
+#[test]
+fn waitgroup_distinct_groups_no_warning() {
+    assert_no_lint_warnings!(
+        r#"
+import "go:sync"
+
+fn main() {
+  let mut wg1 = sync.WaitGroup {}
+  let mut wg2 = sync.WaitGroup {}
+  task {
+    wg1.Add(1)
+  }
+  wg2.Wait()
 }
 "#
     );

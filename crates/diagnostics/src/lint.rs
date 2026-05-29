@@ -298,11 +298,31 @@ pub fn bool_literal_comparison(span: &Span, replacement: &str) -> LisetteDiagnos
         .with_help(format!("Simplify to `{replacement}`"))
 }
 
+pub fn needless_return(span: &Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::warn("Needless `return`")
+        .with_lint_code("needless_return")
+        .with_span_label(span, "redundant in tail position")
+        .with_help("The final expression of a function is its return value. Drop `return` and keep the value")
+}
+
 pub fn identical_if_branches(span: &Span) -> LisetteDiagnostic {
     LisetteDiagnostic::warn("Identical if-else branches")
         .with_lint_code("identical_if_branches")
         .with_span_label(span, "both branches are equivalent")
         .with_help("Remove the `if` and keep a single copy of the branch body")
+}
+
+pub fn needless_bool(span: &Span, consequence_is_true: bool) -> LisetteDiagnostic {
+    let help = if consequence_is_true {
+        "Replace this `if... else` with the condition itself"
+    } else {
+        "Replace this `if... else` with the negated condition"
+    };
+
+    LisetteDiagnostic::warn("Needless boolean if-else")
+        .with_lint_code("needless_bool")
+        .with_span_label(span, "needlessly verbose")
+        .with_help(help)
 }
 
 pub fn empty_match_arm(span: &Span) -> LisetteDiagnostic {
@@ -526,4 +546,13 @@ pub fn duplicate_arguments(span: &Span, module: &str, function: &str) -> Lisette
         .with_help(format!(
             "Passing the same value twice to `{display_module}.{function}` makes this call a no-op. Did you mean to pass different values?"
         ))
+}
+
+pub fn waitgroup_add_in_task(span: &Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::warn("`WaitGroup.Add` inside a `task`")
+        .with_lint_code("waitgroup_add_in_task")
+        .with_span_label(span, "may run after `Wait`")
+        .with_help(
+            "If `Wait` runs before this `Add`, it sees a zero counter and returns immediately. Call `Add` before the `task`",
+        )
 }
