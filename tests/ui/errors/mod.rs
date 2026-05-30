@@ -7794,3 +7794,18 @@ fn main() {
 "#;
     assert_infer_error_snapshot!(input);
 }
+
+#[test]
+fn infer_type_alias_of_enum_used_as_value() {
+    let input = r#"
+import "go:time"
+import "go:fmt"
+
+type Month = time.Month
+
+fn main() {
+  fmt.Println(Month)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}

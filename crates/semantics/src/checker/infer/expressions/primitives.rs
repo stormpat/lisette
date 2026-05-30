@@ -3,6 +3,7 @@ use crate::store::Store;
 use syntax::EcoString;
 use syntax::ast::DeadCodeCause;
 use syntax::ast::{BinaryOperator, Expression, Span, UnaryOperator};
+use syntax::program::DefinitionBody;
 use syntax::types::Type;
 
 use super::super::TaskState;
@@ -253,6 +254,28 @@ impl TaskState<'_> {
             && let Some(definition_span) = self.get_definition_name_span(store, qname.as_str())
         {
             self.facts.add_usage(span, definition_span);
+        }
+
+        if let Some(ref qname) = qualified
+            && let Some(definition) = store.get_definition(qname.as_str())
+            && let DefinitionBody::TypeAlias { .. } = &definition.body
+            && !self.scopes.is_callee_context()
+            && !self.scopes.is_dot_access_base()
+        {
+            let alias_ty = &definition.ty;
+            let underlying = match alias_ty {
+                Type::Forall { body, .. } => body.as_ref(),
+                other => other,
+            };
+            if let Type::Nominal { id, .. } = underlying
+                && matches!(
+                    store.get_definition(id.as_str()).map(|d| &d.body),
+                    Some(DefinitionBody::Enum { .. } | DefinitionBody::ValueEnum { .. })
+                )
+            {
+                self.sink
+                    .push(diagnostics::infer::namespace_alias_used_as_value(span));
+            }
         }
 
         let ty = match self.lookup_type(store, &value) {
