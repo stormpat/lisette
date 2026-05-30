@@ -177,21 +177,20 @@ impl TaskState<'_> {
                 ));
         }
         // Reject enum type bindings: `let c = utils.Color`
-        else if is_namespace_alias_expr(store, &new_value) {
-            if let Expression::DotAccess {
+        else if is_namespace_alias_expr(store, &new_value)
+            && let Expression::DotAccess {
                 expression: inner,
                 member,
                 ..
             } = &new_value
-            {
-                let inner_ty = inner.get_type();
-                if let Some(module_id) = inner_ty.as_import_namespace() {
-                    let type_name = format!("{}.{}", module_id, member);
-                    self.sink.push(diagnostics::infer::let_binding_enum_type(
-                        &type_name,
-                        new_value.get_span(),
-                    ));
-                }
+        {
+            let inner_ty = inner.get_type();
+            if let Some(module_id) = inner_ty.as_import_namespace() {
+                let type_name = format!("{}.{}", module_id, member);
+                self.sink.push(diagnostics::infer::let_binding_enum_type(
+                    &type_name,
+                    new_value.get_span(),
+                ));
             }
         }
 
