@@ -305,16 +305,6 @@ impl Planner<'_> {
             return;
         }
 
-        // Module namespace and enum type-namespace aliases (eg. `let e = utils` or `let e = utils.Color`)
-        // have no runtime value in Go. Bind the Lisette name so downstream dot-accesses
-        // resolve via result-type  information, but emit no Go variable.
-        if value.get_type().as_import_namespace().is_some()
-            || self.is_enum_type_namespace_alias(value)
-        {
-            self.scope.bind(identifier, raw_go_name);
-            return;
-        }
-
         let value_expression = self.emit_value(
             output,
             value,

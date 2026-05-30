@@ -177,20 +177,25 @@ impl TaskState<'_> {
                 ));
         }
         // Reject enum type bindings: `let c = utils.Color`
-        else if is_namespace_alias_expr(store, &new_value)
-            && let Expression::DotAccess {
-                expression: inner,
-                member,
-                ..
-            } = &new_value
+        else if let Expression::DotAccess {
+            expression: inner,
+            member,
+            ..
+        } = &new_value
         {
             let inner_ty = inner.get_type();
             if let Some(module_id) = inner_ty.as_import_namespace() {
-                let type_name = format!("{}.{}", module_id, member);
-                self.sink.push(diagnostics::infer::let_binding_enum_type(
-                    &type_name,
-                    new_value.get_span(),
-                ));
+                let qualified = Symbol::from_parts(module_id, member.as_str());
+                if matches!(
+                    store.get_definition(&qualified).map(|d| &d.body),
+                    Some(DefinitionBody::Enum { .. } | DefinitionBody::ValueEnum { .. })
+                ) {
+                    let type_name = format!("{}.{}", module_id, member);
+                    self.sink.push(diagnostics::infer::let_binding_enum_type(
+                        &type_name,
+                        new_value.get_span(),
+                    ));
+                }
             }
         }
 
@@ -209,34 +214,4 @@ impl TaskState<'_> {
             span,
         }
     }
-}
-
-/// Returns true when `expr` is a module or enum-type namespace reference —
-/// i.e., an expression that has no runtime value in Go:
-///   - `utils`          → ImportNamespace
-///   - `utils.Color`    → DotAccess on ImportNamespace whose member is an Enum/ValueEnum
-fn is_namespace_alias_expr(store: &Store, expr: &Expression) -> bool {
-    if expr.get_type().as_import_namespace().is_some() {
-        return true;
-    }
-
-    let Expression::DotAccess {
-        expression: inner,
-        member,
-        ..
-    } = expr
-    else {
-        return false;
-    };
-
-    let inner_ty = inner.get_type();
-    let Some(module_id) = inner_ty.as_import_namespace() else {
-        return false;
-    };
-
-    let qualified = Symbol::from_parts(module_id, member.as_str());
-    matches!(
-        store.get_definition(&qualified).map(|d| &d.body),
-        Some(DefinitionBody::Enum { .. } | DefinitionBody::ValueEnum { .. })
-    )
 }

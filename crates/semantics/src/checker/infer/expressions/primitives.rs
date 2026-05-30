@@ -262,17 +262,8 @@ impl TaskState<'_> {
             && !self.scopes.is_callee_context()
             && !self.scopes.is_dot_access_base()
         {
-            let alias_ty = &definition.ty;
-            let underlying = match alias_ty {
-                Type::Forall { body, .. } => body.as_ref(),
-                other => other,
-            };
-            if let Type::Nominal { id, .. } = underlying
-                && matches!(
-                    store.get_definition(id.as_str()).map(|d| &d.body),
-                    Some(DefinitionBody::Enum { .. } | DefinitionBody::ValueEnum { .. })
-                )
-            {
+            let underlying = definition.ty.unwrap_forall();
+            if self.is_enum_type(store, underlying) {
                 self.sink
                     .push(diagnostics::infer::namespace_alias_used_as_value(span));
             }

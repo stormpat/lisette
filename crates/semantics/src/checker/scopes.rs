@@ -135,9 +135,9 @@ pub struct Scopes {
     /// record-struct-as-value error when the struct name is a type qualifier
     /// (e.g. `lib.Point` in `lib.Point.sum`).
     dot_access_base: Cell<bool>,
-    /// True when inferring the right-hand side of a `let` binding. Allows
-    /// enum-type namespace expressions (e.g. `utils.Color`, `time.Month`) as
-    /// the bound value so they can be used as dot-access aliases (`c.RGB`).
+    /// True while inferring a `let` binding's right-hand side. Suppresses the generic
+    /// "used as a value" rejection there so `bindings.rs` can raise the specific
+    /// "cannot bind a type or module to a variable" error instead.
     let_binding_rhs: Cell<bool>,
     /// The enclosing impl block's receiver type, used to resolve `self`
     /// parameter annotations inside the impl's methods. `None` outside impls.
