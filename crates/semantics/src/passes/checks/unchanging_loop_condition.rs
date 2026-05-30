@@ -4,17 +4,7 @@ use syntax::ast::{BindingId, Expression, UnaryOperator};
 
 use crate::facts::BindingFact;
 
-pub(crate) fn run(
-    typed_ast: &[Expression],
-    bindings: &HashMap<BindingId, BindingFact>,
-    sink: &LocalSink,
-) {
-    for item in typed_ast {
-        visit_expression(item, bindings, sink);
-    }
-}
-
-fn visit_expression(
+pub(crate) fn check(
     expression: &Expression,
     bindings: &HashMap<BindingId, BindingFact>,
     sink: &LocalSink,
@@ -28,10 +18,6 @@ fn visit_expression(
         sink.push(diagnostics::infer::unchanging_loop_condition(
             &condition.get_span(),
         ));
-    }
-
-    for child in expression.children() {
-        visit_expression(child, bindings, sink);
     }
 }
 
