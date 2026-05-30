@@ -581,6 +581,20 @@ impl TaskState<'_> {
                     *args.span,
                 ));
             }
+
+            if !self.scopes.is_callee_context()
+                && !self.scopes.is_dot_access_base()
+                && !self.scopes.is_let_binding_rhs()
+                && matches!(
+                    store.get_definition(&qualified_name).map(|d| &d.body),
+                    Some(DefinitionBody::Enum { .. } | DefinitionBody::ValueEnum { .. })
+                )
+            {
+                self.sink
+                    .push(diagnostics::infer::namespace_alias_used_as_value(
+                        *args.span,
+                    ));
+            }
         }
 
         let (module_ty, _) = self.instantiate(&module_ty);
