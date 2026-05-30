@@ -10,8 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("rgb via namespace", utils.MakeColorRGB())
-	fmt.Println("rgb via type alias", utils.MakeColorRGB())
+	fmt.Println("rgb direct", utils.MakeColorRGB())
 }
 
 

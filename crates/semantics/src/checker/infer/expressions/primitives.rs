@@ -238,16 +238,7 @@ impl TaskState<'_> {
 
             if let Some(binding_fact) = self.facts.bindings.get(&id) {
                 let definition_span = binding_fact.span;
-                let is_namespace_alias = binding_fact.is_namespace_alias;
                 self.facts.add_usage(span, definition_span);
-
-                if is_namespace_alias
-                    && !self.scopes.is_dot_access_base()
-                    && !self.scopes.is_callee_context()
-                {
-                    self.sink
-                        .push(diagnostics::infer::namespace_alias_used_as_value(span));
-                }
             }
         }
 

@@ -168,14 +168,31 @@ impl TaskState<'_> {
             ));
         }
 
-        // If the value is a module or enum-type namespace (e.g. `let u = utils` or
-        // `let c = utils.Color`), mark the binding so that direct value uses of `c`
-        // or `u` (outside of a dot-access chain) are rejected at the identifier site.
-        if let Some(ref name) = binding_name
-            && is_namespace_alias_expr(store, &new_value)
-            && let Some(id) = self.scopes.lookup_binding_id(name.as_str())
-        {
-            self.facts.mark_namespace_alias(id);
+        // Reject module namespace bindings: `let u = utils`
+        if let Some(module_id) = new_value.get_type().as_import_namespace() {
+            self.sink
+                .push(diagnostics::infer::let_binding_module_namespace(
+                    module_id,
+                    new_value.get_span(),
+                ));
+        }
+        // Reject enum type bindings: `let c = utils.Color`
+        else if is_namespace_alias_expr(store, &new_value) {
+            if let Expression::DotAccess {
+                expression: inner,
+                member,
+                ..
+            } = &new_value
+            {
+                let inner_ty = inner.get_type();
+                if let Some(module_id) = inner_ty.as_import_namespace() {
+                    let type_name = format!("{}.{}", module_id, member);
+                    self.sink.push(diagnostics::infer::let_binding_enum_type(
+                        &type_name,
+                        new_value.get_span(),
+                    ));
+                }
+            }
         }
 
         let unit_ty = self.type_unit();

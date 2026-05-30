@@ -6254,10 +6254,7 @@ import "go:fmt"
 import "utils"
 
 fn main() {
-  let u = utils
-  let c = utils.Color
-  fmt.Println("rgb via namespace", u.Color.RGB)
-  fmt.Println("rgb via type alias", c.RGB)
+  fmt.Println("rgb direct", utils.Color.RGB)
 }
 "#,
     );

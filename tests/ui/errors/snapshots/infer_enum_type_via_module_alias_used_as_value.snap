@@ -1,12 +1,12 @@
 ---
 source: tests/ui/errors/mod.rs
 ---
-  [error] Cannot use a module or enum-type alias as a value
-   ╭─[main.lis:7:15]
- 6 │   let u = utils
- 7 │   fmt.Println(u.Color)
-   ·               ───┬───
-   ·                  ╰── this alias refers to a type or module, not a runtime value
- 8 │ }
+  [error] Cannot bind a module namespace to a variable
+   ╭─[main.lis:5:11]
+ 4 │ fn main() {
+ 5 │   let u = utils
+   ·           ──┬──
+   ·             ╰── module namespaces are not runtime values
+ 6 │ }
    ╰────
-  help: Access a member instead, e.g. `alias.VariantName` · code: [infer.namespace_alias_used_as_value]
+  help: Use an import alias instead: `import alias "utils"` · code: [infer.let_binding_module_namespace]

@@ -1,7 +1,7 @@
 ---
 source: tests/spec/emit/interop_matrix.rs
 assertion_line: 828
-description: "input: \nimport \"go:time\"\nimport \"go:fmt\"\n\nfn function() {\n  let m = time.Month\n  fmt.Println(\"march\", m.March)\n}\n"
+description: "input: \nimport \"go:time\"\nimport \"go:fmt\"\n\nfn function() {\n  fmt.Println(\"march\", time.Month.March)\n}\n"
 ---
 package main
 

@@ -120,7 +120,6 @@ impl Facts {
                 is_typedef,
                 is_struct_field,
                 is_as_alias,
-                is_namespace_alias: false,
             },
         );
         id
@@ -129,12 +128,6 @@ impl Facts {
     pub fn mark_used(&mut self, id: BindingId) {
         if let Some(fact) = self.bindings.get_mut(&id) {
             fact.used = true;
-        }
-    }
-
-    pub fn mark_namespace_alias(&mut self, id: BindingId) {
-        if let Some(fact) = self.bindings.get_mut(&id) {
-            fact.is_namespace_alias = true;
         }
     }
 
@@ -322,10 +315,6 @@ pub struct BindingFact {
     pub is_struct_field: bool,
     /// If true, this binding was introduced by an `as` alias (e.g., `Point { .. } as p`)
     pub is_as_alias: bool,
-    /// If true, this binding refers to a module or enum type namespace (e.g. `let u = utils`
-    /// or `let c = utils.Color`). Such bindings have no runtime value in Go — they can only
-    /// be used as a dot-access base (e.g. `u.Color.RGB`, `c.RGB`).
-    pub is_namespace_alias: bool,
 }
 
 #[derive(Debug, Clone)]

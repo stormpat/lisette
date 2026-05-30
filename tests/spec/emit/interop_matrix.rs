@@ -821,9 +821,7 @@ import "go:time"
 import "go:fmt"
 
 fn function() {
-  let m = time.Month
-  let _ = time.Month
-  fmt.Println("march", m.March)
+  fmt.Println("march", time.Month.March)
 }
 "#;
     assert_emit_snapshot!(input);
