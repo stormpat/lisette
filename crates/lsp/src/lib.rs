@@ -1124,9 +1124,7 @@ impl LanguageServer for Backend {
                     get_instance_completions(&type_id, &snapshot, same_module)
                 }
                 DotContext::TypeLevel(type_id) => {
-                    let same_module = type_id.starts_with(file.module_id.as_str())
-                        && type_id.as_bytes().get(file.module_id.len()) == Some(&b'.');
-                    get_type_completions(&type_id, &snapshot, same_module)
+                    get_type_completions(&type_id, &snapshot, &file.module_id)
                 }
             };
             return Ok(Some(CompletionResponse::Array(items)));
@@ -1145,8 +1143,7 @@ impl LanguageServer for Backend {
                     if let Some(definition) = snapshot.definitions().get(qualified.as_str())
                         && definition.is_type_definition()
                     {
-                        let same_module = module == file.module_id.as_str();
-                        let items = get_type_completions(&qualified, &snapshot, same_module);
+                        let items = get_type_completions(&qualified, &snapshot, &file.module_id);
                         return Ok(Some(CompletionResponse::Array(items)));
                     }
                 }
@@ -1157,7 +1154,7 @@ impl LanguageServer for Backend {
                         && definition.is_type_definition()
                         && definition.visibility().is_public()
                     {
-                        let items = get_type_completions(&qualified, &snapshot, false);
+                        let items = get_type_completions(&qualified, &snapshot, &file.module_id);
                         return Ok(Some(CompletionResponse::Array(items)));
                     }
                 }

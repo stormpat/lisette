@@ -1024,6 +1024,86 @@ fn main() {
 }
 
 #[tokio::test]
+async fn completion_type_dot_via_alias_to_concrete_map_shows_methods() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+type M = Map<string, int>
+fn main() {
+  let _ = M.
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 12).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "new"),
+        "should include 'new' via alias to Map<string, int>, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_type_dot_via_alias_to_concrete_slice_shows_methods() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+type Buf = Slice<byte>
+fn main() {
+  let _ = Buf.
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 14).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "new"),
+        "should include 'new' via alias to Slice<byte>, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_enum_dot_via_type_alias_shows_variants() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+enum Kind { Int, String }
+type K = Kind
+fn main() {
+  let o = K.
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 3, 12).await;
+    assert!(
+        response.is_some(),
+        "should return completions for type-alias dot"
+    );
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "Int"),
+        "should include 'Int' variant via alias, got: {labels:?}"
+    );
+    assert!(
+        labels.iter().any(|l| l == "String"),
+        "should include 'String' variant via alias, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn completion_enum_dot_shows_tuple_variants() {
     let mut client = TestClient::new().await;
     client.initialize().await;
@@ -9632,6 +9712,130 @@ async fn completion_on_cross_module_enum_dot_access() {
         labels.contains(&"Green".to_string()),
         "should include variant 'Green', got: {:?}",
         labels
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_dot_on_alias_to_cross_module_enum_shows_variants() {
+    let mut client = TestClient::new().await;
+
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path();
+
+    std::fs::write(
+        root_path.join("lisette.toml"),
+        "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root_path.join("src/utils")).unwrap();
+    std::fs::write(
+        root_path.join("src/utils/utils.lis"),
+        "pub enum Kind { Int, String }\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root_path.join("src/main")).unwrap();
+    std::fs::write(
+        root_path.join("src/main/main.lis"),
+        "import \"utils\"\ntype K = utils.Kind\nfn main() {\n  let o = K.\n}\n",
+    )
+    .unwrap();
+
+    client.initialize_with_root(root_path).await;
+
+    let utils_uri = format!("file://{}", root_path.join("src/utils/utils.lis").display());
+    let main_uri = format!("file://{}", root_path.join("src/main/main.lis").display());
+
+    client
+        .open(
+            &utils_uri,
+            &std::fs::read_to_string(root_path.join("src/utils/utils.lis")).unwrap(),
+        )
+        .await;
+    client
+        .open(
+            &main_uri,
+            &std::fs::read_to_string(root_path.join("src/main/main.lis")).unwrap(),
+        )
+        .await;
+
+    let response = client.completion(&main_uri, 3, 12).await;
+    assert!(
+        response.is_some(),
+        "completion after alias dot should return results"
+    );
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.contains(&"Int".to_string()),
+        "should include 'Int' via alias to cross-module enum, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"String".to_string()),
+        "should include 'String' via alias to cross-module enum, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_dot_on_alias_to_cross_module_enum_hides_private_static_methods() {
+    let mut client = TestClient::new().await;
+
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path();
+
+    std::fs::write(
+        root_path.join("lisette.toml"),
+        "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root_path.join("src/utils")).unwrap();
+    std::fs::write(
+        root_path.join("src/utils/utils.lis"),
+        "pub enum Kind { Int, String }\n\
+impl Kind {\n\
+  pub fn public_static() -> int { 1 }\n\
+  fn private_static() -> int { 2 }\n\
+}\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root_path.join("src/main")).unwrap();
+    std::fs::write(
+        root_path.join("src/main/main.lis"),
+        "import \"utils\"\ntype K = utils.Kind\nfn main() {\n  let _ = K.\n}\n",
+    )
+    .unwrap();
+
+    client.initialize_with_root(root_path).await;
+
+    let utils_uri = format!("file://{}", root_path.join("src/utils/utils.lis").display());
+    let main_uri = format!("file://{}", root_path.join("src/main/main.lis").display());
+
+    client
+        .open(
+            &utils_uri,
+            &std::fs::read_to_string(root_path.join("src/utils/utils.lis")).unwrap(),
+        )
+        .await;
+    client
+        .open(
+            &main_uri,
+            &std::fs::read_to_string(root_path.join("src/main/main.lis")).unwrap(),
+        )
+        .await;
+
+    let response = client.completion(&main_uri, 3, 12).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.contains(&"public_static".to_string()),
+        "should include 'public_static' from cross-module aliased type, got: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"private_static".to_string()),
+        "should NOT include 'private_static' from cross-module aliased type, got: {labels:?}"
     );
 
     client.shutdown().await;

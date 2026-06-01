@@ -2,6 +2,8 @@ use rustc_hash::FxHashSet;
 use tower_lsp::lsp_types::*;
 
 use syntax::ast::Expression;
+use syntax::program::DefinitionBody;
+use syntax::types::Type;
 
 use crate::definition::get_root_expression;
 use crate::snapshot::AnalysisSnapshot;
@@ -291,40 +293,20 @@ fn collect_interface_methods(
 pub(crate) fn get_type_completions(
     type_id: &str,
     snapshot: &AnalysisSnapshot,
-    same_module: bool,
+    current_module: &str,
 ) -> Vec<CompletionItem> {
-    use syntax::program::DefinitionBody;
+    let target = alias_target(type_id, snapshot);
+    let method_id = target.as_deref().unwrap_or(type_id);
 
-    let mut items = Vec::new();
+    let mut items = enum_variant_items(method_id, snapshot).unwrap_or_default();
 
-    match snapshot.definitions().get(type_id).map(|d| &d.body) {
-        Some(DefinitionBody::Enum { variants, .. }) => {
-            for variant in variants {
-                items.push(CompletionItem {
-                    label: variant.name.to_string(),
-                    kind: Some(CompletionItemKind::ENUM_MEMBER),
-                    ..Default::default()
-                });
-            }
-        }
-        Some(DefinitionBody::ValueEnum { variants, .. }) => {
-            for variant in variants {
-                items.push(CompletionItem {
-                    label: variant.name.to_string(),
-                    kind: Some(CompletionItemKind::ENUM_MEMBER),
-                    ..Default::default()
-                });
-            }
-        }
-        _ => {}
-    }
-
-    let method_prefix = format!("{type_id}.");
+    let same_module = id_is_in_module(method_id, current_module);
+    let method_prefix = format!("{method_id}.");
     for (qname, definition) in snapshot.definitions().iter() {
         if let Some(method_name) = qname.strip_prefix(method_prefix.as_str())
             && !method_name.contains('.')
             && matches!(definition.body, DefinitionBody::Value { .. })
-            && !is_instance_method(definition.ty(), type_id)
+            && !is_instance_method(definition.ty(), method_id)
             && (same_module || definition.visibility().is_public())
             && !items.iter().any(|i| i.label == method_name)
         {
@@ -338,6 +320,45 @@ pub(crate) fn get_type_completions(
     }
 
     items
+}
+
+fn id_is_in_module(qualified_id: &str, module: &str) -> bool {
+    qualified_id.starts_with(module) && qualified_id.as_bytes().get(module.len()) == Some(&b'.')
+}
+
+fn enum_variant_items(type_id: &str, snapshot: &AnalysisSnapshot) -> Option<Vec<CompletionItem>> {
+    let to_item = |name: &str| CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::ENUM_MEMBER),
+        ..Default::default()
+    };
+    match &snapshot.definitions().get(type_id)?.body {
+        DefinitionBody::Enum { variants, .. } => {
+            Some(variants.iter().map(|v| to_item(&v.name)).collect())
+        }
+        DefinitionBody::ValueEnum { variants, .. } => {
+            Some(variants.iter().map(|v| to_item(&v.name)).collect())
+        }
+        _ => None,
+    }
+}
+
+/// Returns the target id of a non-generic alias.
+fn alias_target(type_id: &str, snapshot: &AnalysisSnapshot) -> Option<String> {
+    let def = snapshot.definitions().get(type_id)?;
+    let DefinitionBody::TypeAlias { generics, .. } = &def.body else {
+        return None;
+    };
+    if !generics.is_empty() {
+        return None;
+    }
+    let target = match &def.ty {
+        Type::Nominal { id, .. } => id.to_string(),
+        Type::Simple(kind) => format!("prelude.{}", kind.leaf_name()),
+        Type::Compound { kind, .. } => format!("prelude.{}", kind.leaf_name()),
+        _ => return None,
+    };
+    (target != type_id).then_some(target)
 }
 
 fn is_instance_method(ty: &syntax::types::Type, type_id: &str) -> bool {
