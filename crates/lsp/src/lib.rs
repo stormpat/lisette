@@ -23,10 +23,10 @@ use crate::completion::{
     get_module_prefix, get_type_completions, resolve_variable_type,
 };
 use crate::definition::{
-    find_struct_field_span, is_go_typedef_span, lookup_definition_span, resolve_definition_span,
-    resolve_dot_access_definition, resolve_enum_in_pattern, resolve_import_span,
-    resolve_match_pattern_definition, resolve_struct_call_field, resolve_word_at_offset,
-    word_at_offset,
+    find_struct_field_span, is_go_typedef_span, lookup_definition_span,
+    resolve_annotation_definition, resolve_definition_span, resolve_dot_access_definition,
+    resolve_enum_in_pattern, resolve_import_span, resolve_match_pattern_definition,
+    resolve_struct_call_field, resolve_word_at_offset, word_at_offset,
 };
 use crate::paths::uri_to_module_file;
 use crate::project::find_project_root;
@@ -321,6 +321,18 @@ impl LanguageServer for Backend {
                 if offset_in_span(offset, name_span) =>
             {
                 Some(*name_span)
+            }
+
+            syntax::ast::Expression::TypeAlias {
+                name_span,
+                annotation,
+                ..
+            } => {
+                if offset_in_span(offset, name_span) {
+                    Some(*name_span)
+                } else {
+                    resolve_annotation_definition(annotation, offset, file, &snapshot)
+                }
             }
 
             syntax::ast::Expression::Struct {

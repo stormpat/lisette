@@ -10544,6 +10544,197 @@ async fn goto_definition_struct_field_in_definition() {
 }
 
 #[tokio::test]
+async fn goto_definition_type_alias_rhs_with_shadowing_lhs_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(root.join("lisette.toml"), "").unwrap();
+
+    let src = root.join("src");
+    let server_dir = src.join("server");
+    let response_dir = server_dir.join("response");
+    std::fs::create_dir_all(&response_dir).unwrap();
+
+    let response_content = "pub enum Code { Ok, NotFound }\n";
+    std::fs::write(response_dir.join("response.lis"), response_content).unwrap();
+
+    let routes_content = "import \"server/response\"\n\ntype Code = response.Code\n";
+    std::fs::write(server_dir.join("routes.lis"), routes_content).unwrap();
+
+    let mut client = TestClient::new().await;
+    client.initialize_with_root(root).await;
+
+    let response_uri = Url::from_file_path(response_dir.join("response.lis"))
+        .unwrap()
+        .to_string();
+    let routes_uri = Url::from_file_path(server_dir.join("routes.lis"))
+        .unwrap()
+        .to_string();
+
+    client.open(&response_uri, response_content).await;
+    client.open(&routes_uri, routes_content).await;
+
+    let lhs =
+        definition_location(&client.goto_definition(&routes_uri, 2, 6).await.unwrap()).unwrap();
+    assert_eq!(lhs.uri.as_str(), routes_uri);
+    assert_eq!(lhs.range.start.line, 2);
+
+    let qualifier =
+        definition_location(&client.goto_definition(&routes_uri, 2, 14).await.unwrap()).unwrap();
+    assert_eq!(qualifier.uri.as_str(), routes_uri);
+    assert_eq!(qualifier.range.start.line, 0);
+
+    let rhs =
+        definition_location(&client.goto_definition(&routes_uri, 2, 23).await.unwrap()).unwrap();
+    assert_eq!(rhs.uri.as_str(), response_uri);
+    assert_eq!(rhs.range.start.line, 0);
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn goto_definition_type_alias_inside_generic_param() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(root.join("lisette.toml"), "").unwrap();
+
+    let src = root.join("src");
+    let server_dir = src.join("server");
+    let response_dir = server_dir.join("response");
+    std::fs::create_dir_all(&response_dir).unwrap();
+
+    let response_content = "pub enum Code { Ok, NotFound }\n";
+    std::fs::write(response_dir.join("response.lis"), response_content).unwrap();
+
+    let routes_content = "import \"server/response\"\n\ntype Codes = Slice<response.Code>\n";
+    std::fs::write(server_dir.join("routes.lis"), routes_content).unwrap();
+
+    let mut client = TestClient::new().await;
+    client.initialize_with_root(root).await;
+
+    let response_uri = Url::from_file_path(response_dir.join("response.lis"))
+        .unwrap()
+        .to_string();
+    let routes_uri = Url::from_file_path(server_dir.join("routes.lis"))
+        .unwrap()
+        .to_string();
+
+    client.open(&response_uri, response_content).await;
+    client.open(&routes_uri, routes_content).await;
+
+    let qualifier =
+        definition_location(&client.goto_definition(&routes_uri, 2, 22).await.unwrap()).unwrap();
+    assert_eq!(qualifier.uri.as_str(), routes_uri);
+
+    let inner =
+        definition_location(&client.goto_definition(&routes_uri, 2, 30).await.unwrap()).unwrap();
+    assert_eq!(inner.uri.as_str(), response_uri);
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn goto_definition_type_alias_inside_function_annotation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(root.join("lisette.toml"), "").unwrap();
+
+    let src = root.join("src");
+    let server_dir = src.join("server");
+    let response_dir = server_dir.join("response");
+    std::fs::create_dir_all(&response_dir).unwrap();
+
+    let response_content = "pub enum Code { Ok, NotFound }\n";
+    std::fs::write(response_dir.join("response.lis"), response_content).unwrap();
+
+    let routes_content =
+        "import \"server/response\"\n\ntype Handler = fn(response.Code) -> response.Code\n";
+    std::fs::write(server_dir.join("routes.lis"), routes_content).unwrap();
+
+    let mut client = TestClient::new().await;
+    client.initialize_with_root(root).await;
+
+    let response_uri = Url::from_file_path(response_dir.join("response.lis"))
+        .unwrap()
+        .to_string();
+    let routes_uri = Url::from_file_path(server_dir.join("routes.lis"))
+        .unwrap()
+        .to_string();
+
+    client.open(&response_uri, response_content).await;
+    client.open(&routes_uri, routes_content).await;
+
+    let param =
+        definition_location(&client.goto_definition(&routes_uri, 2, 28).await.unwrap()).unwrap();
+    assert_eq!(param.uri.as_str(), response_uri);
+
+    let ret =
+        definition_location(&client.goto_definition(&routes_uri, 2, 46).await.unwrap()).unwrap();
+    assert_eq!(ret.uri.as_str(), response_uri);
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn goto_definition_type_alias_inside_tuple_annotation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::write(root.join("lisette.toml"), "").unwrap();
+
+    let src = root.join("src");
+    let server_dir = src.join("server");
+    let response_dir = server_dir.join("response");
+    std::fs::create_dir_all(&response_dir).unwrap();
+
+    let response_content = "pub enum Code { Ok, NotFound }\n";
+    std::fs::write(response_dir.join("response.lis"), response_content).unwrap();
+
+    let routes_content = "import \"server/response\"\n\ntype Pair = (response.Code, int)\n";
+    std::fs::write(server_dir.join("routes.lis"), routes_content).unwrap();
+
+    let mut client = TestClient::new().await;
+    client.initialize_with_root(root).await;
+
+    let response_uri = Url::from_file_path(response_dir.join("response.lis"))
+        .unwrap()
+        .to_string();
+    let routes_uri = Url::from_file_path(server_dir.join("routes.lis"))
+        .unwrap()
+        .to_string();
+
+    client.open(&response_uri, response_content).await;
+    client.open(&routes_uri, routes_content).await;
+
+    let qualifier =
+        definition_location(&client.goto_definition(&routes_uri, 2, 15).await.unwrap()).unwrap();
+    assert_eq!(qualifier.uri.as_str(), routes_uri);
+
+    let inner =
+        definition_location(&client.goto_definition(&routes_uri, 2, 23).await.unwrap()).unwrap();
+    assert_eq!(inner.uri.as_str(), response_uri);
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn goto_definition_type_alias_rhs_same_module() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "struct Bar { x: int }\ntype Foo = Bar\n";
+    client.open(TEST_URI, source).await;
+
+    let rhs = definition_location(&client.goto_definition(TEST_URI, 1, 12).await.unwrap()).unwrap();
+    assert_eq!(rhs.uri.as_str(), TEST_URI);
+    assert_eq!(rhs.range.start.line, 0);
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn hover_struct_field_in_definition() {
     let mut client = TestClient::new().await;
     client.initialize().await;
