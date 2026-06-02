@@ -1,5 +1,7 @@
 use rustc_hash::FxHashMap;
-use syntax::ast::{Expression, MatchArm, Pattern, Span, StructFieldPattern, TypedPattern};
+use syntax::ast::{
+    Annotation, Expression, MatchArm, Pattern, Span, StructFieldPattern, TypedPattern,
+};
 use syntax::types::unqualified_name;
 
 use crate::analysis::find_module_by_alias;
@@ -182,6 +184,66 @@ pub(crate) fn resolve_import_span(
             None
         }
     })
+}
+
+/// Goto-def target for a cursor inside a type annotation tree.
+pub(crate) fn resolve_annotation_definition(
+    annotation: &Annotation,
+    offset: u32,
+    file: &syntax::program::File,
+    snapshot: &AnalysisSnapshot,
+) -> Option<Span> {
+    if !offset_in_span(offset, &annotation.get_span()) {
+        return None;
+    }
+
+    let recurse = |child| resolve_annotation_definition(child, offset, file, snapshot);
+
+    match annotation {
+        Annotation::Constructor { name, span, params } => params
+            .iter()
+            .find_map(recurse)
+            .or_else(|| resolve_constructor_name(name, *span, offset, file, snapshot)),
+        Annotation::Function {
+            params,
+            return_type,
+            ..
+        } => params
+            .iter()
+            .find_map(recurse)
+            .or_else(|| recurse(return_type.as_ref())),
+        Annotation::Tuple { elements, .. } => elements.iter().find_map(recurse),
+        Annotation::Unknown | Annotation::Opaque { .. } => None,
+    }
+}
+
+/// Resolve a `Constructor` name's goto target. Routes the simple side through
+/// the qualifier's module so a same-named local can't shadow it.
+fn resolve_constructor_name(
+    name: &str,
+    span: Span,
+    offset: u32,
+    file: &syntax::program::File,
+    snapshot: &AnalysisSnapshot,
+) -> Option<Span> {
+    let cursor_in_name = (offset - span.byte_offset) as usize;
+    let dot_pos = name.find('.').unwrap_or(name.len());
+
+    if cursor_in_name <= dot_pos {
+        let first = &name[..dot_pos];
+        return resolve_import_span(first, file, &snapshot.result.go_package_names)
+            .or_else(|| lookup_definition_span(first, file, snapshot));
+    }
+
+    let (qualifier, simple) = name.split_once('.')?;
+    let module_name = find_module_by_alias(file, qualifier, &snapshot.result.go_package_names)?;
+
+    let qualified = format!("{}.{}", module_name, simple);
+
+    snapshot
+        .definitions()
+        .get(qualified.as_str())
+        .and_then(|d| d.name_span())
 }
 
 pub(crate) fn lookup_definition_span(
