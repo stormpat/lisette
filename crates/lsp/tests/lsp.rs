@@ -726,6 +726,81 @@ async fn hover_on_alias_target_generic_head() {
 }
 
 #[tokio::test]
+async fn hover_on_function_return_annotation() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    client
+        .open(TEST_URI, "fn make() -> string { \"hi\" }")
+        .await;
+
+    let hover = client.hover(TEST_URI, 0, 14).await;
+    let content = hover_content(&hover.expect("hover on string return type"));
+    assert!(content.contains("string"), "got: {content}");
+    assert!(
+        !content.contains("->"),
+        "should be type only, got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn hover_on_function_param_annotation() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    client
+        .open(TEST_URI, "fn add(x: int) -> string { \"hi\" }")
+        .await;
+
+    let hover = client.hover(TEST_URI, 0, 11).await;
+    let content = hover_content(&hover.expect("hover on int param type"));
+    assert!(content.contains("int"), "got: {content}");
+    assert!(
+        !content.contains("string"),
+        "should not leak return type, got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn hover_on_function_qualified_return_annotation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("lisette.toml"), "").unwrap();
+    let src = root.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    let http_dir = src.join("http");
+    std::fs::create_dir_all(&http_dir).unwrap();
+    std::fs::write(
+        http_dir.join("http.lis"),
+        "pub struct HandlerFunc { name: string }",
+    )
+    .unwrap();
+    let main_content =
+        "import \"http\"\n\nfn handle() -> http.HandlerFunc { http.HandlerFunc { name: \"\" } }\n";
+    std::fs::write(src.join("main.lis"), main_content).unwrap();
+
+    let mut client = TestClient::new().await;
+    client.initialize_with_root(root).await;
+    let main_uri = Url::from_file_path(src.join("main.lis"))
+        .unwrap()
+        .to_string();
+    client.open(&main_uri, main_content).await;
+
+    // cursor on `HandlerFunc` after the dot in the return annotation
+    let hover = client.hover(&main_uri, 2, 24).await;
+    let content = hover_content(&hover.expect("hover on http.HandlerFunc"));
+    assert!(content.contains("HandlerFunc"), "got: {content}");
+    assert!(
+        !content.contains("->"),
+        "should be type only, not full signature, got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn goto_definition_on_literal_returns_none() {
     let mut client = TestClient::new().await;
     client.initialize().await;

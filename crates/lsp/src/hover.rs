@@ -11,7 +11,7 @@ use crate::snapshot::AnalysisSnapshot;
 use crate::traversal::find_expression_at;
 use crate::type_name;
 
-/// Hover for top-level type declarations and the annotation tree on a `TypeAlias`.
+/// Hover for top-level declarations and the annotation trees inside them.
 pub(crate) fn resolve_declaration_hover(
     expression: &Expression,
     offset: u32,
@@ -34,6 +34,18 @@ pub(crate) fn resolve_declaration_hover(
             annotation,
             ..
         } => resolve_annotation_hover(annotation, offset, file, snapshot)
+            .or_else(|| name_hover(name, *name_span)),
+        Expression::Function {
+            name,
+            name_span,
+            params,
+            return_annotation,
+            ..
+        } => params
+            .iter()
+            .filter_map(|p| p.annotation.as_ref())
+            .find_map(|a| resolve_annotation_hover(a, offset, file, snapshot))
+            .or_else(|| resolve_annotation_hover(return_annotation, offset, file, snapshot))
             .or_else(|| name_hover(name, *name_span)),
         Expression::Enum {
             name, name_span, ..
