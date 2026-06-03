@@ -421,11 +421,13 @@ pub(crate) fn get_hover_type_and_span(
 /// the offset lands on a sub-item and returns that sub-item's doc instead.
 fn extract_doc_from_expression(expression: &Expression, offset: u32) -> Option<String> {
     match expression {
-        Expression::Function { doc, .. }
-        | Expression::Const { doc, .. }
-        | Expression::VariableDeclaration { doc, .. }
-        | Expression::TypeAlias { doc, .. }
-        | Expression::Interface { doc, .. } => doc.clone(),
+        Expression::Const { doc, .. } | Expression::VariableDeclaration { doc, .. } => doc.clone(),
+
+        Expression::Function { doc, name_span, .. }
+        | Expression::TypeAlias { doc, name_span, .. }
+        | Expression::Interface { doc, name_span, .. } => offset_in_span(offset, name_span)
+            .then(|| doc.clone())
+            .flatten(),
 
         Expression::Enum { doc, variants, .. } => variants
             .iter()

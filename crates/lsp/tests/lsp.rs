@@ -801,6 +801,46 @@ async fn hover_on_function_qualified_return_annotation() {
 }
 
 #[tokio::test]
+async fn hover_on_param_annotation_excludes_function_doc() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    client
+        .open(
+            TEST_URI,
+            "/// Adds two ints\nfn add(x: int) -> string { \"hi\" }",
+        )
+        .await;
+
+    let hover = client.hover(TEST_URI, 1, 11).await;
+    let content = hover_content(&hover.expect("hover on int param type"));
+    assert!(content.contains("int"), "got: {content}");
+    assert!(
+        !content.contains("Adds two ints"),
+        "function doc leaked into param-type hover, got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn hover_on_function_name_includes_doc() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    client
+        .open(
+            TEST_URI,
+            "/// Adds two ints\nfn add(x: int) -> string { \"hi\" }",
+        )
+        .await;
+
+    let hover = client.hover(TEST_URI, 1, 3).await;
+    let content = hover_content(&hover.expect("hover on function name"));
+    assert!(content.contains("Adds two ints"), "got: {content}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn goto_definition_on_literal_returns_none() {
     let mut client = TestClient::new().await;
     client.initialize().await;
