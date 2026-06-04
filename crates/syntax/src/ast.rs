@@ -1077,6 +1077,24 @@ impl Expression {
         }
     }
 
+    /// If this is a `Call` to an identifier matching `name` with `arity` args,
+    /// return the args. Otherwise None. Used to detect direct self-calls.
+    pub fn self_call_to(&self, name: &str, arity: usize) -> Option<&[Expression]> {
+        let Expression::Call {
+            expression, args, ..
+        } = self
+        else {
+            return None;
+        };
+        let Expression::Identifier { value, .. } = expression.as_ref() else {
+            return None;
+        };
+        if value.as_str() != name || args.len() != arity {
+            return None;
+        }
+        Some(args.as_slice())
+    }
+
     pub fn as_option_constructor(&self) -> Option<std::result::Result<(), ()>> {
         let variant = match self {
             Expression::Identifier { value, .. } => Some(value.as_str()),

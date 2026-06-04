@@ -78,16 +78,14 @@ struct Analysis {
 /// fragments, so `Return.expression` may safely re-mark its inner as tail —
 /// `return X` is always in tail position from the function's perspective.
 fn walk(expr: &Expression, tail: bool, name: &str, param_count: usize, out: &mut Analysis) {
-    if let Some(span) = self_call_span(expr, name, param_count) {
+    if let Some(args) = expr.self_call_to(name, param_count) {
         if tail {
             out.has_tail_call = true;
         } else {
-            out.non_tail_calls.push(span);
+            out.non_tail_calls.push(expr.get_span());
         }
-        if let Expression::Call { args, .. } = expr {
-            for arg in args {
-                walk(arg, false, name, param_count, out);
-            }
+        for arg in args {
+            walk(arg, false, name, param_count, out);
         }
         return;
     }
@@ -209,23 +207,4 @@ fn walk(expr: &Expression, tail: bool, name: &str, param_count: usize, out: &mut
             }
         }
     }
-}
-
-fn self_call_span(expr: &Expression, name: &str, param_count: usize) -> Option<Span> {
-    let Expression::Call {
-        expression,
-        args,
-        span,
-        ..
-    } = expr
-    else {
-        return None;
-    };
-    let Expression::Identifier { value, .. } = expression.as_ref() else {
-        return None;
-    };
-    if value.as_str() != name || args.len() != param_count {
-        return None;
-    }
-    Some(*span)
 }

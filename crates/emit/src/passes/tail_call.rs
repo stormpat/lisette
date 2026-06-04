@@ -19,19 +19,7 @@ pub(crate) fn match_tail_self_call<'a>(
     call: &'a Expression,
 ) -> Option<&'a [Expression]> {
     let state = planner.function_state.tail_call()?;
-    let Expression::Call {
-        expression, args, ..
-    } = call
-    else {
-        return None;
-    };
-    let Expression::Identifier { value, .. } = expression.as_ref() else {
-        return None;
-    };
-    if value.as_str() != state.function_name || args.len() != state.param_count {
-        return None;
-    }
-    Some(args.as_slice())
+    call.self_call_to(&state.function_name, state.param_count)
 }
 
 /// Emit the Go for "reassign params + continue" given the recursive args.
