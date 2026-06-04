@@ -49,9 +49,6 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     }
 }
 
-/// Look for any `<receiver>.<name>(...)` call anywhere in the body. Used as a
-/// fallback diagnostic when no identifier-form self-calls are detected — the
-/// user likely wrote method-form recursion, which tier 1 does not transform.
 fn find_method_form_self_call(expr: &Expression, name: &str) -> Option<Span> {
     if let Expression::Call {
         expression, span, ..
