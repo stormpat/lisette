@@ -1,5 +1,6 @@
 ---
 source: tests/ui/lint/mod.rs
+assertion_line: 4959
 ---
   [warning] Unknown attribute
    ╭─[test.lis:2:1]
@@ -9,4 +10,4 @@ source: tests/ui/lint/mod.rs
    ·    ╰── not recognized
  3 │ enum Color {
    ╰────
-  help: `foo` is not a recognized attribute. Known attributes: `#[json]`, `#[xml]`, `#[yaml]`, `#[toml]`, `#[db]`, `#[bson]`, `#[mapstructure]`, `#[msgpack]`, `#[tag]`, `#[allow]`, `#[iterate]`, `#[display]` · code: [lint.unknown_attribute]
+  help: `foo` is not a recognized attribute. Known attributes: `#[json]`, `#[xml]`, `#[yaml]`, `#[toml]`, `#[db]`, `#[bson]`, `#[mapstructure]`, `#[msgpack]`, `#[tag]`, `#[allow]`, `#[iterate]`, `#[display]`, `#[tailcall]` · code: [lint.unknown_attribute]

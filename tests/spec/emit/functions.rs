@@ -1680,3 +1680,45 @@ fn run() -> Option<int> {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn tailcall_factorial_emits_loop() {
+    let input = r#"
+#[tailcall]
+fn factorial(n: int, acc: int) -> int {
+  if n <= 1 { acc } else { factorial(n - 1, acc * n) }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn tailcall_match_emits_loop() {
+    let input = r#"
+#[tailcall]
+fn recmatch(a: int, b: int) -> int {
+  match a {
+    0 => b,
+    _ => recmatch(a - 1, b + 1),
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn tailcall_nested_else_if_emits_loop() {
+    let input = r#"
+#[tailcall]
+fn collatz(n: int, steps: int) -> int {
+  if n == 1 {
+    steps
+  } else if n % 2 == 0 {
+    collatz(n / 2, steps + 1)
+  } else {
+    collatz(3 * n + 1, steps + 1)
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}

@@ -1,0 +1,16 @@
+---
+source: tests/spec/emit/functions.rs
+assertion_line: 1692
+description: "input: \n#[tailcall]\nfn factorial(n: int, acc: int) -> int {\n  if n <= 1 { acc } else { factorial(n - 1, acc * n) }\n}\n"
+---
+package main
+
+func factorial(n, acc int) int {
+	for {
+		if n <= 1 {
+			return acc
+		}
+		n, acc = n-1, acc*n
+		continue
+	}
+}

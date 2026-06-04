@@ -98,6 +98,13 @@ impl ModuleState {
 pub(crate) struct FunctionEmissionState {
     absorbed_ref_generics: HashSet<String>,
     eager_operand_capture: bool,
+    tail_call: Option<TailCallState>,
+}
+
+pub(crate) struct TailCallState {
+    pub function_name: String,
+    pub param_count: usize,
+    pub param_go_names: Vec<String>,
 }
 
 impl FunctionEmissionState {
@@ -115,5 +122,17 @@ impl FunctionEmissionState {
 
     pub(crate) fn set_eager_operand_capture(&mut self, value: bool) -> bool {
         std::mem::replace(&mut self.eager_operand_capture, value)
+    }
+
+    pub(crate) fn tail_call(&self) -> Option<&TailCallState> {
+        self.tail_call.as_ref()
+    }
+
+    pub(crate) fn set_tail_call(&mut self, state: TailCallState) {
+        self.tail_call = Some(state);
+    }
+
+    pub(crate) fn clear_tail_call(&mut self) {
+        self.tail_call = None;
     }
 }

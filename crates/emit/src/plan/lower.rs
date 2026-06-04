@@ -735,7 +735,12 @@ impl Planner<'_> {
                 if !directive.is_empty() {
                     statements.push(LoweredStatement::RawGo(directive));
                 }
-                if let Some(tail) = try_emit_lowered_tail_return(self, last, return_ctx, fx) {
+                if let Some(args) = crate::passes::tail_call::match_tail_self_call(self, last) {
+                    let recur =
+                        crate::passes::tail_call::emit_reassign_and_continue(self, args, fx);
+                    statements.push(LoweredStatement::RawGo(recur));
+                } else if let Some(tail) = try_emit_lowered_tail_return(self, last, return_ctx, fx)
+                {
                     statements.extend(tail);
                 } else if let Some(wrapped) = self.lower_wrapped_return(last, return_ctx, fx) {
                     statements.extend(wrapped);

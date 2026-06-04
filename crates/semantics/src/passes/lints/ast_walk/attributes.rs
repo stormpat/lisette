@@ -15,7 +15,7 @@ pub(crate) const SERIALIZATION_KEYS: &[&str] = &[
 ];
 
 /// Recognized attributes that are not serialization keys.
-const OTHER_ATTRIBUTES: &[&str] = &["tag", "allow", "iterate", "display"];
+const OTHER_ATTRIBUTES: &[&str] = &["tag", "allow", "iterate", "display", "tailcall"];
 
 pub fn check_attributes(expression: &Expression, ctx: &NodeCtx) {
     let attributes = match expression {

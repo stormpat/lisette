@@ -403,6 +403,7 @@ pub struct FunctionDefinition {
     pub return_type: Type,
     pub annotation: Annotation,
     pub ty: Type,
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1031,6 +1032,7 @@ impl Expression {
                 return_annotation,
                 return_type,
                 ty,
+                attributes,
                 ..
             } => FunctionDefinition {
                 name: name.clone(),
@@ -1041,6 +1043,7 @@ impl Expression {
                 return_type: return_type.clone(),
                 annotation: return_annotation.clone(),
                 ty: ty.clone(),
+                attributes: attributes.clone(),
             },
             _ => panic!("to_function_signature called on non-Function expression"),
         }
@@ -1057,6 +1060,7 @@ impl Expression {
                 return_type,
                 body,
                 ty,
+                attributes,
                 ..
             } => FunctionDefinition {
                 name: name.clone(),
@@ -1067,6 +1071,7 @@ impl Expression {
                 return_type: return_type.clone(),
                 annotation: return_annotation.clone(),
                 ty: ty.clone(),
+                attributes: attributes.clone(),
             },
             _ => panic!("to_function_definition called on non-Function expression"),
         }

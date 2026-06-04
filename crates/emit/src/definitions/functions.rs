@@ -377,6 +377,21 @@ impl Planner<'_> {
                 fx,
             );
         }
+        let is_tail_call =
+            crate::passes::tail_call::has_tailcall_attribute(&function_definition.attributes);
+        if is_tail_call {
+            let param_go_names = crate::passes::tail_call::resolve_param_go_names(
+                self,
+                &function_definition.params,
+            );
+            self.function_state
+                .set_tail_call(crate::state::module_state::TailCallState {
+                    function_name: function_definition.name.to_string(),
+                    param_count: function_definition.params.len(),
+                    param_go_names,
+                });
+            body.push_str("for {\n");
+        }
         self.emit_function_body(
             body,
             &function_definition.body,
@@ -384,6 +399,10 @@ impl Planner<'_> {
             return_ctx,
             fx,
         );
+        if is_tail_call {
+            body.push_str("}\n");
+            self.function_state.clear_tail_call();
+        }
     }
 
     fn emit_receiver_part(

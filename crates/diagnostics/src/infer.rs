@@ -3011,3 +3011,27 @@ pub fn reference_aliases_sibling(ref_span: Span, var_name: &str) -> LisetteDiagn
             var_name
         ))
 }
+
+pub fn tailcall_no_self_call(name_span: &Span, function_name: &str) -> LisetteDiagnostic {
+    LisetteDiagnostic::error(format!(
+        "`#[tailcall]` on `{}`: no recursive self-call found",
+        function_name
+    ))
+    .with_infer_code("tailcall_no_self_call")
+    .with_span_label(name_span, "function is not recursive")
+    .with_help(
+        "`#[tailcall]` is only meaningful on functions that call themselves. Remove the attribute, or make the function recursive.",
+    )
+}
+
+pub fn tailcall_not_in_tail_position(call_span: &Span, function_name: &str) -> LisetteDiagnostic {
+    LisetteDiagnostic::error(format!(
+        "Recursive call to `{}` is not in tail position",
+        function_name
+    ))
+    .with_infer_code("tailcall_not_in_tail_position")
+    .with_span_label(call_span, "this call result is consumed before returning")
+    .with_help(
+        "A tail call's result must be returned directly. Move work that follows the call into the recursive arguments, or remove `#[tailcall]`.",
+    )
+}

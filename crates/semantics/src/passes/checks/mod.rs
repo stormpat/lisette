@@ -23,6 +23,7 @@ pub(crate) mod pub_type_export;
 pub(crate) mod receivers;
 pub(crate) mod repeated_if_condition;
 pub(crate) mod stringer_signature;
+pub(crate) mod tail_call;
 pub(crate) mod temp_producing;
 pub(crate) mod unchanging_loop_condition;
 pub(crate) mod visibility;

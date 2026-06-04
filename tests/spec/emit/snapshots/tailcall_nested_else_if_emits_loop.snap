@@ -1,0 +1,19 @@
+---
+source: tests/spec/emit/functions.rs
+assertion_line: 1723
+description: "input: \n#[tailcall]\nfn collatz(n: int, steps: int) -> int {\n  if n == 1 {\n    steps\n  } else if n % 2 == 0 {\n    collatz(n / 2, steps + 1)\n  } else {\n    collatz(3 * n + 1, steps + 1)\n  }\n}\n"
+---
+package main
+
+func collatz(n, steps int) int {
+	for {
+		if n == 1 {
+			return steps
+		} else if n%2 == 0 {
+			n, steps = n/2, steps+1
+			continue
+		}
+		n, steps = 3*n+1, steps+1
+		continue
+	}
+}

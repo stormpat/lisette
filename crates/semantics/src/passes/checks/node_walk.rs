@@ -6,7 +6,7 @@ use super::{
     const_naming, decimal_file_mode, duplicate_bindings, empty_infinite_loop, empty_range,
     enum_variant_value, index_out_of_bounds, irrefutable_patterns, nan_comparison, newtype,
     oversized_shift, predeclared_shadowing, pub_type_export, receivers, repeated_if_condition,
-    stringer_signature, temp_producing, unchanging_loop_condition,
+    stringer_signature, tail_call, temp_producing, unchanging_loop_condition,
 };
 
 const NODE_CHECKS: &[NodeCheck] = &[
@@ -23,6 +23,7 @@ const NODE_CHECKS: &[NodeCheck] = &[
     stringer_signature::check,
     predeclared_shadowing::check,
     pub_type_export::check,
+    tail_call::check,
     temp_producing::check,
     newtype::check,
     enum_variant_value::check,

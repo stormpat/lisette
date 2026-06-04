@@ -7,6 +7,7 @@ pub(crate) mod definitions;
 pub(crate) mod expressions;
 pub(crate) mod names;
 mod output;
+pub(crate) mod passes;
 pub(crate) mod patterns;
 mod plan;
 mod render;

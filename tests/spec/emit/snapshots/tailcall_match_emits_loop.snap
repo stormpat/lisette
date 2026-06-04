@@ -1,0 +1,16 @@
+---
+source: tests/spec/emit/functions.rs
+assertion_line: 1706
+description: "input: \n#[tailcall]\nfn recmatch(a: int, b: int) -> int {\n  match a {\n    0 => b,\n    _ => recmatch(a - 1, b + 1),\n  }\n}\n"
+---
+package main
+
+func recmatch(a, b int) int {
+	for {
+		if a == 0 {
+			return b
+		}
+		a, b = a-1, b+1
+		continue
+	}
+}

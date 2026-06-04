@@ -8992,3 +8992,39 @@ fn main() {
 "#
     );
 }
+
+#[test]
+fn tailcall_on_non_recursive_body() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn bad(n: int) -> int {
+  n + 1
+}
+"#
+    );
+}
+
+#[test]
+fn tailcall_on_if_without_self_call() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn bad(n: int) -> int {
+  if n <= 0 { 0 } else { n + 1 }
+}
+"#
+    );
+}
+
+#[test]
+fn tailcall_recursive_call_not_in_tail_position() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn bad(n: int) -> int {
+  if n <= 0 { 0 } else { 1 + bad(n - 1) }
+}
+"#
+    );
+}

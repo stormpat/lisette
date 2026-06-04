@@ -1,0 +1,13 @@
+---
+source: tests/ui/lint/mod.rs
+assertion_line: 8247
+---
+  [error] `#[tailcall]` on `bad`: no recursive self-call found
+   ╭─[test.lis:3:4]
+ 2 │ #[tailcall]
+ 3 │ fn bad(n: int) -> int {
+   ·    ─┬─
+   ·     ╰── function is not recursive
+ 4 │   if n <= 0 { 0 } else { n + 1 }
+   ╰────
+  help: `#[tailcall]` is only meaningful on functions that call themselves. Remove the attribute, or make the function recursive · code: [infer.tailcall_no_self_call]
