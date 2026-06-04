@@ -3012,52 +3012,49 @@ pub fn reference_aliases_sibling(ref_span: Span, var_name: &str) -> LisetteDiagn
         ))
 }
 
-pub fn tailcall_unit_return(name_span: &Span, function_name: &str) -> LisetteDiagnostic {
+pub fn tailcall_unit_return(name_span: Span, function_name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error(format!(
         "`#[tailcall]` on `{}`: unit-returning functions are not supported",
         function_name
     ))
     .with_infer_code("tailcall_unit_return")
-    .with_span_label(name_span, "function returns no value")
+    .with_span_label(&name_span, "function returns no value")
     .with_help(
         "Tier 1 tail-call optimization requires a return type so the lowering pipeline can intercept tail-position calls. Add a return type, or remove `#[tailcall]`.",
     )
 }
 
-pub fn tailcall_method_form_unsupported(
-    call_span: &Span,
-    function_name: &str,
-) -> LisetteDiagnostic {
+pub fn tailcall_method_form_unsupported(call_span: Span, function_name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error(format!(
         "`#[tailcall]` on `{}`: method-form recursion is not yet supported",
         function_name
     ))
     .with_infer_code("tailcall_method_form_unsupported")
-    .with_span_label(call_span, "method-form self-call")
+    .with_span_label(&call_span, "method-form self-call")
     .with_help(
         "Tier 1 only detects direct calls like `name(...)`. Method-form recursion (`receiver.name(...)`) is deferred to tier 2. Rewrite the call as a free function, or remove `#[tailcall]`.",
     )
 }
 
-pub fn tailcall_no_self_call(name_span: &Span, function_name: &str) -> LisetteDiagnostic {
+pub fn tailcall_no_self_call(name_span: Span, function_name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error(format!(
         "`#[tailcall]` on `{}`: no recursive self-call found",
         function_name
     ))
     .with_infer_code("tailcall_no_self_call")
-    .with_span_label(name_span, "function is not recursive")
+    .with_span_label(&name_span, "function is not recursive")
     .with_help(
         "`#[tailcall]` is only meaningful on functions that call themselves. Remove the attribute, or make the function recursive.",
     )
 }
 
-pub fn tailcall_not_in_tail_position(call_span: &Span, function_name: &str) -> LisetteDiagnostic {
+pub fn tailcall_not_in_tail_position(call_span: Span, function_name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error(format!(
         "Recursive call to `{}` is not in tail position",
         function_name
     ))
     .with_infer_code("tailcall_not_in_tail_position")
-    .with_span_label(call_span, "this call result is consumed before returning")
+    .with_span_label(&call_span, "this call result is consumed before returning")
     .with_help(
         "A tail call's result must be returned directly. Move work that follows the call into the recursive arguments, or remove `#[tailcall]`.",
     )

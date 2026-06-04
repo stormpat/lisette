@@ -21,7 +21,7 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
 
     if return_type.is_unit() {
         ctx.sink
-            .push(diagnostics::infer::tailcall_unit_return(name_span, name));
+            .push(diagnostics::infer::tailcall_unit_return(*name_span, name));
         return;
     }
 
@@ -32,11 +32,11 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
         if let Some(call_span) = find_method_form_self_call(body, name) {
             ctx.sink
                 .push(diagnostics::infer::tailcall_method_form_unsupported(
-                    &call_span, name,
+                    call_span, name,
                 ));
         } else {
             ctx.sink
-                .push(diagnostics::infer::tailcall_no_self_call(name_span, name));
+                .push(diagnostics::infer::tailcall_no_self_call(*name_span, name));
         }
         return;
     }
@@ -44,7 +44,7 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     for span in &analysis.non_tail_calls {
         ctx.sink
             .push(diagnostics::infer::tailcall_not_in_tail_position(
-                span, name,
+                *span, name,
             ));
     }
 }
