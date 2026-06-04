@@ -72,6 +72,11 @@ struct Analysis {
     non_tail_calls: Vec<Span>,
 }
 
+/// Walks the function body collecting self-call sites with their tail/non-tail
+/// classification. Invariant: only called on the function body root (or via
+/// recursion into a tail-propagating child). Never called on arbitrary
+/// fragments, so `Return.expression` may safely re-mark its inner as tail —
+/// `return X` is always in tail position from the function's perspective.
 fn walk(expr: &Expression, tail: bool, name: &str, param_count: usize, out: &mut Analysis) {
     if let Some(span) = self_call_span(expr, name, param_count) {
         if tail {
