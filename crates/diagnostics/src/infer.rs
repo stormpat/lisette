@@ -3020,7 +3020,7 @@ pub fn tailcall_unit_return(name_span: Span, function_name: &str) -> LisetteDiag
     .with_infer_code("tailcall_unit_return")
     .with_span_label(&name_span, "function returns no value")
     .with_help(
-        "Tier 1 tail-call optimization requires a return type so the lowering pipeline can intercept tail-position calls. Add a return type, or remove `#[tailcall]`.",
+        "`#[tailcall]` requires a return type so the recursive call can be intercepted. Add a return type, or remove `#[tailcall]`.",
     )
 }
 
@@ -3032,7 +3032,7 @@ pub fn tailcall_method_form_unsupported(call_span: Span, function_name: &str) ->
     .with_infer_code("tailcall_method_form_unsupported")
     .with_span_label(&call_span, "method-form self-call")
     .with_help(
-        "Tier 1 only detects direct calls like `name(...)`. Method-form recursion (`receiver.name(...)`) is deferred to tier 2. Rewrite the call as a free function, or remove `#[tailcall]`.",
+        "Only direct calls like `name(...)` are recognized for tail-call optimization. Rewrite `receiver.name(...)` as a free function call, or remove `#[tailcall]`.",
     )
 }
 

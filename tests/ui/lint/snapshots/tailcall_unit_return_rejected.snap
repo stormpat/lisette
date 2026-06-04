@@ -10,4 +10,4 @@ assertion_line: 8271
    ·          ╰── function returns no value
  4 │   loop_forever(n + 1)
    ╰────
-  help: Tier 1 tail-call optimization requires a return type so the lowering pipeline can intercept tail-position calls. Add a return type, or remove `#[tailcall]` · code: [infer.tailcall_unit_return]
+  help: `#[tailcall]` requires a return type so the recursive call can be intercepted. Add a return type, or remove `#[tailcall]` · code: [infer.tailcall_unit_return]
