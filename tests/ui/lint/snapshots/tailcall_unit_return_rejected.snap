@@ -1,0 +1,13 @@
+---
+source: tests/ui/lint/mod.rs
+assertion_line: 8271
+---
+  [error] `#[tailcall]` on `loop_forever`: unit-returning functions are not supported
+   ╭─[test.lis:3:4]
+ 2 │ #[tailcall]
+ 3 │ fn loop_forever(n: int) {
+   ·    ──────┬─────
+   ·          ╰── function returns no value
+ 4 │   loop_forever(n + 1)
+   ╰────
+  help: Tier 1 tail-call optimization requires a return type so the lowering pipeline can intercept tail-position calls. Add a return type, or remove `#[tailcall]` · code: [infer.tailcall_unit_return]

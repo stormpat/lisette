@@ -9028,3 +9028,15 @@ fn bad(n: int) -> int {
 "#
     );
 }
+
+#[test]
+fn tailcall_unit_return_rejected() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn loop_forever(n: int) {
+  loop_forever(n + 1)
+}
+"#
+    );
+}

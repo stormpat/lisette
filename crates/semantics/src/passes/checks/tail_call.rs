@@ -7,6 +7,7 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
         name,
         name_span,
         params,
+        return_type,
         body,
         ..
     } = expression
@@ -15,6 +16,12 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     };
 
     if !attributes.iter().any(|a| a.name == "tailcall") {
+        return;
+    }
+
+    if return_type.is_unit() {
+        ctx.sink
+            .push(diagnostics::infer::tailcall_unit_return(name_span, name));
         return;
     }
 

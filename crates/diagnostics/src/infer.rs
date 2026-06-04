@@ -3012,6 +3012,18 @@ pub fn reference_aliases_sibling(ref_span: Span, var_name: &str) -> LisetteDiagn
         ))
 }
 
+pub fn tailcall_unit_return(name_span: &Span, function_name: &str) -> LisetteDiagnostic {
+    LisetteDiagnostic::error(format!(
+        "`#[tailcall]` on `{}`: unit-returning functions are not supported",
+        function_name
+    ))
+    .with_infer_code("tailcall_unit_return")
+    .with_span_label(name_span, "function returns no value")
+    .with_help(
+        "Tier 1 tail-call optimization requires a return type so the lowering pipeline can intercept tail-position calls. Add a return type, or remove `#[tailcall]`.",
+    )
+}
+
 pub fn tailcall_no_self_call(name_span: &Span, function_name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error(format!(
         "`#[tailcall]` on `{}`: no recursive self-call found",
