@@ -28,7 +28,7 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     let mut analysis = Analysis::default();
     walk(body, true, name, params.len(), &mut analysis);
 
-    if analysis.tail_calls.is_empty() && analysis.non_tail_calls.is_empty() {
+    if !analysis.has_tail_call && analysis.non_tail_calls.is_empty() {
         if let Some(call_span) = find_method_form_self_call(body, name) {
             ctx.sink
                 .push(diagnostics::infer::tailcall_method_form_unsupported(
@@ -68,7 +68,7 @@ fn find_method_form_self_call(expr: &Expression, name: &str) -> Option<Span> {
 
 #[derive(Default)]
 struct Analysis {
-    tail_calls: Vec<Span>,
+    has_tail_call: bool,
     non_tail_calls: Vec<Span>,
 }
 
@@ -80,7 +80,7 @@ struct Analysis {
 fn walk(expr: &Expression, tail: bool, name: &str, param_count: usize, out: &mut Analysis) {
     if let Some(span) = self_call_span(expr, name, param_count) {
         if tail {
-            out.tail_calls.push(span);
+            out.has_tail_call = true;
         } else {
             out.non_tail_calls.push(span);
         }
