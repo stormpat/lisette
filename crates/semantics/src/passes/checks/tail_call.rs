@@ -194,7 +194,15 @@ fn walk(expr: &Expression, tail: bool, name: &str, param_count: usize, out: &mut
         Expression::Task { expression, .. } | Expression::Defer { expression, .. } => {
             walk(expression, false, name, param_count, out);
         }
-        _ => {}
+        // Conservative fallback for variants that wrap or consume their children
+        // (Cast, IndexedAccess, Reference, Propagate, Range, Assignment, …). The
+        // inner value is consumed by the wrapping expression, so children are
+        // never in tail position from the function's perspective.
+        other => {
+            for child in other.children().iter() {
+                walk(child, false, name, param_count, out);
+            }
+        }
     }
 }
 

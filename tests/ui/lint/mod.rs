@@ -9060,3 +9060,19 @@ impl Counter {
 "#
     );
 }
+
+#[test]
+fn tailcall_call_wrapped_in_cast_is_not_tail() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn bad(n: int64) -> int {
+  if n == 0 {
+    0
+  } else {
+    bad(n - 1) as int
+  }
+}
+"#
+    );
+}
