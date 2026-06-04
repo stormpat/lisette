@@ -11,17 +11,27 @@ pub(crate) fn has_tailcall_attribute(attributes: &[Attribute]) -> bool {
     attributes.iter().any(|a| a.name == "tailcall")
 }
 
+pub(crate) struct TailSelfCallMatch<'a> {
+    pub args: &'a [Expression],
+    pub param_go_names: Vec<String>,
+}
+
 pub(crate) fn match_tail_self_call<'a>(
     planner: &Planner<'_>,
     call: &'a Expression,
-) -> Option<&'a [Expression]> {
+) -> Option<TailSelfCallMatch<'a>> {
     let state = planner.function_state.tail_call()?;
-    call.self_call_to(&state.function_name, state.param_count)
+    let args = call.self_call_to(&state.function_name, state.param_count)?;
+    Some(TailSelfCallMatch {
+        args,
+        param_go_names: state.param_go_names.clone(),
+    })
 }
 
 pub(crate) fn emit_reassign_and_continue(
     planner: &mut Planner<'_>,
     args: &[Expression],
+    param_go_names: &[String],
     fx: &mut EmitEffects,
 ) -> String {
     let mut setup = String::new();
@@ -30,17 +40,10 @@ pub(crate) fn emit_reassign_and_continue(
         .map(|arg| planner.emit_value(&mut setup, arg, ExpressionContext::value(), fx))
         .collect();
 
-    let param_names = planner
-        .function_state
-        .tail_call()
-        .expect("tail-call state must be set when calling emit_reassign_and_continue")
-        .param_go_names
-        .clone();
-
     let mut out = setup;
     out.push_str(&format!(
         "{} = {}\n",
-        param_names.join(", "),
+        param_go_names.join(", "),
         arg_strs.join(", ")
     ));
     out.push_str("continue\n");
