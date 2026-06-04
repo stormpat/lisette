@@ -29,8 +29,15 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     walk(body, true, name, params.len(), &mut analysis);
 
     if analysis.tail_calls.is_empty() && analysis.non_tail_calls.is_empty() {
-        ctx.sink
-            .push(diagnostics::infer::tailcall_no_self_call(name_span, name));
+        if let Some(call_span) = find_method_form_self_call(body, name) {
+            ctx.sink
+                .push(diagnostics::infer::tailcall_method_form_unsupported(
+                    &call_span, name,
+                ));
+        } else {
+            ctx.sink
+                .push(diagnostics::infer::tailcall_no_self_call(name_span, name));
+        }
         return;
     }
 
@@ -40,6 +47,23 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
                 span, name,
             ));
     }
+}
+
+/// Look for any `<receiver>.<name>(...)` call anywhere in the body. Used as a
+/// fallback diagnostic when no identifier-form self-calls are detected — the
+/// user likely wrote method-form recursion, which tier 1 does not transform.
+fn find_method_form_self_call(expr: &Expression, name: &str) -> Option<Span> {
+    if let Expression::Call {
+        expression, span, ..
+    } = expr
+        && let Expression::DotAccess { member, .. } = expression.as_ref()
+        && member.as_str() == name
+    {
+        return Some(*span);
+    }
+    expr.children()
+        .iter()
+        .find_map(|child| find_method_form_self_call(child, name))
 }
 
 #[derive(Default)]

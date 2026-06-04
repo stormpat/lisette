@@ -1,0 +1,13 @@
+---
+source: tests/ui/lint/mod.rs
+assertion_line: 8283
+---
+  [error] `#[tailcall]` on `count_down`: method-form recursion is not yet supported
+    ╭─[test.lis:10:7]
+  9 │     } else {
+ 10 │       Counter { n: self.n - 1 }.count_down(acc + 1)
+    ·       ──────────────────────┬──────────────────────
+    ·                             ╰── method-form self-call
+ 11 │     }
+    ╰────
+  help: Tier 1 only detects direct calls like `name(...)`. Method-form recursion (`receiver.name(...)`) is deferred to tier 2. Rewrite the call as a free function, or remove `#[tailcall]` · code: [infer.tailcall_method_form_unsupported]

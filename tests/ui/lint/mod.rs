@@ -9040,3 +9040,23 @@ fn loop_forever(n: int) {
 "#
     );
 }
+
+#[test]
+fn tailcall_method_form_rejected() {
+    assert_lint_snapshot!(
+        r#"
+struct Counter { n: int }
+
+impl Counter {
+  #[tailcall]
+  fn count_down(self, acc: int) -> int {
+    if self.n == 0 {
+      acc
+    } else {
+      Counter { n: self.n - 1 }.count_down(acc + 1)
+    }
+  }
+}
+"#
+    );
+}

@@ -3024,6 +3024,21 @@ pub fn tailcall_unit_return(name_span: &Span, function_name: &str) -> LisetteDia
     )
 }
 
+pub fn tailcall_method_form_unsupported(
+    call_span: &Span,
+    function_name: &str,
+) -> LisetteDiagnostic {
+    LisetteDiagnostic::error(format!(
+        "`#[tailcall]` on `{}`: method-form recursion is not yet supported",
+        function_name
+    ))
+    .with_infer_code("tailcall_method_form_unsupported")
+    .with_span_label(call_span, "method-form self-call")
+    .with_help(
+        "Tier 1 only detects direct calls like `name(...)`. Method-form recursion (`receiver.name(...)`) is deferred to tier 2. Rewrite the call as a free function, or remove `#[tailcall]`.",
+    )
+}
+
 pub fn tailcall_no_self_call(name_span: &Span, function_name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error(format!(
         "`#[tailcall]` on `{}`: no recursive self-call found",
