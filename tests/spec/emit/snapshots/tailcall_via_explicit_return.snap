@@ -1,0 +1,16 @@
+---
+source: tests/spec/emit/functions.rs
+assertion_line: 1752
+description: "input: \n#[tailcall]\nfn sum_to(n: int, acc: int) -> int {\n  if n == 0 {\n    return acc\n  }\n  return sum_to(n - 1, acc + n)\n}\n"
+---
+package main
+
+func sum_to(n, acc int) int {
+	for {
+		if n == 0 {
+			return acc
+		}
+		n, acc = n-1, acc+n
+		continue
+	}
+}

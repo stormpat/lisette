@@ -9076,3 +9076,34 @@ fn bad(n: int64) -> int {
 "#
     );
 }
+
+#[test]
+fn tailcall_inside_loop_is_not_tail() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn bad(n: int) -> int {
+  loop {
+    bad(n - 1)
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn tailcall_let_then_identifier_breaks_tail() {
+    assert_lint_snapshot!(
+        r#"
+#[tailcall]
+fn bad(n: int) -> int {
+  if n == 0 {
+    0
+  } else {
+    let result = bad(n - 1)
+    result
+  }
+}
+"#
+    );
+}

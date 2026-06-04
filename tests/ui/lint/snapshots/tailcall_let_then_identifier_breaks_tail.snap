@@ -1,0 +1,13 @@
+---
+source: tests/ui/lint/mod.rs
+assertion_line: 8333
+---
+  [error] Recursive call to `bad` is not in tail position
+   ╭─[test.lis:7:18]
+ 6 │   } else {
+ 7 │     let result = bad(n - 1)
+   ·                  ─────┬────
+   ·                       ╰── this call result is consumed before returning
+ 8 │     result
+   ╰────
+  help: A tail call's result must be returned directly. Move work that follows the call into the recursive arguments, or remove `#[tailcall]` · code: [infer.tailcall_not_in_tail_position]

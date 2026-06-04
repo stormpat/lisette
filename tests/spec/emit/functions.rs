@@ -1737,3 +1737,38 @@ fn sum_pair((a, b): (int, int), acc: int) -> int {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn tailcall_via_explicit_return() {
+    let input = r#"
+#[tailcall]
+fn sum_to(n: int, acc: int) -> int {
+  if n == 0 {
+    return acc
+  }
+  return sum_to(n - 1, acc + n)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn tailcall_inside_paren() {
+    let input = r#"
+#[tailcall]
+fn factorial(n: int, acc: int) -> int {
+  if n <= 1 { acc } else { (factorial(n - 1, acc * n)) }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn unannotated_recursion_unchanged_by_tailcall_pass() {
+    let input = r#"
+fn factorial(n: int, acc: int) -> int {
+  if n <= 1 { acc } else { factorial(n - 1, acc * n) }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
