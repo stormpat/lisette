@@ -1079,12 +1079,13 @@ impl Expression {
 
     /// If this is a `Call` to an identifier matching `name` with `arity` args,
     /// return the args. Otherwise None. Used to detect direct self-calls.
+    /// Peels through `Paren` wrappers so `(f(x))` matches the same as `f(x)`.
     /// `Call.type_args` is ignored — a generic self-call (`self::<T>(...)`) is
     /// still a self-call regardless of which monomorphisation it targets.
     pub fn self_call_to(&self, name: &str, arity: usize) -> Option<&[Expression]> {
         let Expression::Call {
             expression, args, ..
-        } = self
+        } = self.unwrap_parens()
         else {
             return None;
         };
