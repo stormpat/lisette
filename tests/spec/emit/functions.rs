@@ -1722,3 +1722,18 @@ fn collatz(n: int, steps: int) -> int {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn tailcall_destructured_param_reassigns_temp() {
+    let input = r#"
+#[tailcall]
+fn sum_pair((a, b): (int, int), acc: int) -> int {
+  if a == 0 {
+    acc + b
+  } else {
+    sum_pair((a - 1, b), acc + a)
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}

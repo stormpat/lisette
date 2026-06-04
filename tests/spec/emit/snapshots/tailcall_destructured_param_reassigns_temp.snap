@@ -1,0 +1,20 @@
+---
+source: tests/spec/emit/functions.rs
+assertion_line: 1738
+description: "input: \n#[tailcall]\nfn sum_pair((a, b): (int, int), acc: int) -> int {\n  if a == 0 {\n    acc + b\n  } else {\n    sum_pair((a - 1, b), acc + a)\n  }\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+func sum_pair(arg_1 lisette.Tuple2[int, int], acc int) int {
+	for {
+		a := arg_1.First
+		b := arg_1.Second
+		if a == 0 {
+			return acc + b
+		}
+		arg_1, acc = lisette.MakeTuple2(a-1, b), acc+a
+		continue
+	}
+}

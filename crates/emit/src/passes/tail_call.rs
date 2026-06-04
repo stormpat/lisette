@@ -1,8 +1,12 @@
-use syntax::ast::{Attribute, Binding, Expression, Pattern};
+use syntax::ast::{Attribute, Binding, Expression, Pattern, TypedPattern};
+use syntax::types::Type;
 
 use crate::EmitEffects;
 use crate::Planner;
 use crate::context::expression::ExpressionContext;
+
+/// Mirrors the tuple in `crates/emit/src/definitions/functions.rs`.
+pub(crate) type DeferredParamDestructure = (String, Pattern, Option<TypedPattern>, Type);
 
 pub(crate) fn has_tailcall_attribute(attributes: &[Attribute]) -> bool {
     attributes.iter().any(|a| a.name == "tailcall")
@@ -59,7 +63,17 @@ pub(crate) fn emit_reassign_and_continue(
     out
 }
 
-pub(crate) fn resolve_param_go_names(planner: &Planner<'_>, params: &[Binding]) -> Vec<String> {
+/// Resolve each param's Go name. For `Identifier` patterns, look up via the
+/// scope. For destructuring patterns (Tuple, Struct, EnumVariant, …), use the
+/// synthesized `arg_N` temp from the deferred destructure for that param —
+/// reassignment then writes to the temp and the destructure is re-run at the
+/// top of each loop iteration. WildCard becomes `_`.
+pub(crate) fn resolve_param_go_names(
+    planner: &Planner<'_>,
+    params: &[Binding],
+    deferred: &[DeferredParamDestructure],
+) -> Vec<String> {
+    let mut deferred_iter = deferred.iter();
     params
         .iter()
         .map(|p| match &p.pattern {
@@ -68,7 +82,11 @@ pub(crate) fn resolve_param_go_names(planner: &Planner<'_>, params: &[Binding]) 
                 .resolve_binding_go_name(identifier)
                 .map(str::to_string)
                 .unwrap_or_else(|| identifier.to_string()),
-            _ => "_".to_string(),
+            Pattern::WildCard { .. } => "_".to_string(),
+            _ => deferred_iter
+                .next()
+                .map(|d| d.0.clone())
+                .unwrap_or_else(|| "_".to_string()),
         })
         .collect()
 }

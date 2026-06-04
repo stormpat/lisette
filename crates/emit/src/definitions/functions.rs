@@ -367,6 +367,22 @@ impl Planner<'_> {
         fx: &mut EmitEffects,
     ) {
         let should_return = !function_definition.return_type.is_unit();
+        let is_tail_call =
+            crate::passes::tail_call::has_tailcall_attribute(&function_definition.attributes);
+        if is_tail_call {
+            let param_go_names = crate::passes::tail_call::resolve_param_go_names(
+                self,
+                &function_definition.params,
+                &deferred_patterns,
+            );
+            self.function_state
+                .set_tail_call(crate::state::module_state::TailCallState {
+                    function_name: function_definition.name.to_string(),
+                    param_count: function_definition.params.len(),
+                    param_go_names,
+                });
+            body.push_str("for {\n");
+        }
         for (var_name, pattern, typed, param_ty) in deferred_patterns {
             self.emit_irrefutable_pattern_site(
                 body,
@@ -376,21 +392,6 @@ impl Planner<'_> {
                 &param_ty,
                 fx,
             );
-        }
-        let is_tail_call =
-            crate::passes::tail_call::has_tailcall_attribute(&function_definition.attributes);
-        if is_tail_call {
-            let param_go_names = crate::passes::tail_call::resolve_param_go_names(
-                self,
-                &function_definition.params,
-            );
-            self.function_state
-                .set_tail_call(crate::state::module_state::TailCallState {
-                    function_name: function_definition.name.to_string(),
-                    param_count: function_definition.params.len(),
-                    param_go_names,
-                });
-            body.push_str("for {\n");
         }
         self.emit_function_body(
             body,
