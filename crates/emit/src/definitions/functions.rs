@@ -367,8 +367,10 @@ impl Planner<'_> {
         fx: &mut EmitEffects,
     ) {
         let should_return = !function_definition.return_type.is_unit();
-        let is_tail_call =
-            crate::passes::tail_call::has_tailcall_attribute(&function_definition.attributes);
+        let is_tail_call = function_definition
+            .attributes
+            .iter()
+            .any(|a| a.name == "tailcall");
         if is_tail_call {
             let param_go_names = crate::passes::tail_call::resolve_param_go_names(
                 self,

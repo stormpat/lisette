@@ -1,4 +1,4 @@
-use syntax::ast::{Attribute, Binding, Expression, Pattern, TypedPattern};
+use syntax::ast::{Binding, Expression, Pattern, TypedPattern};
 use syntax::types::Type;
 
 use crate::EmitEffects;
@@ -6,10 +6,6 @@ use crate::Planner;
 use crate::context::expression::ExpressionContext;
 
 pub(crate) type DeferredParamDestructure = (String, Pattern, Option<TypedPattern>, Type);
-
-pub(crate) fn has_tailcall_attribute(attributes: &[Attribute]) -> bool {
-    attributes.iter().any(|a| a.name == "tailcall")
-}
 
 pub(crate) struct TailSelfCallMatch<'a> {
     pub args: &'a [Expression],
