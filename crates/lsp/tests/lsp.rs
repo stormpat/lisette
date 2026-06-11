@@ -1,7 +1,8 @@
 mod lsp_harness;
 
 use lsp_harness::{
-    TestClient, completion_labels, definition_location, hover_content, symbol_names,
+    TestClient, completion_labels, definition_location, definition_target_text, hover_content,
+    symbol_names,
 };
 use tower_lsp::lsp_types::*;
 
@@ -918,17 +919,21 @@ async fn goto_definition_on_stdlib_go_function_navigates_to_typedef() {
     let source = "import \"go:fmt\"\n\nfn main() {\n  fmt.Println(\"hello\")\n}";
     client.open(TEST_URI, source).await;
 
-    // Stdlib go: typedefs are materialized to disk on demand, so F12 navigates
-    // into the generated `.d.lis` file just like a third-party dependency.
+    // Stdlib go: typedefs are materialized to disk on demand, so go-to-definition
+    // navigates into the generated `.d.lis` file just like a third-party dependency.
     let response = client.goto_definition(TEST_URI, 3, 6).await;
     let location = definition_location(
-        &response.expect("F12 on stdlib go: function should return a location"),
+        &response.expect("go-to-definition on stdlib go: function should return a location"),
     )
     .expect("response should contain a location");
     let path = location.uri.path();
     assert!(
         path.contains("go-std") && path.ends_with(".d.lis"),
-        "stdlib go: F12 should land in a materialized typedef, got {path}"
+        "should land in a materialized typedef, got {path}"
+    );
+    assert!(
+        definition_target_text(&location).starts_with("Println"),
+        "should land on the `Println` definition"
     );
 
     client.shutdown().await;
@@ -978,7 +983,7 @@ async fn goto_definition_on_third_party_go_function_navigates_to_cache() {
     // Cursor on `DoStuff`.
     let response = client.goto_definition(&main_uri, 3, 14).await;
     let location = definition_location(
-        &response.expect("F12 on third-party go: function should return a location"),
+        &response.expect("go-to-definition on third-party go: function should return a location"),
     )
     .expect("response should contain a location");
 
@@ -9592,13 +9597,17 @@ async fn goto_definition_stdlib_member_navigates_to_typedef() {
     // generated `.d.lis` file.
     let response = client.goto_definition(TEST_URI, 2, 6).await;
     let location = definition_location(
-        &response.expect("goto_definition on stdlib member should return a location"),
+        &response.expect("go-to-definition on stdlib member should return a location"),
     )
     .expect("response should contain a location");
     let path = location.uri.path();
     assert!(
         path.contains("go-std") && path.ends_with(".d.lis"),
-        "stdlib member F12 should land in a materialized typedef, got {path}"
+        "should land in a materialized typedef, got {path}"
+    );
+    assert!(
+        definition_target_text(&location).starts_with("Println"),
+        "should land on the `Println` definition"
     );
 
     client.shutdown().await;

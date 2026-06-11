@@ -346,6 +346,22 @@ pub fn definition_location(response: &GotoDefinitionResponse) -> Option<Location
     }
 }
 
+/// Reads the file a definition `Location` points to and returns the text from
+/// the range start to end of line, so a test can assert the jump landed on the
+/// expected symbol rather than merely on some file.
+pub fn definition_target_text(location: &Location) -> String {
+    let path = location
+        .uri
+        .to_file_path()
+        .expect("location uri should be a file path");
+    let source = std::fs::read_to_string(&path).expect("definition file should be readable");
+    let line = source
+        .lines()
+        .nth(location.range.start.line as usize)
+        .expect("range line should exist");
+    line[location.range.start.character as usize..].to_string()
+}
+
 pub fn completion_labels(response: &CompletionResponse) -> Vec<String> {
     match response {
         CompletionResponse::Array(items) => items.iter().map(|i| i.label.clone()).collect(),
