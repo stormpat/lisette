@@ -57,7 +57,13 @@ pub fn ensure_stdlib_typedef_on_disk(
     target: Target,
 ) -> Option<PathBuf> {
     let path = stdlib_typedef_dir(target)?.join(format!("{go_pkg}.d.lis"));
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(source) {
+    let needs_write = match std::fs::read_to_string(&path) {
+        Ok(existing) => existing != source,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        // Present but unreadable (e.g. permissions): don't rewrite on every call.
+        Err(_) => return None,
+    };
+    if needs_write {
         std::fs::create_dir_all(path.parent()?).ok()?;
         atomic_write(&path, source)?;
     }
