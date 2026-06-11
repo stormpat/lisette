@@ -407,9 +407,8 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Stdlib go: typedefs are loaded from cache without registering a File,
-        // so their definitions carry Span::dummy(). Refuse to navigate rather
-        // than jump to (0,0) of whatever happens to be at file_id 0.
+        // Refuse to navigate to genuinely dummy spans (e.g. synthesised definitions
+        // with no source location) to avoid jumping to offset 0 of a random file.
         if definition_span.is_dummy() {
             return Ok(None);
         }

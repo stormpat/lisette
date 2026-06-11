@@ -32,6 +32,46 @@ pub fn typedef_cache_dir(project_root: &Path) -> PathBuf {
         .join(format!("lis@v{}", lis_version))
 }
 
+/// Directory holding materialized Go stdlib typedefs. Global (stdlib is the same
+/// for every project) and keyed by target + stdlib content hash, so a compiler
+/// upgrade or stdlib change lands in a fresh directory rather than reusing stale
+/// files.
+fn stdlib_typedef_dir(target: Target) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(
+        PathBuf::from(home)
+            .join(".lisette/typedefs/go-std")
+            .join(target.cache_segment())
+            .join(format!("{:016x}", stdlib::GO_STD_CONTENT_HASH)),
+    )
+}
+
+/// Materialize an embedded Go stdlib typedef to disk so the editor can open it as
+/// a regular file, and return its path. Idempotent: the content is keyed by
+/// stdlib hash, so an existing file is always current and is left untouched.
+pub fn ensure_stdlib_typedef_on_disk(go_pkg: &str, source: &str, target: Target) -> Option<PathBuf> {
+    let path = stdlib_typedef_dir(target)?.join(format!("{go_pkg}.d.lis"));
+    if !path.exists() {
+        std::fs::create_dir_all(path.parent()?).ok()?;
+        atomic_write(&path, source)?;
+    }
+    Some(path)
+}
+
+/// Write `content` to `path` via a temp file + rename so a concurrent reader
+/// never observes a partially written typedef.
+fn atomic_write(path: &Path, content: &str) -> Option<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, content).ok()?;
+    if std::fs::rename(&tmp, path).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return None;
+    }
+    Some(())
+}
+
 #[derive(Clone, Copy)]
 pub struct GoModule<'a> {
     /// Module path, e.g. `github.com/gorilla/mux`.

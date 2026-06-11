@@ -194,9 +194,17 @@ impl TypedefLocator {
             DeclarationStatus::Stdlib => {
                 let source = stdlib::get_go_stdlib_typedef(package_path, self.target)
                     .expect("Stdlib classification implies an embedded typedef");
+                // Materialize the embedded source so go-to-definition can navigate
+                // to it; fall back to a non-navigable origin if the disk write
+                // fails (e.g. no HOME).
+                let origin =
+                    match crate::ensure_stdlib_typedef_on_disk(package_path, source, self.target) {
+                        Some(path) => TypedefOrigin::Cache(path),
+                        None => TypedefOrigin::Stdlib,
+                    };
                 return TypedefLocatorResult::Found {
                     content: Cow::Borrowed(source),
-                    origin: TypedefOrigin::Stdlib,
+                    origin,
                 };
             }
             DeclarationStatus::UnknownStdlib => return TypedefLocatorResult::UnknownStdlib,

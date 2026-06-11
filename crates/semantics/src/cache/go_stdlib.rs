@@ -9,6 +9,7 @@ use super::types::CachedDefinition;
 use super::{COMPILER_VERSION_HASH, GO_STDLIB_HASH};
 use crate::checker::registration::extract_package_directive;
 use crate::store::Store;
+use syntax::program::File;
 
 #[derive(Serialize, Deserialize)]
 pub struct GoStdlibCache {
@@ -154,8 +155,10 @@ fn register_cached_go_module(
     store.add_module(module_id);
     store.mark_visited(module_id);
 
-    if let Some(go_pkg) = module_id.strip_prefix("go:")
-        && let Some(source) = get_go_stdlib_typedef(go_pkg, target)
+    let go_pkg = module_id.strip_prefix("go:");
+    let source = go_pkg.and_then(|go_pkg| get_go_stdlib_typedef(go_pkg, target));
+
+    if let Some(source) = source
         && let Some(pkg_name) = extract_package_directive(source)
         && module_id.rsplit('/').next() != Some(pkg_name.as_str())
     {
@@ -164,10 +167,25 @@ fn register_cached_go_module(
             .insert(module_id.to_string(), pkg_name);
     }
 
-    // Go modules don't need files registered — they're internal and filtered out
-    // of diagnostic rendering. We use an empty file_ids slice for span restoration
-    // (all spans will get file_id 0, which is fine for Go stdlib).
-    let file_ids: &[u32] = &[];
+    // Register the typedef as a file so its definitions' byte-offset spans
+    // resolve, and materialize it to disk so go-to-definition can navigate
+    // there. This fast cache path bypasses the locator, so it mirrors the
+    // `typedef_paths` entry the locator records on the slow path.
+    let owned_file_id;
+    let mut file_ids: &[u32] = &[];
+    if let (Some(go_pkg), Some(source)) = (go_pkg, source) {
+        let file_id = store.new_file_id();
+        let filename = format!("{}.d.lis", go_pkg.replace('/', "_"));
+        store.store_file(
+            module_id,
+            File::new_cached(module_id, &filename, &filename, source, file_id),
+        );
+        if let Some(path) = deps::ensure_stdlib_typedef_on_disk(go_pkg, source, target) {
+            store.typedef_paths.insert(file_id, path);
+        }
+        owned_file_id = [file_id];
+        file_ids = &owned_file_id;
+    }
 
     let module = store.get_module_mut(module_id).unwrap();
     for (qualified_name, cached_definition) in &cached.definitions {
