@@ -2,8 +2,13 @@ mod project_manifest;
 mod typedef_locator;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use stdlib::Target;
+
+/// Disambiguates temp files so concurrent analyses writing the same typedef do
+/// not share a temp path.
+static TYPEDEF_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub use project_manifest::{
     GoDependency, Manifest, ResolveReport, TrimmedVia, check_no_subpackage_deps,
@@ -60,10 +65,11 @@ pub fn ensure_stdlib_typedef_on_disk(
 }
 
 /// Write `content` to `path` via a temp file + rename, so a concurrent reader
-/// never observes a partial write. The temp name carries the pid so a separate
-/// process writing the same global typedef uses a distinct temp file.
+/// never observes a partial write. The temp name carries the pid and a counter
+/// so concurrent writers (across processes or analyses) use distinct temp files.
 fn atomic_write(path: &Path, content: &str) -> Option<()> {
-    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    let counter = TYPEDEF_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("tmp.{}.{}", std::process::id(), counter));
     std::fs::write(&tmp, content).ok()?;
     if std::fs::rename(&tmp, path).is_err() {
         let _ = std::fs::remove_file(&tmp);
