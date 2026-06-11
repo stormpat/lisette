@@ -32,38 +32,38 @@ pub fn typedef_cache_dir(project_root: &Path) -> PathBuf {
         .join(format!("lis@v{}", lis_version))
 }
 
-/// Directory holding materialized Go stdlib typedefs. Global (stdlib is the same
-/// for every project) and keyed by target + stdlib content hash, so a compiler
-/// upgrade or stdlib change lands in a fresh directory rather than reusing stale
-/// files.
+/// Directory holding materialized Go stdlib typedefs, one per target. Global
+/// because stdlib is the same for every project.
 fn stdlib_typedef_dir(target: Target) -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
     Some(
         PathBuf::from(home)
             .join(".lisette/typedefs/go-std")
-            .join(target.cache_segment())
-            .join(format!("{:016x}", stdlib::GO_STD_CONTENT_HASH)),
+            .join(target.cache_segment()),
     )
 }
 
 /// Materialize an embedded Go stdlib typedef to disk so the editor can open it as
-/// a regular file, and return its path. Idempotent: the content is keyed by
-/// stdlib hash, so an existing file is always current and is left untouched.
-pub fn ensure_stdlib_typedef_on_disk(go_pkg: &str, source: &str, target: Target) -> Option<PathBuf> {
+/// a regular file, and return its path. Rewrites only when the on-disk content
+/// differs (first materialization or after a compiler/stdlib upgrade).
+pub fn ensure_stdlib_typedef_on_disk(
+    go_pkg: &str,
+    source: &str,
+    target: Target,
+) -> Option<PathBuf> {
     let path = stdlib_typedef_dir(target)?.join(format!("{go_pkg}.d.lis"));
-    if !path.exists() {
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(source) {
         std::fs::create_dir_all(path.parent()?).ok()?;
         atomic_write(&path, source)?;
     }
     Some(path)
 }
 
-/// Write `content` to `path` via a temp file + rename so a concurrent reader
-/// never observes a partially written typedef.
+/// Write `content` to `path` via a temp file + rename, so a concurrent reader
+/// never observes a partial write. The temp name carries the pid so a separate
+/// process writing the same global typedef uses a distinct temp file.
 fn atomic_write(path: &Path, content: &str) -> Option<()> {
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     std::fs::write(&tmp, content).ok()?;
     if std::fs::rename(&tmp, path).is_err() {
         let _ = std::fs::remove_file(&tmp);

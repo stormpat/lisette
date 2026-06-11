@@ -921,9 +921,10 @@ async fn goto_definition_on_stdlib_go_function_navigates_to_typedef() {
     // Stdlib go: typedefs are materialized to disk on demand, so F12 navigates
     // into the generated `.d.lis` file just like a third-party dependency.
     let response = client.goto_definition(TEST_URI, 3, 6).await;
-    let location =
-        definition_location(&response.expect("F12 on stdlib go: function should return a location"))
-            .expect("response should contain a location");
+    let location = definition_location(
+        &response.expect("F12 on stdlib go: function should return a location"),
+    )
+    .expect("response should contain a location");
     let path = location.uri.path();
     assert!(
         path.contains("go-std") && path.ends_with(".d.lis"),
