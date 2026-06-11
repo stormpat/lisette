@@ -407,8 +407,8 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Refuse to navigate to genuinely dummy spans (e.g. synthesised definitions
-        // with no source location) to avoid jumping to offset 0 of a random file.
+        // A dummy span (zero length) would resolve to offset 0 of file_id 0;
+        // refuse rather than jump there.
         if definition_span.is_dummy() {
             return Ok(None);
         }

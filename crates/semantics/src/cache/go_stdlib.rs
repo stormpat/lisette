@@ -167,10 +167,8 @@ fn register_cached_go_module(
             .insert(module_id.to_string(), pkg_name);
     }
 
-    // Register the typedef as a file so its definitions' byte-offset spans
-    // resolve, and materialize it to disk so go-to-definition can navigate
-    // there. This fast cache path bypasses the locator, so it mirrors the
-    // `typedef_paths` entry the locator records on the slow path.
+    // Register the typedef File and materialize it so go-to-definition can
+    // navigate, mirroring the `typedef_paths` entry the locator records.
     let owned_file_id;
     let mut file_ids: &[u32] = &[];
     if let (Some(go_pkg), Some(source)) = (go_pkg, source) {
