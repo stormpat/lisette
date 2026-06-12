@@ -105,10 +105,11 @@ impl Planner<'_> {
         } else {
             // Declared so the dead-path binding stays in scope for later references.
             let go_ty = self.go_type_string(inner_ty, fx);
-            statements.push(LoweredStatement::RawGo(format!(
-                "var {} {} = {}\n",
-                var_name, go_ty, zero
-            )));
+            statements.push(LoweredStatement::VarDecl {
+                name: var_name.to_string(),
+                go_type: go_ty,
+                value: Some(zero),
+            });
             self.declare(var_name);
         }
     }
@@ -492,12 +493,9 @@ impl Planner<'_> {
         if let Some(plan) = self.plan_call(expression)
             && let CalleePlan::GoInterop(strategy) = plan.callee
         {
-            let mut setup = String::new();
-            let result_var =
-                self.emit_go_wrapped_call(&mut setup, expression, &strategy, return_ty, fx);
-            if !setup.is_empty() {
-                statements.push(LoweredStatement::RawGo(setup));
-            }
+            let (setup, result_var) =
+                self.lower_go_wrapped_call(expression, &strategy, return_ty, fx);
+            statements.extend(setup);
             if let Some(shape) = lowered {
                 statements.extend(transition::emit_lowered_result_return(
                     self,

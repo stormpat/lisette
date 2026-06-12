@@ -53,6 +53,12 @@ pub(crate) enum LoweredStatement {
         name: String,
         value: String,
     },
+    /// `var name go_type` (with `= value` when `value` is set).
+    VarDecl {
+        name: String,
+        go_type: String,
+        value: Option<String>,
+    },
     /// `name := <closure_open><body><closure_close>` (try-block IIFE,
     /// recover-block closure). `closure_open`/`close` are opaque Go text.
     ClosureBind {
@@ -145,10 +151,10 @@ pub(crate) struct LetPlan {
 }
 
 pub(crate) enum LetForm {
-    /// `!`-typed value. `declaration` is the optional `var X T` line so dead code
+    /// `!`-typed value. `declaration` is the optional `var X T` leaf so dead code
     /// can still reference the binding.
     Never {
-        declaration: Option<String>,
+        declaration: Option<Box<LoweredStatement>>,
         body: LoweredBlock,
     },
     /// `let x = value` (single identifier), including `let x = expr?`.
@@ -357,7 +363,7 @@ pub(crate) struct WhileLetPlan {
 /// opening brace; `label` is the optional break/continue label.
 pub(crate) struct LoopPlan {
     pub(crate) directive: String,
-    pub(crate) prologue: String,
+    pub(crate) prologue: Vec<LoweredStatement>,
     pub(crate) label: Option<String>,
     pub(crate) header: String,
     pub(crate) body: LoweredBlock,
@@ -367,7 +373,9 @@ pub(crate) struct IfPlan {
     /// Empty unless debug; set only on the leading `if`, never on nested
     /// `else if`s.
     pub(crate) directive: String,
-    pub(crate) condition_setup: String,
+    /// Side-effecting setup hoisted before the `if` condition (temps from a
+    /// condition that lowered to statements).
+    pub(crate) condition_setup: Vec<LoweredStatement>,
     pub(crate) condition: String,
     pub(crate) then_body: LoweredBlock,
     pub(crate) else_arm: ElseArm,
@@ -428,7 +436,9 @@ impl LoweredStatement {
             LoweredStatement::Select(plan) => plan.ends_with_diverge(),
             LoweredStatement::Switch(plan) => plan.ends_with_diverge(),
             LoweredStatement::WhileLet(plan) => plan.body.ends_with_diverge(),
-            LoweredStatement::TempBind { .. } | LoweredStatement::ClosureBind { .. } => false,
+            LoweredStatement::TempBind { .. }
+            | LoweredStatement::VarDecl { .. }
+            | LoweredStatement::ClosureBind { .. } => false,
             LoweredStatement::RawGo(_) => false,
             LoweredStatement::DivergingRawGo(_) | LoweredStatement::UnreachablePanic => true,
         }

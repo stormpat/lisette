@@ -1,6 +1,5 @@
 use crate::EmitEffects;
 use crate::Planner;
-use crate::Renderer;
 use crate::calls::go_interop::build_tuple_literal;
 use crate::calls::go_interop::wrappers::{
     TupleReturnLayout, WrapperOutcome, WrapperTarget, leaf_block,
@@ -52,21 +51,6 @@ impl Planner<'_> {
         (setup, outcome.expect("wrapper produced no slot"))
     }
 
-    pub(crate) fn emit_sentinel_wrapping(
-        &mut self,
-        output: &mut String,
-        call_str: &str,
-        option_ty: &Type,
-        sentinel: i64,
-        target: WrapperTarget<'_>,
-        fx: &mut EmitEffects,
-    ) -> WrapperOutcome {
-        let (statements, outcome) =
-            self.lower_sentinel_wrapping(call_str, option_ty, sentinel, target, fx);
-        output.push_str(&Renderer.render_setup(&statements));
-        outcome
-    }
-
     /// Wrap a sentinel-call via `OptionFromCommaOk` with `raw != sentinel`.
     pub(crate) fn lower_sentinel_wrapping(
         &mut self,
@@ -87,21 +71,6 @@ impl Planner<'_> {
         let outcome =
             self.push_simple_wrapper_value(&mut statements, target, "option", &value_expr);
         (statements, outcome)
-    }
-
-    pub(crate) fn emit_comma_ok_wrapping(
-        &mut self,
-        output: &mut String,
-        call_str: &str,
-        option_ty: &Type,
-        layout: TupleReturnLayout,
-        target: WrapperTarget<'_>,
-        fx: &mut EmitEffects,
-    ) -> WrapperOutcome {
-        let (statements, outcome) =
-            self.lower_comma_ok_wrapping(call_str, option_ty, layout, target, fx);
-        output.push_str(&Renderer.render_setup(&statements));
-        outcome
     }
 
     /// Wrap a comma-ok-returning call into a tagged `Option`. A `Flattened`
@@ -189,7 +158,7 @@ impl Planner<'_> {
 
         statements.push(LoweredStatement::If(IfPlan {
             directive: String::new(),
-            condition_setup: String::new(),
+            condition_setup: Vec::new(),
             condition,
             then_body: leaf_block(&sink, &some_wrapper),
             else_arm: ElseArm::Else {
@@ -198,20 +167,6 @@ impl Planner<'_> {
             },
         }));
         (statements, outcome)
-    }
-
-    pub(crate) fn emit_nil_check_option_wrap(
-        &mut self,
-        output: &mut String,
-        raw_value: &str,
-        option_ty: &Type,
-        target: WrapperTarget<'_>,
-        fx: &mut EmitEffects,
-    ) -> WrapperOutcome {
-        let (statements, outcome) =
-            self.lower_nil_check_option_wrap(raw_value, option_ty, target, fx);
-        output.push_str(&Renderer.render_setup(&statements));
-        outcome
     }
 
     /// Wrap a nilable Go value into a tagged `Option` via `OptionFromNilable`.
@@ -255,28 +210,6 @@ impl Planner<'_> {
         (setup, outcome.expect("wrapper produced no slot"))
     }
 
-    pub(crate) fn emit_option_projection(
-        &mut self,
-        output: &mut String,
-        option_value: &str,
-        slot_hint: &str,
-        slot_ty: &str,
-        address: bool,
-        fx: &mut EmitEffects,
-    ) -> String {
-        let mut statements = Vec::new();
-        let slot_var = self.plan_option_projection(
-            &mut statements,
-            option_value,
-            slot_hint,
-            slot_ty,
-            address,
-            fx,
-        );
-        output.push_str(&Renderer.render_setup(&statements));
-        slot_var
-    }
-
     pub(crate) fn plan_option_projection(
         &mut self,
         statements: &mut Vec<LoweredStatement>,
@@ -289,10 +222,11 @@ impl Planner<'_> {
         let opt_var = self.hoist_tmp_value_statement(statements, "opt", option_value);
         let slot_var = self.fresh_var(Some(slot_hint));
         self.declare(&slot_var);
-        statements.push(LoweredStatement::RawGo(format!(
-            "var {} {}\n",
-            slot_var, slot_ty
-        )));
+        statements.push(LoweredStatement::VarDecl {
+            name: slot_var.clone(),
+            go_type: slot_ty.to_string(),
+            value: None,
+        });
 
         fx.require_stdlib();
         let amp = if address { "&" } else { "" };
@@ -304,7 +238,7 @@ impl Planner<'_> {
         };
         statements.push(LoweredStatement::If(IfPlan {
             directive: String::new(),
-            condition_setup: String::new(),
+            condition_setup: Vec::new(),
             condition: format!("{}.Tag == {}", opt_var, OPTION_SOME_TAG),
             then_body: body,
             else_arm: ElseArm::None,
@@ -400,7 +334,7 @@ impl Planner<'_> {
                 };
                 let if_plan = IfPlan {
                     directive: String::new(),
-                    condition_setup: String::new(),
+                    condition_setup: Vec::new(),
                     condition,
                     then_body,
                     else_arm: ElseArm::Else {
@@ -434,7 +368,7 @@ impl Planner<'_> {
 
         statements.push(LoweredStatement::Loop(LoopPlan {
             directive: String::new(),
-            prologue: String::new(),
+            prologue: Vec::new(),
             label: None,
             header: format!("for {}, {} := range {} {{\n", index_var, val_var, src_var),
             body: loop_body,
@@ -496,7 +430,7 @@ impl Planner<'_> {
                 };
                 let if_plan = IfPlan {
                     directive: String::new(),
-                    condition_setup: String::new(),
+                    condition_setup: Vec::new(),
                     condition: format!("{}.Tag == {}", val_var, OPTION_SOME_TAG),
                     then_body,
                     else_arm,
@@ -527,7 +461,7 @@ impl Planner<'_> {
 
         statements.push(LoweredStatement::Loop(LoopPlan {
             directive: String::new(),
-            prologue: String::new(),
+            prologue: Vec::new(),
             label: None,
             header: format!("for {}, {} := range {} {{\n", index_var, val_var, src_var),
             body: loop_body,

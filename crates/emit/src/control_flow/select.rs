@@ -261,7 +261,7 @@ impl Planner<'_> {
         let plan = if body_empty {
             IfPlan {
                 directive: String::new(),
-                condition_setup: String::new(),
+                condition_setup: Vec::new(),
                 condition: format!("!{}", ok_var),
                 then_body: else_block.expect("body_empty && has_else"),
                 else_arm: ElseArm::None,
@@ -276,7 +276,7 @@ impl Planner<'_> {
             };
             IfPlan {
                 directive: String::new(),
-                condition_setup: String::new(),
+                condition_setup: Vec::new(),
                 condition: ok_var.to_string(),
                 then_body: body_block,
                 else_arm,
@@ -356,7 +356,7 @@ impl Planner<'_> {
         };
         let if_plan = IfPlan {
             directive: String::new(),
-            condition_setup: String::new(),
+            condition_setup: Vec::new(),
             condition: ok_var,
             then_body: LoweredBlock {
                 statements: then_statements,
@@ -446,18 +446,13 @@ impl Planner<'_> {
             None
         } else {
             let receiver_var = self.fresh_var(Some("recv"));
-            let mut destructure = String::new();
-            self.emit_irrefutable_pattern_site(
-                &mut destructure,
+            body_statements.extend(self.lower_irrefutable_pattern_site(
                 PatternSubject::for_value(receiver_var.clone()),
                 effective_pattern,
                 inner_typed,
                 &ctx.element_ty,
                 fx,
-            );
-            if !destructure.is_empty() {
-                body_statements.push(LoweredStatement::RawGo(destructure));
-            }
+            ));
             Some(receiver_var)
         };
         let block = self.lower_block_to_place(ctx.body, ctx.place, fx);
@@ -695,7 +690,7 @@ fn build_receive_arms_plan(
     match (some, none) {
         (Some(some), Some(none)) => Some(IfPlan {
             directive: String::new(),
-            condition_setup: String::new(),
+            condition_setup: Vec::new(),
             condition: ok_var.to_string(),
             then_body: some,
             else_arm: ElseArm::Else {
@@ -705,14 +700,14 @@ fn build_receive_arms_plan(
         }),
         (Some(some), None) => Some(IfPlan {
             directive: String::new(),
-            condition_setup: String::new(),
+            condition_setup: Vec::new(),
             condition: ok_var.to_string(),
             then_body: some,
             else_arm: ElseArm::None,
         }),
         (None, Some(none)) => Some(IfPlan {
             directive: String::new(),
-            condition_setup: String::new(),
+            condition_setup: Vec::new(),
             condition: format!("!{}", ok_var),
             then_body: none,
             else_arm: ElseArm::None,

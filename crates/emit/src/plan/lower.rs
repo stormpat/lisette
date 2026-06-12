@@ -1,10 +1,12 @@
 use crate::EmitEffects;
 use crate::Planner;
+use crate::Renderer;
 use crate::abi::transition::try_emit_lowered_tail_return;
 use crate::context::expression::ExpressionContext;
 use crate::control_flow::branching::wrap_if_struct_literal;
 use crate::control_flow::propagation::plain_return;
 use crate::definitions::functions::is_go_never;
+use crate::expressions::emission::StagedExpression;
 use crate::plan::bodies::{
     ElseArm, ExpressionStatementForm, ExpressionStatementPlan, IfPlan, LoopPlan, LoweredBlock,
     LoweredStatement, MatchStatementPlan, PlacePlan, WhileLetPlan,
@@ -24,9 +26,13 @@ impl Planner<'_> {
         fx: &mut EmitEffects,
     ) -> (String, LoweredStatement) {
         let result_var = self.fresh_var(None);
-        let declaration = format!("var {} {}\n", result_var, self.go_type_string(ty, fx));
+        let declaration = LoweredStatement::VarDecl {
+            name: result_var.clone(),
+            go_type: self.go_type_string(ty, fx),
+            value: None,
+        };
         self.declare(&result_var);
-        (result_var, LoweredStatement::RawGo(declaration))
+        (result_var, declaration)
     }
 
     /// Plan a value-position `if` as a fresh operand-temp variable: a `var V T`
@@ -430,15 +436,10 @@ impl Planner<'_> {
         &mut self,
         condition: &Expression,
         fx: &mut EmitEffects,
-    ) -> (String, String) {
-        let mut setup = String::new();
-        let value = self.emit_operand(
-            &mut setup,
-            condition,
-            ExpressionContext::value().condition(),
-            fx,
-        );
-        (setup, value)
+    ) -> (Vec<LoweredStatement>, String) {
+        let plan = self.plan_operand(condition, ExpressionContext::value().condition(), fx);
+        let staged = StagedExpression::from_plan(plan, condition);
+        (staged.setup, staged.value)
     }
 
     fn lower_while(
@@ -454,7 +455,8 @@ impl Planner<'_> {
         let header = if !setup.is_empty() {
             // Condition produced setup statements (temps); they must re-run each
             // iteration, so move everything inside the loop.
-            format!("for {{\n{}if !({}) {{ break }}\n", setup, rendered)
+            let setup_text = Renderer.render_setup(&setup);
+            format!("for {{\n{}if !({}) {{ break }}\n", setup_text, rendered)
         } else if matches!(
             condition.unwrap_parens(),
             Expression::Literal {
@@ -473,7 +475,7 @@ impl Planner<'_> {
 
     /// Shared loop lowering once the header is known: set the label, lower
     /// the body in a fresh scope. Caller owns `push_loop`/`pop_loop`.
-    fn lower_loop_with_header(
+    pub(crate) fn lower_loop_with_header(
         &mut self,
         directive: String,
         header: String,
@@ -488,7 +490,7 @@ impl Planner<'_> {
         self.exit_scope();
         LoopPlan {
             directive,
-            prologue: String::new(),
+            prologue: Vec::new(),
             label,
             header,
             body: lowered_body,

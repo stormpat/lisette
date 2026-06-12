@@ -9,9 +9,7 @@ use crate::patterns::sites::{AnnotatedPattern, PatternSubject};
 use crate::plan::bodies::{LetForm, LetPlan, LoweredBlock, LoweredStatement};
 use crate::plan::calls::CalleePlan;
 use crate::plan::placement::{expression_contains_binding, is_unit_call, requires_temp_var};
-use crate::plan::values::setup_from_string;
 use crate::types::native::NativeGoType;
-use crate::write_line;
 use syntax::ast::{Binding, Expression, Literal, Pattern, UnaryOperator};
 use syntax::types::{Type, peel_to_range_type};
 
@@ -230,10 +228,11 @@ impl Planner<'_> {
         let mut statements = Vec::new();
         if widens_to_interface {
             let var_ty = self.go_type_string(binding_ty, fx);
-            statements.push(LoweredStatement::RawGo(format!(
-                "var {} {}\n",
-                go_identifier, var_ty
-            )));
+            statements.push(LoweredStatement::VarDecl {
+                name: go_identifier.clone(),
+                go_type: var_ty,
+                value: None,
+            });
             self.declare(&go_identifier);
         }
         statements.extend(self.lower_propagate(inner, Some(&go_identifier), fx).0);
@@ -321,10 +320,11 @@ impl Planner<'_> {
             });
         } else if needs_explicit_type_declaration(self, value, binding_ty) {
             let var_ty = self.go_type_string(binding_ty, fx);
-            statements.push(LoweredStatement::RawGo(format!(
-                "var {} {} = {}\n",
-                go_identifier, var_ty, value_expression
-            )));
+            statements.push(LoweredStatement::VarDecl {
+                name: go_identifier,
+                go_type: var_ty,
+                value: Some(value_expression),
+            });
         } else {
             statements.push(LoweredStatement::TempBind {
                 name: go_identifier,
@@ -362,12 +362,11 @@ impl Planner<'_> {
             return None;
         }
         let target = WrapperTarget::Slot(&go_identifier);
-        let mut buffer = String::new();
-        self.emit_go_wrapped_call_to(&mut buffer, value, &strategy, binding_ty, target, fx)?;
-        // `open_wrapper_slot` / `emit_simple_wrapper_value` already declared
+        let statements = self.lower_go_wrapped_call_to(value, &strategy, binding_ty, target, fx)?;
+        // `push_wrapper_slot` / `push_simple_wrapper_value` already declared
         // `go_identifier`; only the binding from the user-name still needs setup.
         self.scope.bind(identifier, go_identifier.as_ref());
-        Some(setup_from_string(buffer))
+        Some(statements)
     }
 
     fn lower_let_temp(
@@ -379,31 +378,24 @@ impl Planner<'_> {
     ) -> Vec<LoweredStatement> {
         let mut statements = Vec::new();
         if !self.is_declared(name) {
-            let mut declaration = String::new();
-            self.emit_let_temp_var_declaration(&mut declaration, name, value, binding_ty, fx);
-            if !declaration.is_empty() {
-                statements.push(LoweredStatement::RawGo(declaration));
+            if let Some(declaration) = self.let_temp_var_declaration(name, value, binding_ty, fx) {
+                statements.push(declaration);
             }
             self.try_declare(name);
         }
-        let mut assignment = String::new();
-        self.emit_assign(&mut assignment, value, name, Some(binding_ty), fx);
-        if !assignment.is_empty() {
-            statements.push(LoweredStatement::RawGo(assignment));
-        }
+        statements.extend(self.lower_assign(value, name, Some(binding_ty), fx));
         statements
     }
 
-    fn emit_let_temp_var_declaration(
+    fn let_temp_var_declaration(
         &mut self,
-        output: &mut String,
         name: &str,
         value: &Expression,
         binding_ty: &Type,
         fx: &mut EmitEffects,
-    ) {
+    ) -> Option<LoweredStatement> {
         if name == "_" {
-            return;
+            return None;
         }
         let return_ctx = self.return_ctx();
         let resolved_ty = resolve_let_temp_declaration_ty(self, value, binding_ty);
@@ -428,7 +420,11 @@ impl Planner<'_> {
         } else {
             self.go_type_string(&resolved_ty, fx)
         };
-        write_line!(output, "var {} {}", name, var_ty);
+        Some(LoweredStatement::VarDecl {
+            name: name.to_string(),
+            go_type: var_ty,
+            value: None,
+        })
     }
 }
 
@@ -477,7 +473,11 @@ impl<'a, 'e> LetPlanner<'a, 'e> {
                 let go_identifier = self.planner.scope.bind(identifier, &raw_go_name);
                 self.planner.try_declare(&go_identifier);
                 let var_ty = self.planner.go_type_string(&self.binding.ty, fx);
-                Some(format!("var {} {}\n", go_identifier, var_ty))
+                Some(Box::new(LoweredStatement::VarDecl {
+                    name: go_identifier,
+                    go_type: var_ty,
+                    value: None,
+                }))
             } else {
                 None
             };
@@ -651,10 +651,9 @@ impl<'a, 'e> LetPlanner<'a, 'e> {
             })
             .collect();
 
-        let mut setup = String::new();
-        let call_str =
+        let (mut statements, call_str) =
             self.planner
-                .emit_call(&mut setup, self.value, None, ExpressionContext::value(), fx);
+                .lower_call(self.value, None, ExpressionContext::value(), fx);
 
         for (identifier, go_name) in planned.iter().flatten() {
             self.planner.scope.bind(*identifier, go_name);
@@ -662,10 +661,6 @@ impl<'a, 'e> LetPlanner<'a, 'e> {
         }
 
         let op = if any_new { ":=" } else { "=" };
-        let mut statements = Vec::new();
-        if !setup.is_empty() {
-            statements.push(LoweredStatement::RawGo(setup));
-        }
         statements.push(LoweredStatement::RawGo(format!(
             "{} {} {}\n",
             go_vars.join(", "),

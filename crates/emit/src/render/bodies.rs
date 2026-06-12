@@ -185,6 +185,14 @@ impl Renderer {
             LoweredStatement::TempBind { name, value } => {
                 write_line!(output, "{} := {}", name, value);
             }
+            LoweredStatement::VarDecl {
+                name,
+                go_type,
+                value,
+            } => match value {
+                Some(value) => write_line!(output, "var {} {} = {}", name, go_type, value),
+                None => write_line!(output, "var {} {}", name, go_type),
+            },
             LoweredStatement::ClosureBind {
                 name,
                 closure_open,
@@ -236,14 +244,14 @@ impl Renderer {
     }
 
     /// Render a `LetPlan`. The `Never` form emits the optional `var X T`
-    /// declaration line first; every form then renders its body block.
+    /// declaration leaf first; every form then renders its body block.
     pub(crate) fn render_let_statement(&self, output: &mut String, plan: &LetPlan) {
         if let LetForm::Never {
             declaration: Some(declaration),
             ..
         } = &plan.form
         {
-            output.push_str(declaration);
+            self.render_statement(output, declaration);
         }
         self.render_lowered_block(output, plan.form.body());
     }
@@ -373,7 +381,7 @@ impl Renderer {
 
     fn render_loop(&self, output: &mut String, plan: &LoopPlan) {
         output.push_str(&plan.directive);
-        output.push_str(&plan.prologue);
+        output.push_str(&self.render_setup(&plan.prologue));
         if let Some(label) = &plan.label {
             write_line!(output, "{}:", label);
         }
@@ -384,7 +392,7 @@ impl Renderer {
 
     fn render_if(&self, output: &mut String, plan: &IfPlan) {
         output.push_str(&plan.directive);
-        output.push_str(&plan.condition_setup);
+        output.push_str(&self.render_setup(&plan.condition_setup));
         write_line!(output, "if {} {{", plan.condition);
         self.render_lowered_block(output, &plan.then_body);
         self.render_else_arm(output, &plan.else_arm);
@@ -396,7 +404,7 @@ impl Renderer {
             ElseArm::ElseIf(plan) => {
                 if !plan.condition_setup.is_empty() {
                     output.push_str("} else {\n");
-                    output.push_str(&plan.condition_setup);
+                    output.push_str(&self.render_setup(&plan.condition_setup));
                     write_line!(output, "if {} {{", plan.condition);
                     self.render_lowered_block(output, &plan.then_body);
                     self.render_else_arm(output, &plan.else_arm);
