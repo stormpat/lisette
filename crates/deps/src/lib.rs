@@ -2,6 +2,7 @@ mod project_manifest;
 mod typedef_locator;
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub use stdlib::Target;
@@ -9,6 +10,14 @@ use stdlib::{GO_STD_CONTENT_HASH, get_go_stdlib_packages, get_go_stdlib_typedef}
 
 /// Disambiguates temp dirs so concurrent stdlib extractions do not share a path.
 static STDLIB_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Test-only override for the home dir stdlib typedefs extract under.
+static STDLIB_TYPEDEF_HOME: OnceLock<PathBuf> = OnceLock::new();
+
+#[doc(hidden)]
+pub fn set_stdlib_typedef_home(home: PathBuf) {
+    let _ = STDLIB_TYPEDEF_HOME.set(home);
+}
 
 pub use project_manifest::{
     GoDependency, Manifest, ResolveReport, TrimmedVia, check_no_subpackage_deps,
@@ -42,16 +51,15 @@ pub fn typedef_cache_dir(project_root: &Path) -> PathBuf {
 /// existence proves the contents are current, and distinct versions or embedded
 /// stdlibs get distinct dirs.
 fn stdlib_typedef_version_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(
-        PathBuf::from(home)
-            .join(".lisette/cache/stdlib-typedefs")
-            .join(format!(
-                "lis@v{}-{:016x}",
-                env!("CARGO_PKG_VERSION"),
-                GO_STD_CONTENT_HASH
-            )),
-    )
+    let home = match STDLIB_TYPEDEF_HOME.get() {
+        Some(home) => home.clone(),
+        None => PathBuf::from(std::env::var_os("HOME")?),
+    };
+    Some(home.join(".lisette/cache/stdlib-typedefs").join(format!(
+        "lis@v{}-{:016x}",
+        env!("CARGO_PKG_VERSION"),
+        GO_STD_CONTENT_HASH
+    )))
 }
 
 /// Deterministic on-disk path for a stdlib package's typedef. Pure path
@@ -81,6 +89,7 @@ pub fn ensure_stdlib_extracted(target: Target) {
     if std::fs::create_dir_all(&version_dir).is_err() {
         return;
     }
+    clear_stale_temp_dirs(&version_dir, target);
 
     // Build in a temp dir, then atomically rename into place. The temp name
     // carries the pid and a counter so concurrent extractions don't collide.
@@ -103,15 +112,33 @@ pub fn ensure_stdlib_extracted(target: Target) {
 }
 
 /// Write every embedded stdlib typedef for `target` into `target_tmp`. Returns
-/// `None` on the first error so a partial set is never renamed into place.
+/// `None` on the first I/O error so a partial set is never renamed into place.
 fn extract_all(target_tmp: &Path, target: Target) -> Option<()> {
     for pkg in get_go_stdlib_packages(target) {
-        let source = get_go_stdlib_typedef(pkg, target)?;
+        let Some(source) = get_go_stdlib_typedef(pkg, target) else {
+            continue;
+        };
         let path = target_tmp.join(format!("{pkg}.d.lis"));
         std::fs::create_dir_all(path.parent()?).ok()?;
         std::fs::write(&path, source).ok()?;
     }
     Some(())
+}
+
+fn clear_stale_temp_dirs(version_dir: &Path, target: Target) {
+    let prefix = format!("{}.tmp.", target.cache_segment());
+    let Ok(entries) = std::fs::read_dir(version_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(&prefix))
+        {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// Remove sibling `lis@v*` dirs from other compiler versions or embedded stdlibs.
@@ -188,5 +215,30 @@ impl GoPackage<'_> {
         } else {
             module_dir.join(relative).join(&filename)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_stale_temp_dirs_removes_only_this_targets_temps() {
+        let version_dir = tempfile::tempdir().unwrap();
+        let root = version_dir.path();
+
+        let stale = root.join("darwin_arm64.tmp.999.0");
+        std::fs::create_dir_all(&stale).unwrap();
+        std::fs::write(stale.join("fmt.d.lis"), "x").unwrap();
+        let completed = root.join("darwin_arm64");
+        std::fs::create_dir_all(&completed).unwrap();
+        let other_target_tmp = root.join("linux_amd64.tmp.1.0");
+        std::fs::create_dir_all(&other_target_tmp).unwrap();
+
+        clear_stale_temp_dirs(root, Target::new("darwin", "arm64"));
+
+        assert!(!stale.exists(), "this target's stale temp is removed");
+        assert!(completed.exists(), "the completed target dir is kept");
+        assert!(other_target_tmp.exists(), "another target's temp is kept");
     }
 }

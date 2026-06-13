@@ -62,9 +62,22 @@ pub struct TestClient {
     buffered: Vec<Value>,
 }
 
+fn init_test_stdlib_home() {
+    static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| {
+        let dir =
+            std::env::temp_dir().join(format!("lisette-lsp-test-home-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test home dir");
+        deps::set_stdlib_typedef_home(dir.clone());
+        dir
+    });
+}
+
 impl TestClient {
     /// Spawn a new LSP server and return a connected client.
     pub async fn new() -> Self {
+        init_test_stdlib_home();
+
         let (client, server) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = tokio::io::split(server);
         let (client_read, client_write) = tokio::io::split(client);
