@@ -167,8 +167,8 @@ fn register_cached_go_module(
             .insert(module_id.to_string(), pkg_name);
     }
 
-    // Register the typedef File and materialize it so go-to-definition can
-    // navigate, mirroring the `typedef_paths` entry the locator records.
+    // Register the typedef File and its on-disk path so go-to-definition can
+    // navigate. The files are written by the LSP at startup.
     let owned_file_id;
     let mut file_ids: &[u32] = &[];
     if let (Some(go_pkg), Some(source)) = (go_pkg, source) {
@@ -178,7 +178,7 @@ fn register_cached_go_module(
             module_id,
             File::new_cached(module_id, &filename, &filename, source, file_id),
         );
-        if let Some(path) = deps::ensure_stdlib_typedef_on_disk(go_pkg, source, target) {
+        if let Some(path) = deps::stdlib_typedef_path(target, go_pkg) {
             store.typedef_paths.insert(file_id, path);
         }
         owned_file_id = [file_id];

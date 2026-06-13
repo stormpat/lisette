@@ -919,8 +919,8 @@ async fn goto_definition_on_stdlib_go_function_navigates_to_typedef() {
     let source = "import \"go:fmt\"\n\nfn main() {\n  fmt.Println(\"hello\")\n}";
     client.open(TEST_URI, source).await;
 
-    // Stdlib go: typedefs are materialized to disk on demand, so go-to-definition
-    // navigates into the generated `.d.lis` file just like a third-party dependency.
+    // The LSP materializes the whole stdlib typedef set to disk at startup, so
+    // go-to-definition navigates into the generated `.d.lis` file.
     let response = client.goto_definition(TEST_URI, 3, 6).await;
     let location = definition_location(
         &response.expect("go-to-definition on stdlib go: function should return a location"),
@@ -928,7 +928,7 @@ async fn goto_definition_on_stdlib_go_function_navigates_to_typedef() {
     .expect("response should contain a location");
     let path = location.uri.path();
     assert!(
-        path.contains("go-std") && path.ends_with(".d.lis"),
+        path.contains("stdlib-typedefs") && path.ends_with(".d.lis"),
         "should land in a materialized typedef, got {path}"
     );
     assert!(
@@ -9592,9 +9592,9 @@ async fn goto_definition_stdlib_member_navigates_to_typedef() {
         )
         .await;
 
-    // Cursor on "Println" in "fmt.Println" (line 2, col 6).
-    // Stdlib typedefs are materialized to disk, so this navigates into the
-    // generated `.d.lis` file.
+    // Cursor on "Println" in "fmt.Println" (line 2, col 6). The LSP materializes
+    // the stdlib typedefs at startup, so this navigates into the generated
+    // `.d.lis` file.
     let response = client.goto_definition(TEST_URI, 2, 6).await;
     let location = definition_location(
         &response.expect("go-to-definition on stdlib member should return a location"),
@@ -9602,7 +9602,7 @@ async fn goto_definition_stdlib_member_navigates_to_typedef() {
     .expect("response should contain a location");
     let path = location.uri.path();
     assert!(
-        path.contains("go-std") && path.ends_with(".d.lis"),
+        path.contains("stdlib-typedefs") && path.ends_with(".d.lis"),
         "should land in a materialized typedef, got {path}"
     );
     assert!(

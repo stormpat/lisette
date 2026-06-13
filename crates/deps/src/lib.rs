@@ -4,11 +4,11 @@ mod typedef_locator;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use stdlib::Target;
+pub use stdlib::Target;
+use stdlib::{GO_STD_CONTENT_HASH, get_go_stdlib_packages, get_go_stdlib_typedef};
 
-/// Disambiguates temp files so concurrent analyses writing the same typedef do
-/// not share a temp path.
-static TYPEDEF_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+/// Disambiguates temp dirs so concurrent stdlib extractions do not share a path.
+static STDLIB_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub use project_manifest::{
     GoDependency, Manifest, ResolveReport, TrimmedVia, check_no_subpackage_deps,
@@ -37,51 +37,108 @@ pub fn typedef_cache_dir(project_root: &Path) -> PathBuf {
         .join(format!("lis@v{}", lis_version))
 }
 
-/// Directory holding materialized Go stdlib typedefs, one per target. Global
-/// because stdlib is the same for every project.
-fn stdlib_typedef_dir(target: Target) -> Option<PathBuf> {
+/// Version dir for the materialized stdlib typedefs, under `~/.lisette/cache`.
+/// The name encodes the compiler version and stdlib content hash, so its
+/// existence proves the contents are current, and distinct versions or embedded
+/// stdlibs get distinct dirs.
+fn stdlib_typedef_version_dir() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
     Some(
         PathBuf::from(home)
-            .join(".lisette/typedefs/go-std")
-            .join(target.cache_segment()),
+            .join(".lisette/cache/stdlib-typedefs")
+            .join(format!(
+                "lis@v{}-{:016x}",
+                env!("CARGO_PKG_VERSION"),
+                GO_STD_CONTENT_HASH
+            )),
     )
 }
 
-/// Materialize an embedded Go stdlib typedef to disk so the editor can open it as
-/// a regular file, and return its path. Rewrites only when the on-disk content
-/// differs (first materialization or after a compiler/stdlib upgrade).
-pub fn ensure_stdlib_typedef_on_disk(
-    go_pkg: &str,
-    source: &str,
-    target: Target,
-) -> Option<PathBuf> {
-    let path = stdlib_typedef_dir(target)?.join(format!("{go_pkg}.d.lis"));
-    let needs_write = match std::fs::read_to_string(&path) {
-        Ok(existing) => existing != source,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-        // Present but unreadable (e.g. permissions): don't rewrite on every call.
-        Err(_) => return None,
-    };
-    if needs_write {
-        std::fs::create_dir_all(path.parent()?).ok()?;
-        atomic_write(&path, source)?;
-    }
-    Some(path)
+/// Deterministic on-disk path for a stdlib package's typedef. Pure path
+/// construction; the files are written by [`ensure_stdlib_extracted`].
+pub fn stdlib_typedef_path(target: Target, go_pkg: &str) -> Option<PathBuf> {
+    Some(
+        stdlib_typedef_version_dir()?
+            .join(target.cache_segment())
+            .join(format!("{go_pkg}.d.lis")),
+    )
 }
 
-/// Write `content` to `path` via a temp file + rename, so a concurrent reader
-/// never observes a partial write. The temp name carries the pid and a counter
-/// so concurrent writers (across processes or analyses) use distinct temp files.
-fn atomic_write(path: &Path, content: &str) -> Option<()> {
-    let counter = TYPEDEF_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = path.with_extension(format!("tmp.{}.{}", std::process::id(), counter));
-    std::fs::write(&tmp, content).ok()?;
-    if std::fs::rename(&tmp, path).is_err() {
-        let _ = std::fs::remove_file(&tmp);
-        return None;
+/// Materialize the whole embedded Go stdlib for `target` so the editor can open
+/// typedefs as regular files. Runs once, at LSP startup.
+///
+/// All-or-nothing: written to a temp dir then atomically renamed, so the target
+/// dir exists only when complete and one existence check gates the work. Sibling
+/// `lis@v*` dirs from other versions are pruned.
+pub fn ensure_stdlib_extracted(target: Target) {
+    let Some(version_dir) = stdlib_typedef_version_dir() else {
+        return;
+    };
+    let target_dir = version_dir.join(target.cache_segment());
+    if target_dir.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(&version_dir).is_err() {
+        return;
+    }
+
+    // Build in a temp dir, then atomically rename into place. The temp name
+    // carries the pid and a counter so concurrent extractions don't collide.
+    let counter = STDLIB_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = version_dir.join(format!(
+        "{}.tmp.{}.{}",
+        target.cache_segment(),
+        std::process::id(),
+        counter
+    ));
+    if extract_all(&tmp, target).is_none() {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return;
+    }
+    if std::fs::rename(&tmp, &target_dir).is_err() {
+        // Another extraction won the race, or the rename failed; drop our temp.
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    prune_stale_version_dirs(&version_dir);
+}
+
+/// Write every embedded stdlib typedef for `target` into `target_tmp`. Returns
+/// `None` on the first error so a partial set is never renamed into place.
+fn extract_all(target_tmp: &Path, target: Target) -> Option<()> {
+    for pkg in get_go_stdlib_packages(target) {
+        let source = get_go_stdlib_typedef(pkg, target)?;
+        let path = target_tmp.join(format!("{pkg}.d.lis"));
+        std::fs::create_dir_all(path.parent()?).ok()?;
+        std::fs::write(&path, source).ok()?;
     }
     Some(())
+}
+
+/// Remove sibling `lis@v*` dirs from other compiler versions or embedded stdlibs.
+///
+/// Caveat: if another `lis` version's LSP is running, this removes its dir; its
+/// go-to-definition then declines until it restarts. Acceptable, normal lisette
+/// users don't run multiple versions simultaneously.
+fn prune_stale_version_dirs(current: &Path) {
+    let Some(parent) = current.parent() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == current {
+            continue;
+        }
+        let is_version_dir = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with("lis@v"));
+        if is_version_dir {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

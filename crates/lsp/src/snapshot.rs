@@ -98,6 +98,11 @@ impl AnalysisSnapshot {
         self.id_to_uri.get(&file_id)
     }
 
+    /// On-disk path of a `go:` typedef file, if `file_id` names one.
+    pub(crate) fn typedef_path(&self, file_id: u32) -> Option<&std::path::Path> {
+        self.result.typedef_paths.get(&file_id).map(|p| p.as_path())
+    }
+
     pub(crate) fn get_line_index(&self, file_id: u32) -> Option<&LineIndex> {
         self.line_indexes.get(&file_id)
     }
