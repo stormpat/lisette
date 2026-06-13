@@ -1,7 +1,8 @@
 mod lsp_harness;
 
 use lsp_harness::{
-    TestClient, completion_labels, definition_location, hover_content, symbol_names,
+    TestClient, completion_labels, definition_location, definition_target_text, hover_content,
+    symbol_names,
 };
 use tower_lsp::lsp_types::*;
 
@@ -911,20 +912,28 @@ async fn goto_definition_on_literal_returns_none() {
 }
 
 #[tokio::test]
-async fn goto_definition_on_stdlib_go_function_returns_none() {
+async fn goto_definition_on_stdlib_go_function_navigates_to_typedef() {
     let mut client = TestClient::new().await;
     client.initialize().await;
 
     let source = "import \"go:fmt\"\n\nfn main() {\n  fmt.Println(\"hello\")\n}";
     client.open(TEST_URI, source).await;
 
-    // Stdlib go: typedefs are embedded in the binary; no on-disk file exists.
-    // The handler must return None rather than navigate to (0,0) of the entry file.
+    // The LSP materializes the whole stdlib typedef set to disk at startup, so
+    // go-to-definition navigates into the generated `.d.lis` file.
     let response = client.goto_definition(TEST_URI, 3, 6).await;
+    let location = definition_location(
+        &response.expect("go-to-definition on stdlib go: function should return a location"),
+    )
+    .expect("response should contain a location");
+    let path = location.uri.path();
     assert!(
-        response.is_none(),
-        "stdlib go: F12 should return None, got {:?}",
-        response
+        path.contains("stdlib-typedefs") && path.ends_with(".d.lis"),
+        "should land in a materialized typedef, got {path}"
+    );
+    assert!(
+        definition_target_text(&location).starts_with("Println"),
+        "should land on the `Println` definition"
     );
 
     client.shutdown().await;
@@ -974,7 +983,7 @@ async fn goto_definition_on_third_party_go_function_navigates_to_cache() {
     // Cursor on `DoStuff`.
     let response = client.goto_definition(&main_uri, 3, 14).await;
     let location = definition_location(
-        &response.expect("F12 on third-party go: function should return a location"),
+        &response.expect("go-to-definition on third-party go: function should return a location"),
     )
     .expect("response should contain a location");
 
@@ -9573,7 +9582,7 @@ fn main() {
 }
 
 #[tokio::test]
-async fn goto_definition_stdlib_member_returns_none() {
+async fn goto_definition_stdlib_member_navigates_to_typedef() {
     let mut client = TestClient::new().await;
     client.initialize().await;
     client
@@ -9583,13 +9592,22 @@ async fn goto_definition_stdlib_member_returns_none() {
         )
         .await;
 
-    // Cursor on "Println" in "fmt.Println" (line 2, col 6)
+    // Cursor on "Println" in "fmt.Println" (line 2, col 6). The LSP materializes
+    // the stdlib typedefs at startup, so this navigates into the generated
+    // `.d.lis` file.
     let response = client.goto_definition(TEST_URI, 2, 6).await;
-    // Stdlib definitions are embedded — no file to jump to.
-    // Should return None rather than a bogus location.
+    let location = definition_location(
+        &response.expect("go-to-definition on stdlib member should return a location"),
+    )
+    .expect("response should contain a location");
+    let path = location.uri.path();
     assert!(
-        response.is_none(),
-        "goto_definition on stdlib member should return None, not a bogus location"
+        path.contains("stdlib-typedefs") && path.ends_with(".d.lis"),
+        "should land in a materialized typedef, got {path}"
+    );
+    assert!(
+        definition_target_text(&location).starts_with("Println"),
+        "should land on the `Println` definition"
     );
 
     client.shutdown().await;

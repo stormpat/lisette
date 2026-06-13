@@ -62,9 +62,22 @@ pub struct TestClient {
     buffered: Vec<Value>,
 }
 
+fn init_test_stdlib_home() {
+    static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| {
+        let dir =
+            std::env::temp_dir().join(format!("lisette-lsp-test-home-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test home dir");
+        deps::set_stdlib_typedef_home(dir.clone());
+        dir
+    });
+}
+
 impl TestClient {
     /// Spawn a new LSP server and return a connected client.
     pub async fn new() -> Self {
+        init_test_stdlib_home();
+
         let (client, server) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = tokio::io::split(server);
         let (client_read, client_write) = tokio::io::split(client);
@@ -344,6 +357,22 @@ pub fn definition_location(response: &GotoDefinitionResponse) -> Option<Location
             range: l.target_selection_range,
         }),
     }
+}
+
+/// Reads the file a definition `Location` points to and returns the text from
+/// the range start to end of line, so a test can assert the jump landed on the
+/// expected symbol rather than merely on some file.
+pub fn definition_target_text(location: &Location) -> String {
+    let path = location
+        .uri
+        .to_file_path()
+        .expect("location uri should be a file path");
+    let source = std::fs::read_to_string(&path).expect("definition file should be readable");
+    let line = source
+        .lines()
+        .nth(location.range.start.line as usize)
+        .expect("range line should exist");
+    line[location.range.start.character as usize..].to_string()
 }
 
 pub fn completion_labels(response: &CompletionResponse) -> Vec<String> {

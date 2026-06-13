@@ -61,6 +61,11 @@ impl LanguageServer for Backend {
             *self.project_config.write().await = Some(config);
         }
 
+        // Materialize the stdlib typedefs so the editor can open them. Off the
+        // async executor since the first run for a version writes the full stdlib.
+        let _ = tokio::task::spawn_blocking(|| deps::ensure_stdlib_extracted(deps::Target::host()))
+            .await;
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -407,9 +412,8 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Stdlib go: typedefs are loaded from cache without registering a File,
-        // so their definitions carry Span::dummy(). Refuse to navigate rather
-        // than jump to (0,0) of whatever happens to be at file_id 0.
+        // A dummy span (zero length) would resolve to offset 0 of file_id 0;
+        // refuse rather than jump there.
         if definition_span.is_dummy() {
             return Ok(None);
         }
@@ -420,6 +424,14 @@ impl LanguageServer for Backend {
             if end > target_file.source.len() {
                 return Ok(None);
             }
+        }
+
+        // The typedef file may be absent (cache cleared, or pruned by another lis
+        // version); decline instead of returning a dangling Location.
+        if let Some(path) = snapshot.typedef_path(definition_span.file_id)
+            && !path.exists()
+        {
+            return Ok(None);
         }
 
         let Some(target_uri) = snapshot.get_uri(definition_span.file_id) else {
