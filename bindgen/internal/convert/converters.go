@@ -37,7 +37,7 @@ func sanitizeParamName(name string) string {
 }
 
 func isReferenceType(typeStr string) bool {
-	return strings.HasPrefix(typeStr, "Slice<") || strings.HasPrefix(typeStr, "Map<")
+	return isSliceType(typeStr) || isMapType(typeStr)
 }
 
 // liftReflectionDecodeParams returns (specs, nil) when not whitelisted or no
@@ -79,7 +79,7 @@ func (c *Converter) liftReflectionDecodeParams(
 		if overrides == nil {
 			overrides = make(map[int]string)
 		}
-		overrides[i] = fmt.Sprintf("Ref<%s>", name)
+		overrides[i] = refOf(name)
 	}
 	return specs, overrides
 }
@@ -118,91 +118,37 @@ func (c *Converter) convertFunction(result *ConvertResult, symbolExport extract.
 	liftedSpecs, paramOverrides := c.liftReflectionDecodeParams(signature, result.Name, result.TypeParams)
 	result.TypeParams = liftedSpecs
 
-	mutParams := c.cfg.MutatingParams(c.currentPkgPath, result.Name)
-	nilableParams := c.cfg.NilableParams(c.currentPkgPath, result.Name)
-
-	params := signature.Params()
-	usedNames := collectNamedParams(params)
-	for i := 0; i < params.Len(); i++ {
-		param := params.At(i)
-		name := param.Name()
-		if name == "" {
-			isVariadic := signature.Variadic() && i == params.Len()-1
-			name = deriveParamName(param.Type(), i, isVariadic, usedNames)
-		} else {
-			name = sanitizeParamName(name)
-		}
-
-		paramType := convertParamType(param.Type(), name, nilableParams, c)
-		if paramType.SkipReason != nil {
-			result.SkipReason = paramType.SkipReason
-			return
-		}
-
-		typeStr := paramType.LisetteType
-		if signature.Variadic() && i == params.Len()-1 {
-			typeStr = sliceToVarArgs(typeStr)
-		}
-		if override, ok := paramOverrides[i]; ok {
-			typeStr = override
-		}
-
-		result.Params = append(result.Params, FunctionParameter{
-			Name:    name,
-			Type:    typeStr,
-			Mutable: isMutableParam(mutParams, name, typeStr, result.Name),
-		})
+	params, skip := c.convertParams(signature, result.Name, result.Name, paramOverrides)
+	if skip != nil {
+		result.SkipReason = skip
+		return
 	}
+	result.Params = params
 
-	returnType := ReturnsToLisette(signature, c, result.Name)
-	if returnType.LisetteType != "" {
-		result.ReturnType = returnType.LisetteType
-	} else if returnType.SkipReason != nil {
-		result.ReturnType = "Unknown"
-	}
-	if returnType.SkipReason != nil {
-		result.SkipNote = returnType.SkipReason
-	}
-	result.CommaOk = returnType.CommaOk
-	result.ArrayReturn = returnType.ArrayReturn
-	c.applySentinelInt(result, result.Name)
+	returnType := c.applyReturnType(result, signature, result.Name)
 
-	isSingleNilableReturn := isSingleNilableResult(signature)
-	if isSingleNilableReturn && returnType.IsDirectError {
-		isSingleNilableReturn = false
-	}
-	isSinglePointerReturn := isSingleNilableReturn && isSinglePointerResult(signature)
-
-	forceNonNilable := false
-	forceNilable := c.cfg != nil && c.cfg.ShouldWrapNilableReturn(c.currentPkgPath, result.Name)
-	if isSingleNilableReturn {
-		// Body evidence outranks name heuristics.
-		if c.findFuncDecl(symbolExport.Obj) != nil {
-			forceNonNilable = c.isProvenNonNilReturn(symbolExport.Obj)
-		} else {
+	c.resolveNilability(result, signature, returnType, nilabilityDecision{
+		obj:     symbolExport.Obj,
+		lookups: []configKey{{c.currentPkgPath, result.Name}},
+		heuristicNonNil: func(isSinglePointerReturn bool) bool {
 			if looksLikeConstructor(result.Name) {
-				forceNonNilable = true
+				return true
 			}
-			if !forceNonNilable && isSinglePointerReturn && isPointerBoxingFunction(signature) {
-				forceNonNilable = true
+			if isSinglePointerReturn && isPointerBoxingFunction(signature) {
+				return true
 			}
-			if !forceNonNilable && isSinglePointerReturn && isIteratorReturnType(signature) {
-				forceNonNilable = true
+			if isSinglePointerReturn && isIteratorReturnType(signature) {
+				return true
 			}
-			if !forceNonNilable && isSinglePointerReturn && c.isManyToOneFactory(signature) {
-				forceNonNilable = true
+			if isSinglePointerReturn && c.isManyToOneFactory(signature) {
+				return true
 			}
-			if !forceNonNilable && isSinglePointerReturn && c.hasMatchingSelfReturningMethod(result.Name, signature) {
-				forceNonNilable = true
+			if isSinglePointerReturn && c.hasMatchingSelfReturningMethod(result.Name, signature) {
+				return true
 			}
-		}
-	}
-	if !forceNonNilable {
-		forceNonNilable = c.cfg != nil && c.cfg.IsNonNilableReturn(c.currentPkgPath, result.Name)
-	}
-	if (isSingleNilableReturn && !forceNonNilable) || (forceNilable && !returnType.NilableReturnApplied) {
-		result.ReturnType = fmt.Sprintf("Option<%s>", result.ReturnType)
-	}
+			return false
+		},
+	})
 }
 
 // applySentinelInt rewrites a bare `int` return into `Option<int>` when
@@ -217,6 +163,112 @@ func (c *Converter) applySentinelInt(result *ConvertResult, qualifiedName string
 	}
 	result.ReturnType = "Option<int>"
 	result.SentinelInt = &value
+}
+
+func (c *Converter) convertParams(sig *types.Signature, lookupName, methodName string, paramOverrides map[int]string) ([]FunctionParameter, *SkipReason) {
+	mutParams := c.cfg.MutatingParams(c.currentPkgPath, lookupName)
+	nilableParams := c.cfg.NilableParams(c.currentPkgPath, lookupName)
+
+	params := sig.Params()
+	usedNames := collectNamedParams(params)
+	var out []FunctionParameter
+	for i := 0; i < params.Len(); i++ {
+		param := params.At(i)
+		name := param.Name()
+		if name == "" {
+			isVariadic := sig.Variadic() && i == params.Len()-1
+			name = deriveParamName(param.Type(), i, isVariadic, usedNames)
+		} else {
+			name = sanitizeParamName(name)
+		}
+
+		paramType := convertParamType(param.Type(), name, nilableParams, c)
+		if paramType.SkipReason != nil {
+			return nil, paramType.SkipReason
+		}
+
+		typeStr := paramType.LisetteType
+		if sig.Variadic() && i == params.Len()-1 {
+			typeStr = sliceToVarArgs(typeStr)
+		}
+		if override, ok := paramOverrides[i]; ok {
+			typeStr = override
+		}
+
+		out = append(out, FunctionParameter{
+			Name:    name,
+			Type:    typeStr,
+			Mutable: isMutableParam(mutParams, name, typeStr, methodName),
+		})
+	}
+	return out, nil
+}
+
+func (c *Converter) applyReturnType(result *ConvertResult, sig *types.Signature, lookupName string) TypeResult {
+	returnType := ReturnsToLisette(sig, c, lookupName)
+	if returnType.LisetteType != "" {
+		result.ReturnType = returnType.LisetteType
+	} else if returnType.SkipReason != nil {
+		result.ReturnType = "Unknown"
+	}
+	if returnType.SkipReason != nil {
+		result.SkipNote = returnType.SkipReason
+	}
+	result.CommaOk = returnType.CommaOk
+	result.ArrayReturn = returnType.ArrayReturn
+	c.applySentinelInt(result, lookupName)
+	return returnType
+}
+
+type configKey struct {
+	pkgPath string
+	name    string
+}
+
+type nilabilityDecision struct {
+	obj types.Object
+	// lookups: config keys consulted in order, first match wins.
+	lookups []configKey
+	// heuristicNonNil: kind-specific rules, used only when no body proves non-nilability.
+	heuristicNonNil func(isSinglePointerReturn bool) bool
+}
+
+// resolveNilability wraps the return in Option<> unless body proof, a name
+// heuristic, or config pins it non-nilable (in that precedence).
+func (c *Converter) resolveNilability(result *ConvertResult, sig *types.Signature, returnType TypeResult, d nilabilityDecision) {
+	isSingleNilableReturn := isSingleNilableResult(sig)
+	if isSingleNilableReturn && returnType.IsDirectError {
+		isSingleNilableReturn = false
+	}
+	isSinglePointerReturn := isSingleNilableReturn && isSinglePointerResult(sig)
+
+	forceNonNilable := false
+	if isSingleNilableReturn {
+		// Body evidence outranks name heuristics.
+		if c.findFuncDecl(d.obj) != nil {
+			forceNonNilable = c.isProvenNonNilReturn(d.obj)
+		} else {
+			forceNonNilable = d.heuristicNonNil(isSinglePointerReturn)
+		}
+	}
+	for _, k := range d.lookups {
+		if forceNonNilable {
+			break
+		}
+		forceNonNilable = c.cfg.IsNonNilableReturn(k.pkgPath, k.name)
+	}
+
+	forceNilable := false
+	for _, k := range d.lookups {
+		if forceNilable {
+			break
+		}
+		forceNilable = c.cfg.ShouldWrapNilableReturn(k.pkgPath, k.name)
+	}
+
+	if (isSingleNilableReturn && !forceNonNilable) || (forceNilable && !returnType.NilableReturnApplied) {
+		result.ReturnType = optionOf(result.ReturnType)
+	}
 }
 
 func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.SymbolExport) {
@@ -234,7 +286,7 @@ func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.Sy
 
 			recvLisetteType := typeName
 			if isPointerReceiver {
-				recvLisetteType = fmt.Sprintf("Ref<%s>", typeName)
+				recvLisetteType = refOf(typeName)
 			}
 
 			result.Receiver = &Receiver{
@@ -265,7 +317,7 @@ func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.Sy
 			if _, ok := unexportedSamePkgStruct(symbolExport.ReceiverVariable.Type(), c); ok {
 				recvLisetteType = typeName
 				if isPointerReceiver {
-					recvLisetteType = fmt.Sprintf("Ref<%s>", typeName)
+					recvLisetteType = refOf(typeName)
 				}
 			} else {
 				recvType := ToLisette(symbolExport.ReceiverVariable.Type(), c)
@@ -309,101 +361,44 @@ func (c *Converter) convertMethod(result *ConvertResult, symbolExport extract.Sy
 	}
 	liftedSpecs, paramOverrides := c.liftReflectionDecodeParams(signature, qualifiedName, methodSpecs)
 
-	mutParams := c.cfg.MutatingParams(c.currentPkgPath, qualifiedName)
-	nilableParams := c.cfg.NilableParams(c.currentPkgPath, qualifiedName)
-
-	params := signature.Params()
-	usedNames := collectNamedParams(params)
-	for i := 0; i < params.Len(); i++ {
-		param := params.At(i)
-		name := param.Name()
-		if name == "" {
-			isVariadic := signature.Variadic() && i == params.Len()-1
-			name = deriveParamName(param.Type(), i, isVariadic, usedNames)
-		} else {
-			name = sanitizeParamName(name)
-		}
-
-		paramType := convertParamType(param.Type(), name, nilableParams, c)
-		if paramType.SkipReason != nil {
-			result.SkipReason = paramType.SkipReason
-			return
-		}
-
-		typeStr := paramType.LisetteType
-		if signature.Variadic() && i == params.Len()-1 {
-			typeStr = sliceToVarArgs(typeStr)
-		}
-		if override, ok := paramOverrides[i]; ok {
-			typeStr = override
-		}
-
-		result.Params = append(result.Params, FunctionParameter{
-			Name:    name,
-			Type:    typeStr,
-			Mutable: isMutableParam(mutParams, name, typeStr, result.Name),
-		})
+	params, skip := c.convertParams(signature, qualifiedName, result.Name, paramOverrides)
+	if skip != nil {
+		result.SkipReason = skip
+		return
 	}
+	result.Params = params
 
-	returnType := ReturnsToLisette(signature, c, qualifiedName)
-	if returnType.LisetteType != "" {
-		result.ReturnType = returnType.LisetteType
-	} else if returnType.SkipReason != nil {
-		result.ReturnType = "Unknown"
-	}
-	if returnType.SkipReason != nil {
-		result.SkipNote = returnType.SkipReason
-	}
-	result.CommaOk = returnType.CommaOk
-	result.ArrayReturn = returnType.ArrayReturn
-	c.applySentinelInt(result, qualifiedName)
+	returnType := c.applyReturnType(result, signature, qualifiedName)
 
-	isSingleNilableReturn := isSingleNilableResult(signature)
-	if isSingleNilableReturn && returnType.IsDirectError {
-		isSingleNilableReturn = false
+	lookups := []configKey{{c.currentPkgPath, qualifiedName}}
+	if symbolExport.IsPromoted && symbolExport.OriginalTypeName != "" {
+		lookups = append(lookups, configKey{symbolExport.OriginalPkgPath, symbolExport.OriginalTypeName + "." + result.Name})
 	}
-	isSinglePointerReturn := isSingleNilableReturn && isSinglePointerResult(signature)
-
-	forceNonNilable := false
-	if isSingleNilableReturn {
-		if c.findFuncDecl(symbolExport.Obj) != nil {
-			forceNonNilable = c.isProvenNonNilReturn(symbolExport.Obj)
-		} else {
+	c.resolveNilability(result, signature, returnType, nilabilityDecision{
+		obj:     symbolExport.Obj,
+		lookups: lookups,
+		heuristicNonNil: func(isSinglePointerReturn bool) bool {
 			if looksLikeConstructor(result.Name) {
-				forceNonNilable = true
+				return true
 			}
-			if !forceNonNilable && isSinglePointerReturn && result.Receiver != nil && !looksLikeNavigationMethod(result.Name) {
+			if isSinglePointerReturn && result.Receiver != nil && !looksLikeNavigationMethod(result.Name) {
 				if isSelfReturning(signature, result.Receiver.BaseTypeName) ||
 					c.isUniformPointerReturnType(result.Receiver.BaseTypeName) ||
 					c.isMajorityPointerReturnType(result.Receiver.BaseTypeName) {
-					forceNonNilable = true
+					return true
 				}
 			}
-			if !forceNonNilable && isSinglePointerReturn && symbolExport.IsPromoted && symbolExport.OriginalTypeName != "" {
+			if isSinglePointerReturn && symbolExport.IsPromoted && symbolExport.OriginalTypeName != "" {
 				if isSelfReturning(signature, symbolExport.OriginalTypeName) {
-					forceNonNilable = true
+					return true
 				}
 			}
-			if !forceNonNilable && isSinglePointerReturn && isIteratorReturnType(signature) {
-				forceNonNilable = true
+			if isSinglePointerReturn && isIteratorReturnType(signature) {
+				return true
 			}
-		}
-	}
-	if !forceNonNilable {
-		forceNonNilable = c.cfg != nil && c.cfg.IsNonNilableReturn(c.currentPkgPath, qualifiedName)
-	}
-	if !forceNonNilable && symbolExport.IsPromoted && symbolExport.OriginalTypeName != "" {
-		originalQualified := symbolExport.OriginalTypeName + "." + result.Name
-		forceNonNilable = c.cfg != nil && c.cfg.IsNonNilableReturn(symbolExport.OriginalPkgPath, originalQualified)
-	}
-	methodForceNilable := c.cfg != nil && c.cfg.ShouldWrapNilableReturn(c.currentPkgPath, qualifiedName)
-	if !methodForceNilable && symbolExport.IsPromoted && symbolExport.OriginalTypeName != "" {
-		originalQualified := symbolExport.OriginalTypeName + "." + result.Name
-		methodForceNilable = c.cfg != nil && c.cfg.ShouldWrapNilableReturn(symbolExport.OriginalPkgPath, originalQualified)
-	}
-	if (isSingleNilableReturn && !forceNonNilable) || (methodForceNilable && !returnType.NilableReturnApplied) {
-		result.ReturnType = fmt.Sprintf("Option<%s>", result.ReturnType)
-	}
+			return false
+		},
+	})
 
 	if symbolExport.BaseType != nil {
 		_, _, skip := collectTypeParams(symbolExport.BaseType.TypeParams(), false, c)
@@ -749,7 +744,7 @@ func (c *Converter) convertVariable(result *ConvertResult, exp extract.SymbolExp
 		forceNonNilable = c.isProvenNonNilVar(exp.Obj)
 	}
 	if isNilable && !forceNonNilable {
-		result.LisetteType = fmt.Sprintf("Option<%s>", result.LisetteType)
+		result.LisetteType = optionOf(result.LisetteType)
 	}
 }
 
@@ -841,7 +836,7 @@ func embeddedStructField(field *types.Var, c *Converter) StructField {
 	if named, ok := unexportedSamePkgStruct(target, c); ok {
 		ref := named.Obj().Name()
 		if isPointer {
-			ref = fmt.Sprintf("Ref<%s>", ref)
+			ref = refOf(ref)
 		}
 		return StructField{Name: field.Name(), Type: ref, IsEmbedded: true}
 	}
@@ -866,7 +861,7 @@ func embeddedStructField(field *types.Var, c *Converter) StructField {
 	}
 	ref := bare
 	if isPointer {
-		ref = fmt.Sprintf("Ref<%s>", ref)
+		ref = refOf(ref)
 	}
 	if !isStruct {
 		return StructField{Name: field.Name(), Type: ref}
@@ -1052,9 +1047,8 @@ func isSingleNilableResult(sig *types.Signature) bool {
 }
 
 func sliceToVarArgs(typeStr string) string {
-	if strings.HasPrefix(typeStr, "Slice<") && strings.HasSuffix(typeStr, ">") {
-		elemType := typeStr[6 : len(typeStr)-1]
-		return fmt.Sprintf("VarArgs<%s>", elemType)
+	if elem, ok := unwrapSlice(typeStr); ok {
+		return varArgsOf(elem)
 	}
 	return typeStr
 }
@@ -1108,7 +1102,7 @@ func collectTypeParams(
 			if substitutions == nil {
 				substitutions = make(map[string]string)
 			}
-			substitutions[name] = fmt.Sprintf("Slice<%s>", elemName)
+			substitutions[name] = sliceOf(elemName)
 			continue
 		}
 
@@ -1116,7 +1110,7 @@ func collectTypeParams(
 			if substitutions == nil {
 				substitutions = make(map[string]string)
 			}
-			substitutions[name] = fmt.Sprintf("Map<%s, %s>", keyName, valName)
+			substitutions[name] = mapOf(keyName, valName)
 			continue
 		}
 
@@ -1301,6 +1295,13 @@ func isIteratorReturnType(sig *types.Signature) bool {
 
 // isManyToOneFactory returns true if 10+ free functions in the same package
 // return the same pointer type.
+const (
+	manyToOneFactoryThreshold      = 10
+	uniformPointerMethodThreshold  = 10
+	majorityPointerMethodThreshold = 20
+	majorityPointerRatio           = 0.9
+)
+
 func (c *Converter) isManyToOneFactory(sig *types.Signature) bool {
 	if c.manyToOneTypes == nil {
 		c.analyzeManyToOneFactories()
@@ -1338,7 +1339,7 @@ func (c *Converter) analyzeManyToOneFactories() {
 	}
 
 	for typeName, count := range counts {
-		if count >= 10 {
+		if count >= manyToOneFactoryThreshold {
 			c.manyToOneTypes[typeName] = true
 		}
 	}
@@ -1435,13 +1436,13 @@ func (c *Converter) analyzeUniformPointerTypes() {
 				distinctTypes = true
 			}
 			// Early exit once both thresholds are met
-			if count >= 10 && distinctTypes {
+			if count >= uniformPointerMethodThreshold && distinctTypes {
 				break
 			}
 		}
 
 		// Require 10+ methods AND 2+ distinct return types.
-		if count >= 10 && distinctTypes {
+		if count >= uniformPointerMethodThreshold && distinctTypes {
 			c.uniformPointerTypes[named.Obj().Name()] = true
 		}
 	}
@@ -1506,7 +1507,7 @@ func (c *Converter) analyzeMajorityPointerTypes() {
 		}
 
 		for _, count := range counts {
-			if count >= 20 && total > 0 && float64(count)/float64(total) > 0.9 {
+			if count >= majorityPointerMethodThreshold && total > 0 && float64(count)/float64(total) > majorityPointerRatio {
 				c.majorityPointerTypes[named.Obj().Name()] = true
 				break
 			}
@@ -1776,37 +1777,9 @@ func (c *Converter) extractInterfaceMethods(_interface *types.Interface, typeNam
 		}
 
 		qualifiedName := typeName + "." + method.Name()
-		mutParams := c.cfg.MutatingParams(c.currentPkgPath, qualifiedName)
-		nilableParams := c.cfg.NilableParams(c.currentPkgPath, qualifiedName)
-
-		var params []FunctionParameter
-		sigParams := signature.Params()
-		usedNames := collectNamedParams(sigParams)
-		for j := 0; j < sigParams.Len(); j++ {
-			param := sigParams.At(j)
-			name := param.Name()
-			if name == "" {
-				isVariadic := signature.Variadic() && j == sigParams.Len()-1
-				name = deriveParamName(param.Type(), j, isVariadic, usedNames)
-			} else {
-				name = sanitizeParamName(name)
-			}
-
-			paramType := convertParamType(param.Type(), name, nilableParams, c)
-			if paramType.SkipReason != nil {
-				return nil, false
-			}
-
-			typeStr := paramType.LisetteType
-			if signature.Variadic() && j == sigParams.Len()-1 {
-				typeStr = sliceToVarArgs(typeStr)
-			}
-
-			params = append(params, FunctionParameter{
-				Name:    name,
-				Type:    typeStr,
-				Mutable: isMutableParam(mutParams, name, typeStr, method.Name()),
-			})
+		params, skip := c.convertParams(signature, qualifiedName, method.Name(), nil)
+		if skip != nil {
+			return nil, false
 		}
 
 		returnType := ReturnsToLisette(signature, c, qualifiedName)
@@ -1817,7 +1790,7 @@ func (c *Converter) extractInterfaceMethods(_interface *types.Interface, typeNam
 		// Interface methods are contracts; any nilable return permits nil.
 		if isSingleNilableResult(signature) && !returnType.IsDirectError &&
 			(c.cfg == nil || !c.cfg.IsNonNilableReturn(c.currentPkgPath, qualifiedName)) {
-			returnType.LisetteType = fmt.Sprintf("Option<%s>", returnType.LisetteType)
+			returnType.LisetteType = optionOf(returnType.LisetteType)
 		}
 
 		methods = append(methods, InterfaceMethod{
