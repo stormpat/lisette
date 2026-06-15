@@ -731,6 +731,22 @@ impl LanguageServer for Backend {
             }
         }
 
+        // A definition-backed ref under the cursor (e.g. a type in an annotation)
+        // names a renameable symbol. Bindings are handled above; field refs carry
+        // no qualified name and fall through to the expression arms below.
+        if let Some(resolved) = snapshot.ref_at(file_id, offset)
+            && let Some(qname) = resolved.qualified_name.clone()
+            && let Some(definition_span) = snapshot.ref_target_at(file_id, offset)
+        {
+            validation::check_rename_guards(qname.as_str())?;
+            if !is_go_typedef_span(&snapshot, &definition_span) {
+                return Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
+                    range: line_index.span_to_range(resolved.span),
+                    placeholder: syntax::types::unqualified_name(&qname).to_string(),
+                }));
+            }
+        }
+
         let Some(expression) = find_expression_at(&file.items, offset) else {
             return Ok(None);
         };

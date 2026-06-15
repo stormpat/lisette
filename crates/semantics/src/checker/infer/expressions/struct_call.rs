@@ -124,6 +124,15 @@ impl InferCtx<'_, '_> {
                 } else {
                     Some(underlying)
                 };
+                // Point the name ref at the alias as written, not the underlying
+                // struct — goto on `Alias { .. }` should land on the alias.
+                self.track_name_usage(
+                    store,
+                    &qualified_name,
+                    &span,
+                    struct_name.len() as u32,
+                    RefKind::Type,
+                );
                 return self.infer_struct_call_for_struct(
                     struct_name,
                     struct_id_str,
