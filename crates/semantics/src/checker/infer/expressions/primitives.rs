@@ -9,6 +9,8 @@ use super::super::addressability::{
     check_is_non_addressable, check_non_addressable_assignment_target,
 };
 use crate::checker::infer::InferCtx;
+use crate::checker::ref_kind_for_body;
+use crate::facts::RefKind;
 
 /// Checks whether an assignment target expression contains a deref (`.* `)
 /// anywhere in its chain. For example, `p.*.x` is a `DotAccess` wrapping a
@@ -236,7 +238,13 @@ impl InferCtx<'_, '_> {
 
             if let Some(binding_fact) = self.facts.bindings.get(&id) {
                 let definition_span = binding_fact.span;
+                let kind = if binding_fact.is_typedef {
+                    RefKind::TypeParam
+                } else {
+                    RefKind::LocalBinding
+                };
                 self.facts.add_usage(span, definition_span);
+                self.record_ref(span, Some(definition_span), None, kind);
             }
         }
 
@@ -249,9 +257,12 @@ impl InferCtx<'_, '_> {
         if let Some(ref qname) = qualified
             && let Some(definition) = store.get_definition(qname.as_str())
         {
-            if let Some(definition_span) = definition.name_span() {
+            let kind = ref_kind_for_body(&definition.body);
+            let definition_span = definition.name_span();
+            if let Some(definition_span) = definition_span {
                 self.facts.add_usage(span, definition_span);
             }
+            self.record_ref(span, definition_span, Some(qname.clone()), kind);
             if let DefinitionBody::TypeAlias { .. } = &definition.body
                 && !self.scopes.is_callee_context()
                 && !self.scopes.is_dot_access_base()

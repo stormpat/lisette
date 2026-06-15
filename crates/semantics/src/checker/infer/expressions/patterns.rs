@@ -10,6 +10,7 @@ use syntax::program::{Definition, DefinitionBody};
 use syntax::types::{Type, substitute, unqualified_name};
 
 use crate::checker::EnvResolve;
+use crate::facts::RefKind;
 
 use crate::checker::infer::InferCtx;
 pub(crate) fn collect_pattern_bindings(pattern: &Pattern) -> Vec<(String, Span)> {
@@ -429,11 +430,16 @@ impl InferCtx<'_, '_> {
             Type::Nominal { id, params, .. } => {
                 let variant_name = unqualified_name(&identifier);
                 let variant_qualified = id.with_segment(variant_name);
-                if let Some(definition_span) =
-                    self.get_definition_name_span(store, &variant_qualified)
-                {
+                let variant_def_span = self.get_definition_name_span(store, &variant_qualified);
+                if let Some(definition_span) = variant_def_span {
                     self.facts.add_usage(span, definition_span);
                 }
+                self.record_ref(
+                    span,
+                    variant_def_span,
+                    Some(variant_qualified.as_str().into()),
+                    RefKind::Variant,
+                );
 
                 let variant_fields = store
                     .variants_of(id)
@@ -517,9 +523,16 @@ impl InferCtx<'_, '_> {
         let unify_expected = store.deep_resolve_alias(&expected_ty.resolve_in(&self.env));
         self.unify(&unify_expected, &const_ty, &span);
 
-        if let Some(definition_span) = self.get_definition_name_span(store, &qualified) {
+        let const_def_span = self.get_definition_name_span(store, &qualified);
+        if let Some(definition_span) = const_def_span {
             self.facts.add_usage(span, definition_span);
         }
+        self.record_ref(
+            span,
+            const_def_span,
+            Some(qualified.as_str().into()),
+            RefKind::Const,
+        );
 
         let resolved_ty = const_ty.resolve_in(&self.env);
         let pattern = Pattern::EnumVariant {
@@ -609,7 +622,13 @@ impl InferCtx<'_, '_> {
         let struct_forall_ty = struct_forall_ty.clone();
         let struct_fields = definition_struct_fields.clone();
 
-        self.track_name_usage(store, &qualified_name, &span, identifier.len() as u32);
+        self.track_name_usage(
+            store,
+            &qualified_name,
+            &span,
+            identifier.len() as u32,
+            RefKind::Type,
+        );
 
         let (struct_ty, map) = self.instantiate(&struct_forall_ty);
 
@@ -1019,11 +1038,16 @@ impl InferCtx<'_, '_> {
         let typed = match &resolved_ty {
             Type::Nominal { id, params, .. } => {
                 let variant_qualified = id.with_segment(&variant_name);
-                if let Some(definition_span) =
-                    self.get_definition_name_span(store, &variant_qualified)
-                {
+                let variant_def_span = self.get_definition_name_span(store, &variant_qualified);
+                if let Some(definition_span) = variant_def_span {
                     self.facts.add_usage(*span, definition_span);
                 }
+                self.record_ref(
+                    *span,
+                    variant_def_span,
+                    Some(variant_qualified.as_str().into()),
+                    RefKind::Variant,
+                );
 
                 TypedPattern::EnumStructVariant {
                     enum_name: id.into(),

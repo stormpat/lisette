@@ -11,6 +11,8 @@ use syntax::types::{Symbol, Type, substitute, unqualified_name};
 use super::super::addressability::check_is_non_addressable;
 use super::primitives::contains_deref;
 use crate::checker::infer::InferCtx;
+use crate::checker::ref_kind_for_body;
+use crate::facts::RefKind;
 use crate::promotion::{self, MemberKind, Resolution};
 
 impl InferCtx<'_, '_> {
@@ -111,7 +113,13 @@ impl InferCtx<'_, '_> {
 
         let direct = format!("{}.{}", base, member);
         let path = if self.lookup_type(store, &direct).is_some() {
-            self.track_name_usage(store, &qualified_root, &span, root.len() as u32);
+            self.track_name_usage(
+                store,
+                &qualified_root,
+                &span,
+                root.len() as u32,
+                RefKind::Type,
+            );
             direct
         } else {
             let resolved_id = self.nongeneric_alias_target(&qualified_root)?;
@@ -484,6 +492,7 @@ impl InferCtx<'_, '_> {
         let field_is_pub = field.visibility.is_public();
 
         self.facts.add_usage(*args.span, field.name_span);
+        self.record_ref(*args.span, Some(field.name_span), None, RefKind::Field);
 
         let struct_module = store
             .module_for_qualified_name(&struct_name)
@@ -542,7 +551,9 @@ impl InferCtx<'_, '_> {
             .fields_of(member.declaring_type.as_str())
             .and_then(|fields| fields.iter().find(|f| f.name == args.member_name))
         {
-            self.facts.add_usage(*args.span, field.name_span);
+            let field_name_span = field.name_span;
+            self.facts.add_usage(*args.span, field_name_span);
+            self.record_ref(*args.span, Some(field_name_span), None, RefKind::Field);
         }
 
         let declaring_module = store
@@ -627,8 +638,18 @@ impl InferCtx<'_, '_> {
 
         if let Some(module_id) = module_ty.as_import_namespace() {
             let qualified_name = Symbol::from_parts(module_id, args.member_name);
-            if let Some(definition_span) = self.get_definition_name_span(store, &qualified_name) {
-                self.facts.add_usage(*args.span, definition_span);
+            if let Some(definition) = store.get_definition(&qualified_name) {
+                let kind = ref_kind_for_body(&definition.body);
+                let definition_span = definition.name_span();
+                if let Some(definition_span) = definition_span {
+                    self.facts.add_usage(*args.span, definition_span);
+                }
+                self.record_ref(
+                    *args.span,
+                    definition_span,
+                    Some(qualified_name.as_str().into()),
+                    kind,
+                );
             }
 
             // Reject cross-module tuple-struct constructors used as values
@@ -835,9 +856,16 @@ impl InferCtx<'_, '_> {
             };
             let method_key = declaring.with_segment(args.member_name);
 
-            if let Some(definition_span) = self.get_definition_name_span(store, &method_key) {
+            let method_definition_span = self.get_definition_name_span(store, &method_key);
+            if let Some(definition_span) = method_definition_span {
                 self.facts.add_usage(*args.span, definition_span);
             }
+            self.record_ref(
+                *args.span,
+                method_definition_span,
+                Some(method_key.as_str().into()),
+                RefKind::Method,
+            );
 
             if self.is_foreign_type(&declaring)
                 && let Some(def) = store.get_definition(&method_key)
@@ -1096,6 +1124,12 @@ impl InferCtx<'_, '_> {
         if let Some(definition_span) = name_span {
             self.facts.add_usage(*args.span, definition_span);
         }
+        self.record_ref(
+            *args.span,
+            name_span,
+            Some(variant_qualified_name.as_str().into()),
+            RefKind::Variant,
+        );
 
         let (variant_ty, _) = self.instantiate(&variant_ty);
         self.unify(args.expected_ty, &variant_ty, args.span);
@@ -1195,9 +1229,18 @@ impl InferCtx<'_, '_> {
         if let Some(definition_span) = name_span {
             self.facts.add_usage(*args.span, definition_span);
         }
+        let method_qualified = id.with_segment(args.member_name);
+        self.record_ref(
+            *args.span,
+            name_span,
+            Some(method_qualified.as_str().into()),
+            RefKind::Method,
+        );
 
+        // The receiver type token (e.g. `Slice` in `Slice.new`) — a precise
+        // sub-span, so it wins over the method ref above when the cursor is on it.
         let type_name_len = type_simple_name.len() as u32;
-        self.track_name_usage(store, &id, args.span, type_name_len);
+        self.track_name_usage(store, &id, args.span, type_name_len, RefKind::Type);
 
         let (method_ty, _) = self.instantiate(&method_ty);
 

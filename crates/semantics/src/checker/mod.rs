@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::facts::{BindingIdAllocator, Facts};
+use crate::facts::{BindingIdAllocator, Facts, RefKind, ResolvedRef};
 use crate::promotion;
 use crate::store::Store;
 use diagnostics::LocalSink;
@@ -21,6 +21,25 @@ use syntax::program::{Definition, DefinitionBody, File, FileImport, MethodSignat
 use syntax::types::{SubstitutionMap, Symbol, Type, substitute};
 
 pub use type_env::{EnvResolve, Speculation, TypeEnv, VarState};
+
+/// Coarse `RefKind` for a definition, used where a resolution site doesn't
+/// already know the token's category. Enum variants and methods are recorded
+/// with explicit kinds at their dedicated sites, so this never classifies them.
+pub(crate) fn ref_kind_for_body(body: &DefinitionBody) -> RefKind {
+    match body {
+        DefinitionBody::TypeAlias { .. }
+        | DefinitionBody::Enum { .. }
+        | DefinitionBody::Struct { .. }
+        | DefinitionBody::Interface { .. } => RefKind::Type,
+        DefinitionBody::Value { const_value, .. } => {
+            if const_value.is_some() {
+                RefKind::Const
+            } else {
+                RefKind::Function
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Cursor {
@@ -420,11 +439,33 @@ impl<'s> TaskState<'s> {
         qualified_name: &str,
         span: &Span,
         name_len: u32,
+        kind: RefKind,
     ) {
-        if let Some(definition_span) = self.get_definition_name_span(store, qualified_name) {
-            let usage_span = Span::new(span.file_id, span.byte_offset, name_len);
-            self.facts.add_usage(usage_span, definition_span);
+        let definition_span = self.get_definition_name_span(store, qualified_name);
+        let token_span = Span::new(span.file_id, span.byte_offset, name_len);
+        if let Some(definition_span) = definition_span {
+            self.facts.add_usage(token_span, definition_span);
         }
+        self.record_ref(token_span, definition_span, Some(qualified_name.into()), kind);
+    }
+
+    /// Record a resolution of the token at `token_span` to `definition_span`.
+    /// Additive alongside `add_usage`/`track_name_usage`: populates `facts.refs`
+    /// so the LSP can eventually answer goto/hover via one spatial lookup. Nothing
+    /// consumes `refs` yet, so this changes no behavior.
+    pub(crate) fn record_ref(
+        &mut self,
+        token_span: Span,
+        definition_span: Option<Span>,
+        qualified_name: Option<EcoString>,
+        kind: RefKind,
+    ) {
+        self.facts.push_ref(ResolvedRef {
+            span: token_span,
+            definition_span,
+            qualified_name,
+            kind,
+        });
     }
 
     pub(crate) fn lookup_generic_index(&self, type_name: &str) -> Option<usize> {

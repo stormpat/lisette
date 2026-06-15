@@ -7,6 +7,7 @@ use syntax::program::{Definition, DefinitionBody};
 use syntax::types::{SubstitutionMap, Type, substitute, unqualified_name};
 
 use crate::checker::TaskState;
+use crate::facts::RefKind;
 use crate::store::Store;
 
 impl TaskState<'_> {
@@ -115,6 +116,7 @@ impl TaskState<'_> {
                     &qualified_name,
                     annotation_span,
                     type_name.len() as u32,
+                    RefKind::Type,
                 );
 
                 if self.bound_position_depth == 0

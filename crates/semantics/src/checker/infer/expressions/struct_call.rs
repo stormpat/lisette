@@ -1,6 +1,7 @@
 use rustc_hash::FxHashSet as HashSet;
 
 use crate::checker::EnvResolve;
+use crate::facts::RefKind;
 use crate::store::Store;
 use ecow::EcoString;
 use syntax::ast::{Expression, Span, StructFieldAssignment, StructSpread};
@@ -70,7 +71,13 @@ impl InferCtx<'_, '_> {
             let struct_ty = struct_ty.clone();
             let struct_fields = struct_fields.clone();
 
-            self.track_name_usage(store, &qualified_name, &span, struct_name.len() as u32);
+            self.track_name_usage(
+                store,
+                &qualified_name,
+                &span,
+                struct_name.len() as u32,
+                RefKind::Type,
+            );
             return self.infer_struct_call_for_struct(
                 struct_name,
                 qualified_name,
@@ -377,7 +384,7 @@ impl InferCtx<'_, '_> {
         if let Type::Nominal { id, .. } = &resolved_enum {
             let variant_last = unqualified_name(&variant_name);
             let qualified = id.with_segment(variant_last).to_string();
-            self.track_name_usage(store, &qualified, &span, span.byte_length);
+            self.track_name_usage(store, &qualified, &span, span.byte_length, RefKind::Variant);
         }
 
         let new_spread = self.infer_struct_spread(spread, &enum_ty);

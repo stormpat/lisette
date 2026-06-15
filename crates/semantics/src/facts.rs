@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use diagnostics::{PatternIssue, UnusedExpressionKind};
+use ecow::EcoString;
 use syntax::ast::{BindingId, BindingKind, DeadCodeCause, Span};
 use syntax::types::Type;
 
@@ -33,6 +34,13 @@ pub struct Facts {
     pub bindings: HashMap<BindingId, BindingFact>,
     pub usages: Vec<Usage>,
     usage_set: HashSet<(Span, Span)>,
+
+    /// Resolution records: for each clickable source token, the definition it
+    /// resolves to (plus enough to answer hover lazily). Emitted by the checker
+    /// at every name-resolution site so the LSP can answer goto/hover by a single
+    /// spatial lookup instead of re-deriving resolution per feature. Additive for
+    /// now — nothing consumes it yet; `usages` remains the live source.
+    pub refs: Vec<ResolvedRef>,
 
     // Lint-support facts: read by reference by passes::lints (mostly
     // from_facts; interface_satisfied_methods by ref_graph).
@@ -99,6 +107,7 @@ impl Facts {
             type_error_spans: HashSet::default(),
             usages: Vec::new(),
             usage_set: HashSet::default(),
+            refs: Vec::new(),
             interface_satisfied_methods: HashMap::default(),
         }
     }
@@ -175,6 +184,10 @@ impl Facts {
         }
     }
 
+    pub fn push_ref(&mut self, resolved: ResolvedRef) {
+        self.refs.push(resolved);
+    }
+
     pub fn mark_method_used_for_interface(
         &mut self,
         module_id: String,
@@ -227,6 +240,7 @@ impl Facts {
             type_error_spans,
             usages,
             usage_set: _,
+            refs,
             interface_satisfied_methods,
         } = other;
 
@@ -259,6 +273,8 @@ impl Facts {
         {
             self.add_usage(usage_span, definition_span);
         }
+
+        self.refs.extend(refs);
 
         for (key, spans) in interface_satisfied_methods {
             self.interface_satisfied_methods
@@ -382,6 +398,47 @@ pub struct TypeParamOnlyInBoundFact {
 pub struct Usage {
     pub usage_span: Span,
     pub definition_span: Span,
+}
+
+/// What a resolved token refers to. A hint the LSP can use to label the target
+/// and to decide where the definition lives (binding span vs definitions map).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefKind {
+    /// `let` / parameter / pattern variable. Definition is a binding span.
+    LocalBinding,
+    /// Generic type parameter (`T`). Definition is its `<T>` declaration site.
+    TypeParam,
+    /// Struct / enum / type alias / interface / primitive.
+    Type,
+    Function,
+    Const,
+    /// Struct field, including promoted fields from embedded structs.
+    Field,
+    /// Enum variant, as value, constructor, or pattern.
+    Variant,
+    /// Instance / static / UFCS method.
+    Method,
+    /// Import alias or module namespace.
+    Module,
+}
+
+/// The checker's resolution of a single clickable source token. Built during
+/// inference (where scope, imports, and the owning module are all known) so the
+/// LSP can answer goto/hover by locating the innermost `span` under the cursor.
+///
+/// `ty`/`doc` are intentionally not stored: the consumer resolves them lazily
+/// from `qualified_name` against the definitions map (locals carry their span
+/// directly and hover keeps its own type path), keeping this a thin span table.
+#[derive(Debug, Clone)]
+pub struct ResolvedRef {
+    /// The exact token under the cursor (the sub-token, not the enclosing expr).
+    pub span: Span,
+    /// goto target. `None` when the referent has no source location.
+    pub definition_span: Option<Span>,
+    /// Fully-qualified definition key, for lazy `ty`/`doc` lookup. `None` for
+    /// local bindings and type parameters.
+    pub qualified_name: Option<EcoString>,
+    pub kind: RefKind,
 }
 
 #[cfg(test)]
