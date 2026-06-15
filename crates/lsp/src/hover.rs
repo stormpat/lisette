@@ -322,9 +322,8 @@ fn find_doc_at_definition_span(
     extract_doc_from_expression(expression, definition_span.byte_offset)
 }
 
-/// Resolve doc for a dot access by looking up the Definition directly.
-/// Handles Go stdlib imports (where `resolve_dot_access_definition` returns None)
-/// and any other case where the AST-based approach fails.
+/// Resolve doc for a dot access by looking up the Definition directly, for the
+/// hover-doc fallback when the ref table has no entry (e.g. Go stdlib imports).
 fn resolve_dot_access_doc(
     expression: &Expression,
     member: &str,

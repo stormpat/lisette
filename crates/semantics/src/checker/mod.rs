@@ -486,10 +486,8 @@ impl<'s> TaskState<'s> {
         );
     }
 
-    /// Record a resolution of the token at `token_span` to `definition_span`.
-    /// Additive alongside `add_usage`/`track_name_usage`: populates `facts.refs`
-    /// so the LSP can eventually answer goto/hover via one spatial lookup. Nothing
-    /// consumes `refs` yet, so this changes no behavior.
+    /// Record a resolution of the token at `token_span` to `definition_span`,
+    /// the fact the LSP looks up to answer goto/hover/references/rename.
     pub(crate) fn record_ref(
         &mut self,
         token_span: Span,

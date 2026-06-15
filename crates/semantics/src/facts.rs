@@ -37,9 +37,8 @@ pub struct Facts {
 
     /// Resolution records: for each clickable source token, the definition it
     /// resolves to (plus enough to answer hover lazily). Emitted by the checker
-    /// at every name-resolution site so the LSP can answer goto/hover by a single
-    /// spatial lookup instead of re-deriving resolution per feature. Additive for
-    /// now — nothing consumes it yet; `usages` remains the live source.
+    /// at every name-resolution site; the LSP answers goto/hover/references/rename
+    /// by a single spatial lookup over these instead of re-deriving resolution.
     pub refs: Vec<ResolvedRef>,
 
     // Lint-support facts: read by reference by passes::lints (mostly
