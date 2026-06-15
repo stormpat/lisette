@@ -300,6 +300,12 @@ impl InferCtx<'_, '_> {
             },
             |checker, assignment| {
                 let def = struct_fields.iter().find(|f| f.name == assignment.name)?;
+                checker.record_ref(
+                    assignment.name_span,
+                    Some(def.name_span),
+                    None,
+                    RefKind::Field,
+                );
                 if is_cross_module && !def.visibility.is_public() {
                     checker.sink.push(diagnostics::infer::private_field_access(
                         &assignment.name,
@@ -400,11 +406,15 @@ impl InferCtx<'_, '_> {
                 map: &map,
                 _marker: std::marker::PhantomData,
             },
-            |_checker, assignment| {
-                variant_fields
-                    .iter()
-                    .find(|f| f.name == assignment.name)
-                    .map(|f| &f.ty)
+            |checker, assignment| {
+                let def = variant_fields.iter().find(|f| f.name == assignment.name)?;
+                checker.record_ref(
+                    assignment.name_span,
+                    Some(def.name_span),
+                    None,
+                    RefKind::Field,
+                );
+                Some(&def.ty)
             },
         );
 
