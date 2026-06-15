@@ -506,6 +506,13 @@ pub(crate) fn resolve_definition_span(
     offset: u32,
     extra_match: impl FnOnce(&Expression) -> Option<syntax::ast::Span>,
 ) -> Option<syntax::ast::Span> {
+    // Resolution facts lead for usages (the token references a definition
+    // elsewhere). The binding/decl-site arms below cover definition sites, which
+    // the ref table doesn't record.
+    if let Some(def_span) = snapshot.ref_at(file_id, offset).and_then(|r| r.definition_span) {
+        return Some(def_span);
+    }
+
     snapshot
         .facts()
         .bindings
