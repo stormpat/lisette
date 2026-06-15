@@ -23,9 +23,7 @@ use crate::completion::{
     DotContext, attribute_completions, definition_to_completion_kind, detect_dot_context,
     get_instance_completions, get_module_prefix, get_type_completions, resolve_variable_type,
 };
-use crate::definition::{
-    find_struct_field_span, is_go_typedef_span, resolve_definition_span,
-};
+use crate::definition::{find_struct_field_span, is_go_typedef_span, resolve_definition_span};
 use crate::paths::uri_to_module_file;
 use crate::project::find_project_root;
 use crate::snapshot::AnalysisSnapshot;
@@ -211,7 +209,9 @@ impl LanguageServer for Backend {
         // expression walker below remains the fallback for locals, literals, and
         // arbitrary sub-expressions, whose types aren't in the ref table.
         let ref_decl = snapshot.ref_at(file_id, offset).and_then(|r| {
-            let def = snapshot.definitions().get(r.qualified_name.as_ref()?.as_str())?;
+            let def = snapshot
+                .definitions()
+                .get(r.qualified_name.as_ref()?.as_str())?;
             Some((def.ty().clone(), r.span, def.doc().cloned()))
         });
 

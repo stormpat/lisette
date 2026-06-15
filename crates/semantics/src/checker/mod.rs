@@ -478,7 +478,12 @@ impl<'s> TaskState<'s> {
         if let Some(definition_span) = definition_span {
             self.facts.add_usage(token_span, definition_span);
         }
-        self.record_ref(token_span, definition_span, Some(qualified_name.into()), kind);
+        self.record_ref(
+            token_span,
+            definition_span,
+            Some(qualified_name.into()),
+            kind,
+        );
     }
 
     /// Record a resolution of the token at `token_span` to `definition_span`.
