@@ -9216,13 +9216,13 @@ fn main() {
 }";
     client.open(TEST_URI, source).await;
 
-    let response = client.goto_definition(TEST_URI, 4, 11).await;
-    let on_variant_def = response
-        .and_then(|r| definition_location(&r))
-        .is_some_and(|loc| loc.range.start.line == 0);
-    assert!(
-        !on_variant_def,
-        "a field label must not resolve to the variant definition"
+    // The label `x` resolves to the field declaration (line 0, col 20), not the
+    // variant `Move` (line 0, col 13).
+    let loc = definition_location(&client.goto_definition(TEST_URI, 4, 11).await.unwrap()).unwrap();
+    assert_eq!(
+        (loc.range.start.line, loc.range.start.character),
+        (0, 20),
+        "a field label must resolve to the field declaration, not the variant"
     );
 
     client.shutdown().await;
@@ -9323,13 +9323,13 @@ fn main() {
 }";
     client.open(TEST_URI, source).await;
 
-    let response = client.goto_definition(TEST_URI, 4, 17).await;
-    let on_variant_def = response
-        .and_then(|r| definition_location(&r))
-        .is_some_and(|loc| loc.range.start.line == 0);
-    assert!(
-        !on_variant_def,
-        "a field label in a qualified struct-variant pattern must not resolve to the variant"
+    // The label `x` resolves to the field declaration (line 0, col 20), not the
+    // variant `Move` (line 0, col 13).
+    let loc = definition_location(&client.goto_definition(TEST_URI, 4, 17).await.unwrap()).unwrap();
+    assert_eq!(
+        (loc.range.start.line, loc.range.start.character),
+        (0, 20),
+        "a field label in a qualified struct-variant pattern must resolve to the field, not the variant"
     );
 
     client.shutdown().await;

@@ -378,6 +378,11 @@ impl Pattern {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructFieldPattern {
     pub name: EcoString,
+    /// Span of the field-label token. For shorthand (`{ x }`) this is the same
+    /// token as `value`'s binding; for explicit `{ x: px }` it is the `x` label,
+    /// distinct from the `px` binding — letting goto/rename resolve the label to
+    /// the field definition without mistaking it for the binding.
+    pub name_span: Span,
     pub value: Pattern,
 }
 

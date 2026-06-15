@@ -677,6 +677,11 @@ impl InferCtx<'_, '_> {
                     }
                 };
 
+                // The label token resolves to the field definition.
+                if let Some(fd) = field_definition {
+                    self.record_ref(field.name_span, Some(fd.name_span), None, RefKind::Field);
+                }
+
                 let is_shorthand = matches!(
                     &field.value,
                     Pattern::Identifier { identifier, .. } if identifier == &field.name
@@ -686,6 +691,7 @@ impl InferCtx<'_, '_> {
                 (
                     StructFieldPattern {
                         name: field.name.clone(),
+                        name_span: field.name_span,
                         value: inferred_value,
                     },
                     (field.name.clone(), typed_value),
@@ -1007,6 +1013,11 @@ impl InferCtx<'_, '_> {
                     }
                 };
 
+                // The label token resolves to the field definition.
+                if let Some(fd) = field_definition {
+                    self.record_ref(field.name_span, Some(fd.name_span), None, RefKind::Field);
+                }
+
                 let is_shorthand = matches!(
                     &field.value,
                     Pattern::Identifier { identifier, .. } if identifier == &field.name
@@ -1016,6 +1027,7 @@ impl InferCtx<'_, '_> {
                 (
                     StructFieldPattern {
                         name: field.name.clone(),
+                        name_span: field.name_span,
                         value: inferred_value,
                     },
                     (field.name.clone(), typed_value),
