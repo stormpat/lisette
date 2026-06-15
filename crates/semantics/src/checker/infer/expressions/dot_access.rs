@@ -11,7 +11,7 @@ use syntax::types::{Symbol, Type, substitute, unqualified_name};
 use super::super::addressability::check_is_non_addressable;
 use super::primitives::contains_deref;
 use crate::checker::infer::InferCtx;
-use crate::checker::ref_kind_for_body;
+use crate::checker::{ref_kind_for_body, trailing_member_token_span};
 use crate::facts::RefKind;
 use crate::promotion::{self, MemberKind, Resolution};
 
@@ -645,7 +645,7 @@ impl InferCtx<'_, '_> {
                     self.facts.add_usage(*args.span, definition_span);
                 }
                 self.record_ref(
-                    *args.span,
+                    trailing_member_token_span(*args.span, args.member_name),
                     definition_span,
                     Some(qualified_name.as_str().into()),
                     kind,

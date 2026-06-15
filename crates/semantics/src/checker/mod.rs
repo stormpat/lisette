@@ -37,6 +37,19 @@ pub(crate) fn trailing_name_token_span(name: &str, construct_span: Span) -> Span
     )
 }
 
+/// Span of the trailing `member` token of a `recv.member` access whose whole
+/// extent is `access_span`. Points a member ref at just the member, so the
+/// qualifier/receiver (e.g. `fmt` in `fmt.Println`) resolves on its own.
+/// Assumes `member` is the literal trailing token of `access_span`.
+pub(crate) fn trailing_member_token_span(access_span: Span, member: &str) -> Span {
+    let len = member.len() as u32;
+    Span::new(
+        access_span.file_id,
+        access_span.byte_offset + access_span.byte_length.saturating_sub(len),
+        len,
+    )
+}
+
 /// Coarse `RefKind` for a definition, used where a resolution site doesn't
 /// already know the token's category. Enum variants and methods are recorded
 /// with explicit kinds at their dedicated sites, so this never classifies them.

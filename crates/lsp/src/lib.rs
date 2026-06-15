@@ -294,6 +294,16 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // Resolution facts (recorded by the checker) are the source of truth.
+        // The legacy expression walk below is a fallback for tokens not yet
+        // covered by the ref table (e.g. import aliases, word-at-cursor).
+        if let Some(definition_span) =
+            snapshot.ref_at(file_id, offset).and_then(|r| r.definition_span)
+            && let Some(response) = goto_location(&snapshot, definition_span)
+        {
+            return Ok(Some(response));
+        }
+
         let Some(expression) = find_expression_at(&file.items, offset) else {
             return Ok(None);
         };
@@ -440,12 +450,6 @@ impl LanguageServer for Backend {
             _ => find_binding()
                 .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot)),
         };
-
-        // Fall back to the checker's resolution facts when the legacy expression
-        // walk can't resolve the token. This closes cases the prefix ladders miss.
-        // Refs stay a *fallback* until the span-precision audit lets them lead.
-        let definition_span = definition_span
-            .or_else(|| snapshot.ref_at(file_id, offset).and_then(|r| r.definition_span));
 
         let Some(definition_span) = definition_span else {
             return Ok(None);

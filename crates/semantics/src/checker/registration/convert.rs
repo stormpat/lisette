@@ -111,11 +111,20 @@ impl TaskState<'_> {
                     return Type::Error;
                 }
 
+                // Point the ref at the simple-name segment, not the whole
+                // qualified path: for `mod.Type`, the qualifier `mod` must resolve
+                // to its import, not to `Type`.
+                let simple = unqualified_name(type_name);
+                let token_span = Span::new(
+                    annotation_span.file_id,
+                    annotation_span.byte_offset + (type_name.len() - simple.len()) as u32,
+                    simple.len() as u32,
+                );
                 self.track_name_usage(
                     store,
                     &qualified_name,
-                    annotation_span,
-                    type_name.len() as u32,
+                    &token_span,
+                    simple.len() as u32,
                     RefKind::Type,
                 );
 
