@@ -492,7 +492,12 @@ impl InferCtx<'_, '_> {
         let field_is_pub = field.visibility.is_public();
 
         self.facts.add_usage(*args.span, field.name_span);
-        self.record_ref(*args.span, Some(field.name_span), None, RefKind::Field);
+        self.record_ref(
+            trailing_member_token_span(*args.span, args.member_name),
+            Some(field.name_span),
+            None,
+            RefKind::Field,
+        );
 
         let struct_module = store
             .module_for_qualified_name(&struct_name)
@@ -553,7 +558,12 @@ impl InferCtx<'_, '_> {
         {
             let field_name_span = field.name_span;
             self.facts.add_usage(*args.span, field_name_span);
-            self.record_ref(*args.span, Some(field_name_span), None, RefKind::Field);
+            self.record_ref(
+                trailing_member_token_span(*args.span, args.member_name),
+                Some(field_name_span),
+                None,
+                RefKind::Field,
+            );
         }
 
         let declaring_module = store
@@ -861,7 +871,7 @@ impl InferCtx<'_, '_> {
                 self.facts.add_usage(*args.span, definition_span);
             }
             self.record_ref(
-                *args.span,
+                trailing_member_token_span(*args.span, args.member_name),
                 method_definition_span,
                 Some(method_key.as_str().into()),
                 RefKind::Method,
@@ -1125,7 +1135,7 @@ impl InferCtx<'_, '_> {
             self.facts.add_usage(*args.span, definition_span);
         }
         self.record_ref(
-            *args.span,
+            trailing_member_token_span(*args.span, args.member_name),
             name_span,
             Some(variant_qualified_name.as_str().into()),
             RefKind::Variant,
@@ -1231,7 +1241,7 @@ impl InferCtx<'_, '_> {
         }
         let method_qualified = id.with_segment(args.member_name);
         self.record_ref(
-            *args.span,
+            trailing_member_token_span(*args.span, args.member_name),
             name_span,
             Some(method_qualified.as_str().into()),
             RefKind::Method,

@@ -1107,6 +1107,55 @@ async fn goto_definition_struct_call() {
     client.shutdown().await;
 }
 
+/// Precise-span guard: every token in a dot-access (receiver, member, qualifier)
+/// must resolve to its own definition, not the enclosing construct's. Exercises
+/// field / instance-method / static-method / enum-variant resolution through the
+/// checker's ResolvedRef table.
+#[tokio::test]
+async fn goto_definition_resolves_each_dot_access_token() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "\
+struct Point { x: int, y: int }
+impl Point {
+  fn origin() -> Point { Point { x: 0, y: 0 } }
+  fn sum(self) -> int { self.x + self.y }
+}
+enum Color { Red, Green }
+fn main() {
+  let p = Point { x: 1, y: 2 }
+  let a = p.x
+  let b = p.sum()
+  let c = Point.origin()
+  let d = Color.Red
+}";
+    client.open(TEST_URI, source).await;
+
+    // (click line, click col, expected def line, expected def char, label)
+    let cases = [
+        (8, 10, 7, 6, "receiver `p` -> the `let p` binding"),
+        (8, 12, 0, 15, "field `x` -> the struct field declaration"),
+        (9, 12, 3, 5, "instance method `sum` -> its decl"),
+        (10, 10, 0, 7, "static-method qualifier `Point` -> the type"),
+        (10, 16, 2, 5, "static method `origin` -> its decl"),
+        (11, 10, 5, 5, "enum qualifier `Color` -> the type"),
+        (11, 16, 5, 13, "variant `Red` -> its decl"),
+    ];
+
+    for (line, col, def_line, def_char, label) in cases {
+        let response = client.goto_definition(TEST_URI, line, col).await;
+        let loc = definition_location(&response.expect("goto should resolve"))
+            .unwrap_or_else(|| panic!("no location at {line}:{col} ({label})"));
+        assert_eq!(
+            (loc.range.start.line, loc.range.start.character),
+            (def_line, def_char),
+            "at {line}:{col}, {label}"
+        );
+    }
+
+    client.shutdown().await;
+}
+
 #[tokio::test]
 async fn goto_definition_type_in_parameter() {
     let mut client = TestClient::new().await;
