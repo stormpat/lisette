@@ -24,10 +24,9 @@ use crate::completion::{
     get_instance_completions, get_module_prefix, get_type_completions, resolve_variable_type,
 };
 use crate::definition::{
-    find_struct_field_span, is_go_typedef_span, lookup_definition_span,
-    resolve_annotation_definition, resolve_definition_span, resolve_enum_in_pattern,
-    resolve_import_span, resolve_match_pattern_definition,
-    resolve_struct_call_field, resolve_word_at_offset, word_at_offset,
+    find_struct_field_span, is_go_typedef_span, resolve_annotation_definition,
+    resolve_definition_span, resolve_enum_in_pattern, resolve_import_span,
+    resolve_match_pattern_definition, resolve_struct_call_field, word_at_offset,
 };
 use crate::paths::uri_to_module_file;
 use crate::project::find_project_root;
@@ -345,9 +344,7 @@ impl LanguageServer for Backend {
                     if !prefix.contains('.') {
                         let first = value.split('.').next().unwrap_or(value);
                         if let Some(span) =
-                            lookup_definition_span(first, file, &snapshot).or_else(|| {
-                                resolve_import_span(first, file, &snapshot.result.go_package_names)
-                            })
+                            resolve_import_span(first, file, &snapshot.result.go_package_names)
                             && let Some(uri) = snapshot.get_uri(span.file_id)
                             && let Some(idx) = snapshot.get_line_index(span.file_id)
                         {
@@ -365,11 +362,10 @@ impl LanguageServer for Backend {
             }
 
             syntax::ast::Expression::StructCall {
-                name,
                 field_assignments,
                 ty,
                 ..
-            } => resolve_struct_call_field(field_assignments, name, ty, offset, file, &snapshot),
+            } => resolve_struct_call_field(field_assignments, ty, offset, &snapshot),
 
             syntax::ast::Expression::Function { name_span, .. }
                 if offset_in_span(offset, name_span) =>
@@ -427,14 +423,11 @@ impl LanguageServer for Backend {
                 .or_else(|| offset_in_span(offset, name_span).then_some(*name_span)),
 
             syntax::ast::Expression::Identifier { value, .. } => {
-                lookup_definition_span(value, file, &snapshot)
-                    .or_else(|| resolve_import_span(value, file, &snapshot.result.go_package_names))
+                resolve_import_span(value, file, &snapshot.result.go_package_names)
             }
 
             syntax::ast::Expression::Match { arms, .. } => {
-                resolve_match_pattern_definition(arms, offset, file, &snapshot)
-                    .or_else(&find_binding)
-                    .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot))
+                resolve_match_pattern_definition(arms, offset, file, &snapshot).or_else(&find_binding)
             }
 
             syntax::ast::Expression::IfLet {
@@ -447,11 +440,9 @@ impl LanguageServer for Backend {
                 typed_pattern,
                 ..
             } => resolve_enum_in_pattern(pattern, typed_pattern.as_ref(), offset, file, &snapshot)
-                .or_else(&find_binding)
-                .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot)),
+                .or_else(&find_binding),
 
-            _ => find_binding()
-                .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot)),
+            _ => find_binding(),
         };
 
         let Some(definition_span) = definition_span else {
@@ -614,7 +605,6 @@ impl LanguageServer for Backend {
 
                 syntax::ast::Expression::Match { arms, .. } => {
                     resolve_match_pattern_definition(arms, offset, file, &snapshot)
-                        .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot))
                 }
 
                 syntax::ast::Expression::IfLet {
@@ -626,16 +616,9 @@ impl LanguageServer for Backend {
                     pattern,
                     typed_pattern,
                     ..
-                } => resolve_enum_in_pattern(
-                    pattern,
-                    typed_pattern.as_ref(),
-                    offset,
-                    file,
-                    &snapshot,
-                )
-                .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot)),
+                } => resolve_enum_in_pattern(pattern, typed_pattern.as_ref(), offset, file, &snapshot),
 
-                _ => resolve_word_at_offset(&file.source, offset, file, &snapshot),
+                _ => None,
             },
         );
 
@@ -943,19 +926,7 @@ impl LanguageServer for Backend {
                 Ok(None)
             }
 
-            _ => {
-                if let Some((word, start, end)) = word_at_offset(&file.source, offset)
-                    && lookup_definition_span(word, file, &snapshot).is_some()
-                {
-                    let span = syntax::ast::Span::new(file_id, start as u32, (end - start) as u32);
-                    Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                        range: line_index.span_to_range(span),
-                        placeholder: word.to_string(),
-                    }))
-                } else {
-                    Ok(None)
-                }
-            }
+            _ => Ok(None),
         }
     }
 
@@ -1006,7 +977,6 @@ impl LanguageServer for Backend {
 
                 syntax::ast::Expression::Match { arms, .. } => {
                     resolve_match_pattern_definition(arms, offset, file, &snapshot)
-                        .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot))
                 }
 
                 syntax::ast::Expression::IfLet {
@@ -1018,16 +988,9 @@ impl LanguageServer for Backend {
                     pattern,
                     typed_pattern,
                     ..
-                } => resolve_enum_in_pattern(
-                    pattern,
-                    typed_pattern.as_ref(),
-                    offset,
-                    file,
-                    &snapshot,
-                )
-                .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot)),
+                } => resolve_enum_in_pattern(pattern, typed_pattern.as_ref(), offset, file, &snapshot),
 
-                _ => resolve_word_at_offset(&file.source, offset, file, &snapshot),
+                _ => None,
             },
         );
 

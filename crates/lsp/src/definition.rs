@@ -41,10 +41,8 @@ pub(crate) fn find_struct_field_span(
 
 pub(crate) fn resolve_struct_call_field(
     field_assignments: &[syntax::ast::StructFieldAssignment],
-    name: &str,
     ty: &syntax::types::Type,
     offset: u32,
-    file: &syntax::program::File,
     snapshot: &AnalysisSnapshot,
 ) -> Option<syntax::ast::Span> {
     let type_id = type_name(ty);
@@ -58,11 +56,9 @@ pub(crate) fn resolve_struct_call_field(
                 .and_then(|tid| find_struct_field_span(tid, &fa.name, snapshot))
         })
         .or_else(|| {
-            lookup_definition_span(name, file, snapshot).or_else(|| {
-                type_id
-                    .as_deref()
-                    .and_then(|tid| snapshot.definitions().get(tid).and_then(|d| d.name_span()))
-            })
+            type_id
+                .as_deref()
+                .and_then(|tid| snapshot.definitions().get(tid).and_then(|d| d.name_span()))
         })
 }
 
@@ -135,8 +131,7 @@ fn resolve_constructor_name(
 
     if cursor_in_name <= dot_pos {
         let first = &name[..dot_pos];
-        return resolve_import_span(first, file, &snapshot.result.go_package_names)
-            .or_else(|| lookup_definition_span(first, file, snapshot));
+        return resolve_import_span(first, file, &snapshot.result.go_package_names);
     }
 
     let (qualifier, simple) = name.split_once('.')?;
@@ -148,39 +143,6 @@ fn resolve_constructor_name(
         .definitions()
         .get(qualified.as_str())
         .and_then(|d| d.name_span())
-}
-
-pub(crate) fn lookup_definition_span(
-    name: &str,
-    file: &syntax::program::File,
-    snapshot: &AnalysisSnapshot,
-) -> Option<syntax::ast::Span> {
-    if let Some(definition) = snapshot.definitions().get(name)
-        && let Some(span) = definition.name_span()
-    {
-        return Some(span);
-    }
-
-    let qualified = format!("{}.{}", file.module_id, name);
-    if let Some(definition) = snapshot.definitions().get(qualified.as_str())
-        && let Some(span) = definition.name_span()
-    {
-        return Some(span);
-    }
-
-    for import in file.imports() {
-        if import.name.starts_with("go:") {
-            continue;
-        }
-        let imported = format!("{}.{}", import.name, name);
-        if let Some(definition) = snapshot.definitions().get(imported.as_str())
-            && let Some(span) = definition.name_span()
-        {
-            return Some(span);
-        }
-    }
-
-    None
 }
 
 /// Extract the PascalCase word at the given byte offset, returning its text and byte range.
@@ -214,16 +176,6 @@ pub(crate) fn word_at_offset(source: &str, offset: u32) -> Option<(&str, usize, 
     Some((word, start, end))
 }
 
-pub(crate) fn resolve_word_at_offset(
-    source: &str,
-    offset: u32,
-    file: &syntax::program::File,
-    snapshot: &AnalysisSnapshot,
-) -> Option<syntax::ast::Span> {
-    let (word, _, _) = word_at_offset(source, offset)?;
-    lookup_definition_span(word, file, snapshot)
-}
-
 /// Resolve an enum variant in a match arm pattern to its definition.
 pub(crate) fn resolve_match_pattern_definition(
     arms: &[MatchArm],
@@ -255,9 +207,7 @@ pub(crate) fn resolve_enum_in_pattern(
     }
 
     match pattern {
-        Pattern::EnumVariant {
-            identifier, fields, ..
-        } => {
+        Pattern::EnumVariant { fields, .. } => {
             let typed_fields = match typed_pattern {
                 Some(TypedPattern::EnumVariant { fields: tf, .. }) => Some(tf.as_slice()),
                 _ => None,
@@ -302,7 +252,7 @@ pub(crate) fn resolve_enum_in_pattern(
                     .definitions()
                     .get(qualified_name.as_str())
                     .and_then(|d| d.name_span()),
-                _ => lookup_definition_span(identifier, file, snapshot),
+                _ => None,
             }
         }
 
@@ -317,12 +267,7 @@ pub(crate) fn resolve_enum_in_pattern(
             })
         }
 
-        Pattern::Struct {
-            identifier,
-            fields,
-            span,
-            ..
-        } => {
+        Pattern::Struct { fields, span, .. } => {
             if let Some(field) = fields
                 .iter()
                 .find(|f| offset_in_span(offset, &f.value.get_span()))
@@ -369,7 +314,7 @@ pub(crate) fn resolve_enum_in_pattern(
                     .get(qualified.as_str())
                     .and_then(|d| d.name_span());
             }
-            lookup_definition_span(identifier, file, snapshot)
+            None
         }
 
         Pattern::Tuple { elements, .. } => {
@@ -470,11 +415,10 @@ pub(crate) fn resolve_definition_span(
                 Expression::VariableDeclaration { name_span, .. } => Some(*name_span),
 
                 Expression::StructCall {
-                    name,
                     field_assignments,
                     ty,
                     ..
-                } => resolve_struct_call_field(field_assignments, name, ty, offset, file, snapshot),
+                } => resolve_struct_call_field(field_assignments, ty, offset, snapshot),
 
                 other => extra_match(other),
             }
