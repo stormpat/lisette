@@ -224,8 +224,7 @@ impl LanguageServer for Backend {
             let Some(expression) = find_expression_at(&file.items, offset) else {
                 return Ok(None);
             };
-            let (ty, span) = hover::resolve_declaration_hover(expression, offset, file, &snapshot)
-                .unwrap_or_else(|| hover::get_hover_type_and_span(expression, offset));
+            let (ty, span) = hover::get_hover_type_and_span(expression, offset);
             let doc = hover::get_hover_doc(expression, offset, file, &snapshot).or_else(|| {
                 let type_id = ty.get_qualified_id()?;
                 snapshot.definitions().get(type_id)?.doc().cloned()

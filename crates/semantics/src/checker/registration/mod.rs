@@ -19,8 +19,10 @@ use syntax::program::{
 };
 use syntax::types::{Symbol, Type};
 
-use super::{FileContextKind, TaskState};
+use super::{FileContextKind, TaskState, ref_kind_for_body};
+use crate::facts::RefKind;
 use crate::store::Store;
+use ecow::EcoString;
 
 pub(crate) fn extract_package_directive(source: &str) -> Option<String> {
     for line in source.lines().take(10) {
@@ -227,6 +229,33 @@ impl TaskState<'_> {
         let module = store.get_module(id).expect("module must exist");
         let ufcs_entries = crate::call_classification::compute_module_ufcs(module, id);
         self.ufcs_methods.extend(ufcs_entries);
+
+        self.record_definition_self_refs(store, id);
+    }
+
+    /// Emit a self-ref at each definition's name token so hovering or jumping to a
+    /// *declaration* resolves through the ref table — refs otherwise record only
+    /// usages. Covers types, functions, consts, enum variants, and methods (all
+    /// keyed in the definitions map); struct fields and locals are not in the map
+    /// and stay served by the expression-type walker.
+    fn record_definition_self_refs(&mut self, store: &Store, id: &str) {
+        let Some(module) = store.get_module(id) else {
+            return;
+        };
+        let entries: Vec<(Span, EcoString, RefKind)> = module
+            .definitions
+            .iter()
+            .filter_map(|(qname, def)| {
+                Some((
+                    def.name_span?,
+                    qname.as_str().into(),
+                    ref_kind_for_body(&def.body),
+                ))
+            })
+            .collect();
+        for (name_span, qname, kind) in entries {
+            self.record_ref(name_span, Some(name_span), Some(qname), kind);
+        }
     }
 
     /// Register a Go module (stdlib or third-party). Unlike regular modules,
