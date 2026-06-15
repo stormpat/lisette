@@ -401,7 +401,13 @@ impl InferCtx<'_, '_> {
             let variant_last = unqualified_name(&variant_name);
             let qualified = id.with_segment(variant_last).to_string();
             let token = trailing_name_token_span(&variant_name, span);
-            self.track_name_usage(store, &qualified, &token, token.byte_length, RefKind::Variant);
+            self.track_name_usage(
+                store,
+                &qualified,
+                &token,
+                token.byte_length,
+                RefKind::Variant,
+            );
         }
 
         let new_spread = self.infer_struct_spread(spread, &enum_ty);
