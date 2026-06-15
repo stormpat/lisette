@@ -441,45 +441,17 @@ impl LanguageServer for Backend {
                 .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot)),
         };
 
+        // Fall back to the checker's resolution facts when the legacy expression
+        // walk can't resolve the token. This closes cases the prefix ladders miss.
+        // Refs stay a *fallback* until the span-precision audit lets them lead.
+        let definition_span = definition_span
+            .or_else(|| snapshot.ref_at(file_id, offset).and_then(|r| r.definition_span));
+
         let Some(definition_span) = definition_span else {
             return Ok(None);
         };
 
-        // A dummy span (zero length) would resolve to offset 0 of file_id 0;
-        // refuse rather than jump there.
-        if definition_span.is_dummy() {
-            return Ok(None);
-        }
-
-        if let Some(target_file) = snapshot.files().get(&definition_span.file_id) {
-            let end = (definition_span.byte_offset as usize)
-                .saturating_add(definition_span.byte_length as usize);
-            if end > target_file.source.len() {
-                return Ok(None);
-            }
-        }
-
-        // The typedef file may be absent (cache cleared, or pruned by another lis
-        // version); decline instead of returning a dangling Location.
-        if let Some(path) = snapshot.typedef_path(definition_span.file_id)
-            && !path.exists()
-        {
-            return Ok(None);
-        }
-
-        let Some(target_uri) = snapshot.get_uri(definition_span.file_id) else {
-            return Ok(None);
-        };
-        let Some(target_line_index) = snapshot.get_line_index(definition_span.file_id) else {
-            return Ok(None);
-        };
-
-        let range = target_line_index.span_to_range(definition_span);
-
-        Ok(Some(GotoDefinitionResponse::Scalar(Location {
-            uri: target_uri.clone(),
-            range,
-        })))
+        Ok(goto_location(&snapshot, definition_span))
     }
 
     async fn document_symbol(
@@ -1357,6 +1329,43 @@ impl LanguageServer for Backend {
 
 /// Narrows a usage span to just the trailing member token, dropping any
 /// qualifier (`Color.Red`) and any payload (`Red(x)`).
+/// Validate a resolved definition span and build a goto response, or `None`
+/// when it can't be navigated to: a dummy (zero-length) span would resolve to
+/// offset 0 of file 0; an out-of-bounds span points past the source; a `go:`
+/// typedef file may have been pruned by another `lis` version. Shared by the
+/// resolution-fact path and the legacy expression-walk fallback.
+fn goto_location(
+    snapshot: &AnalysisSnapshot,
+    definition_span: syntax::ast::Span,
+) -> Option<GotoDefinitionResponse> {
+    if definition_span.is_dummy() {
+        return None;
+    }
+
+    if let Some(target_file) = snapshot.files().get(&definition_span.file_id) {
+        let end = (definition_span.byte_offset as usize)
+            .saturating_add(definition_span.byte_length as usize);
+        if end > target_file.source.len() {
+            return None;
+        }
+    }
+
+    if let Some(path) = snapshot.typedef_path(definition_span.file_id)
+        && !path.exists()
+    {
+        return None;
+    }
+
+    let target_uri = snapshot.get_uri(definition_span.file_id)?;
+    let target_line_index = snapshot.get_line_index(definition_span.file_id)?;
+    let range = target_line_index.span_to_range(definition_span);
+
+    Some(GotoDefinitionResponse::Scalar(Location {
+        uri: target_uri.clone(),
+        range,
+    }))
+}
+
 fn trailing_segment_span(
     usage_span: syntax::ast::Span,
     snapshot: &AnalysisSnapshot,

@@ -22,6 +22,21 @@ use syntax::types::{SubstitutionMap, Symbol, Type, substitute};
 
 pub use type_env::{EnvResolve, Speculation, TypeEnv, VarState};
 
+/// Span of the trailing (unqualified) segment of `name` as written at the start
+/// of `construct_span`. Points a ref at just the variant/type token of a
+/// qualified construct (e.g. `Move` in `Shape.Move { .. }`) rather than the whole
+/// construct, so field labels, qualifiers, and trailing whitespace don't resolve
+/// to it. Assumes `name` is spelled verbatim at the construct's start.
+pub(crate) fn trailing_name_token_span(name: &str, construct_span: Span) -> Span {
+    let last = syntax::types::unqualified_name(name);
+    let prefix_len = name.len().saturating_sub(last.len()) as u32;
+    Span::new(
+        construct_span.file_id,
+        construct_span.byte_offset + prefix_len,
+        last.len() as u32,
+    )
+}
+
 /// Coarse `RefKind` for a definition, used where a resolution site doesn't
 /// already know the token's category. Enum variants and methods are recorded
 /// with explicit kinds at their dedicated sites, so this never classifies them.

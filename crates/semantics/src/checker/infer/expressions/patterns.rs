@@ -10,6 +10,7 @@ use syntax::program::{Definition, DefinitionBody};
 use syntax::types::{Type, substitute, unqualified_name};
 
 use crate::checker::EnvResolve;
+use crate::checker::trailing_name_token_span;
 use crate::facts::RefKind;
 
 use crate::checker::infer::InferCtx;
@@ -435,7 +436,7 @@ impl InferCtx<'_, '_> {
                     self.facts.add_usage(span, definition_span);
                 }
                 self.record_ref(
-                    span,
+                    trailing_name_token_span(&identifier, span),
                     variant_def_span,
                     Some(variant_qualified.as_str().into()),
                     RefKind::Variant,
@@ -1043,7 +1044,7 @@ impl InferCtx<'_, '_> {
                     self.facts.add_usage(*span, definition_span);
                 }
                 self.record_ref(
-                    *span,
+                    trailing_name_token_span(identifier, *span),
                     variant_def_span,
                     Some(variant_qualified.as_str().into()),
                     RefKind::Variant,

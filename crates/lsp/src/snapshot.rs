@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap as HashMap;
 
 use diagnostics::SemanticResult;
-use semantics::facts::Facts;
+use semantics::facts::{Facts, ResolvedRef};
 use syntax::program::{Definition, File};
 use syntax::types::Symbol;
 use tower_lsp::lsp_types::Url;
@@ -113,6 +113,18 @@ impl AnalysisSnapshot {
 
     pub(crate) fn facts(&self) -> &Facts {
         &self.facts
+    }
+
+    /// The checker's resolution of the token under the cursor: the innermost
+    /// `ResolvedRef` whose span contains `offset` in `file_id`. Innermost wins so
+    /// a precise receiver token (e.g. `Slice` in `Slice.new`) beats the enclosing
+    /// member-access ref. Returns the single source of truth for goto/hover.
+    pub(crate) fn ref_at(&self, file_id: u32, offset: u32) -> Option<&ResolvedRef> {
+        self.facts
+            .refs
+            .iter()
+            .filter(|r| r.span.file_id == file_id && crate::offset_in_span(offset, &r.span))
+            .min_by_key(|r| r.span.byte_length)
     }
 
     pub(crate) fn definitions(&self) -> &HashMap<Symbol, Definition> {
