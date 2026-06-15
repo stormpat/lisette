@@ -3,8 +3,7 @@ use syntax::program::{Definition, DefinitionBody};
 
 use crate::analysis::find_module_by_alias;
 use crate::definition::{
-    get_root_expression, resolve_dot_access_definition, resolve_enum_in_pattern,
-    resolve_match_pattern_definition,
+    get_root_expression, resolve_enum_in_pattern, resolve_match_pattern_definition,
 };
 use crate::offset_in_span;
 use crate::snapshot::AnalysisSnapshot;
@@ -533,11 +532,8 @@ pub(crate) fn get_hover_doc(
         Expression::DotAccess {
             expression: base,
             member,
-            span,
             ..
-        } => resolve_dot_access_definition(base, member, *span, file, snapshot)
-            .and_then(|span| find_doc_at_definition_span(span, snapshot))
-            .or_else(|| resolve_dot_access_doc(base, member, file, snapshot)),
+        } => resolve_dot_access_doc(base, member, file, snapshot),
 
         Expression::StructCall {
             field_assignments,

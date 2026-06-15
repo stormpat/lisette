@@ -25,8 +25,8 @@ use crate::completion::{
 };
 use crate::definition::{
     find_struct_field_span, is_go_typedef_span, lookup_definition_span,
-    resolve_annotation_definition, resolve_definition_span, resolve_dot_access_definition,
-    resolve_enum_in_pattern, resolve_import_span, resolve_match_pattern_definition,
+    resolve_annotation_definition, resolve_definition_span, resolve_enum_in_pattern,
+    resolve_import_span, resolve_match_pattern_definition,
     resolve_struct_call_field, resolve_word_at_offset, word_at_offset,
 };
 use crate::paths::uri_to_module_file;
@@ -366,13 +366,6 @@ impl LanguageServer for Backend {
                     .and_then(|d| d.name_span())
             }
 
-            syntax::ast::Expression::DotAccess {
-                expression,
-                member,
-                span,
-                ..
-            } => resolve_dot_access_definition(expression, member, *span, file, &snapshot),
-
             syntax::ast::Expression::StructCall {
                 name,
                 field_assignments,
@@ -620,13 +613,6 @@ impl LanguageServer for Backend {
                     .definitions()
                     .get(qname.as_str())
                     .and_then(|d| d.name_span()),
-
-                syntax::ast::Expression::DotAccess {
-                    expression,
-                    member,
-                    span,
-                    ..
-                } => resolve_dot_access_definition(expression, member, *span, file, &snapshot),
 
                 syntax::ast::Expression::Match { arms, .. } => {
                     resolve_match_pattern_definition(arms, offset, file, &snapshot)
@@ -891,24 +877,15 @@ impl LanguageServer for Backend {
                 }))
             }
 
-            syntax::ast::Expression::DotAccess {
-                expression,
-                member,
-                span,
-                ..
-            } if !member.is_empty() => {
-                let resolved =
-                    resolve_dot_access_definition(expression, member, *span, file, &snapshot);
-                if let Some(definition_span) = resolved
+            syntax::ast::Expression::DotAccess { member, .. } if !member.is_empty() => {
+                // The ref at the cursor is the precise member token; its
+                // definition_span is the rename target.
+                if let Some(resolved) = snapshot.ref_at(file_id, offset)
+                    && let Some(definition_span) = resolved.definition_span
                     && !is_go_typedef_span(&snapshot, &definition_span)
                 {
-                    let member_span = syntax::ast::Span::new(
-                        span.file_id,
-                        span.byte_offset + span.byte_length - member.len() as u32,
-                        member.len() as u32,
-                    );
                     Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                        range: line_index.span_to_range(member_span),
+                        range: line_index.span_to_range(resolved.span),
                         placeholder: member.to_string(),
                     }))
                 } else {
@@ -1013,14 +990,6 @@ impl LanguageServer for Backend {
                         .and_then(|d| d.name_span())
                 }
 
-                syntax::ast::Expression::DotAccess {
-                    expression,
-                    member,
-                    span,
-                    ..
-                } => resolve_dot_access_definition(expression, member, *span, file, &snapshot)
-                    .filter(|s| !is_go_typedef_span(&snapshot, s)),
-
                 syntax::ast::Expression::Match { arms, .. } => {
                     resolve_match_pattern_definition(arms, offset, file, &snapshot)
                         .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot))
@@ -1051,6 +1020,12 @@ impl LanguageServer for Backend {
         let Some(definition_span) = definition_span else {
             return Ok(None);
         };
+
+        // Refuse to rename into a generated `go:` typedef — the edit would be lost
+        // on regeneration and diverge from the real source.
+        if is_go_typedef_span(&snapshot, &definition_span) {
+            return Ok(None);
+        }
 
         let Some(definition_uri) = snapshot.get_uri(definition_span.file_id).cloned() else {
             return Ok(None);
