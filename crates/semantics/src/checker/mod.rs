@@ -102,6 +102,9 @@ pub struct ImportState {
     /// Effective aliases (e.g. `mux`) of imports whose underlying module
     /// failed to load (missing typedef, undeclared, module_not_found, etc.).
     pub failed_imports: HashSet<String>,
+    /// Effective alias -> the import statement's span, so a module qualifier
+    /// (e.g. `fmt` in `fmt.Println`) can resolve to its `import` line via refs.
+    pub import_spans: HashMap<String, Span>,
 }
 
 impl ImportState {
@@ -123,6 +126,7 @@ impl ImportState {
         }
         self.unprefixed_imports.clear();
         self.failed_imports.clear();
+        self.import_spans.clear();
     }
 }
 
@@ -798,6 +802,10 @@ impl<'s> TaskState<'s> {
             let Some(effective) = import.effective_alias(&store.go_package_names) else {
                 continue;
             };
+
+            self.imports
+                .import_spans
+                .insert(effective.clone(), import.span);
 
             if let Some(existing_path) = seen_aliases.get(&effective)
                 && existing_path != &import.name

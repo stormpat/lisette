@@ -24,8 +24,7 @@ use crate::completion::{
     get_instance_completions, get_module_prefix, get_type_completions, resolve_variable_type,
 };
 use crate::definition::{
-    find_struct_field_span, is_go_typedef_span, resolve_annotation_definition,
-    resolve_definition_span, resolve_enum_in_pattern, resolve_import_span,
+    find_struct_field_span, is_go_typedef_span, resolve_definition_span, resolve_enum_in_pattern,
     resolve_match_pattern_definition, resolve_struct_call_field, word_at_offset,
 };
 use crate::paths::uri_to_module_file;
@@ -333,33 +332,12 @@ impl LanguageServer for Backend {
             } => snapshot.facts().bindings.get(id).map(|b| b.span),
 
             syntax::ast::Expression::Identifier {
-                value,
                 qualified: Some(qname),
-                span: id_span,
                 ..
-            } => {
-                if value.contains('.') {
-                    let cursor_in_value = offset.saturating_sub(id_span.byte_offset) as usize;
-                    let prefix = &value.as_str()[..cursor_in_value.min(value.len())];
-                    if !prefix.contains('.') {
-                        let first = value.split('.').next().unwrap_or(value);
-                        if let Some(span) =
-                            resolve_import_span(first, file, &snapshot.result.go_package_names)
-                            && let Some(uri) = snapshot.get_uri(span.file_id)
-                            && let Some(idx) = snapshot.get_line_index(span.file_id)
-                        {
-                            return Ok(Some(GotoDefinitionResponse::Scalar(Location {
-                                uri: uri.clone(),
-                                range: idx.span_to_range(span),
-                            })));
-                        }
-                    }
-                }
-                snapshot
-                    .definitions()
-                    .get(qname.as_str())
-                    .and_then(|d| d.name_span())
-            }
+            } => snapshot
+                .definitions()
+                .get(qname.as_str())
+                .and_then(|d| d.name_span()),
 
             syntax::ast::Expression::StructCall {
                 field_assignments,
@@ -379,16 +357,8 @@ impl LanguageServer for Backend {
                 Some(*name_span)
             }
 
-            syntax::ast::Expression::TypeAlias {
-                name_span,
-                annotation,
-                ..
-            } => {
-                if offset_in_span(offset, name_span) {
-                    Some(*name_span)
-                } else {
-                    resolve_annotation_definition(annotation, offset, file, &snapshot)
-                }
+            syntax::ast::Expression::TypeAlias { name_span, .. } => {
+                offset_in_span(offset, name_span).then_some(*name_span)
             }
 
             syntax::ast::Expression::Struct {
@@ -421,10 +391,6 @@ impl LanguageServer for Backend {
                         .and_then(|d| d.name_span())
                 })
                 .or_else(|| offset_in_span(offset, name_span).then_some(*name_span)),
-
-            syntax::ast::Expression::Identifier { value, .. } => {
-                resolve_import_span(value, file, &snapshot.result.go_package_names)
-            }
 
             syntax::ast::Expression::Match { arms, .. } => {
                 resolve_match_pattern_definition(arms, offset, file, &snapshot).or_else(&find_binding)

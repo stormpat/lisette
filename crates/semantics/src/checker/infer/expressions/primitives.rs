@@ -229,6 +229,11 @@ impl InferCtx<'_, '_> {
         expected_ty: &Type,
     ) -> Expression {
         let store = self.store;
+        // A module qualifier (e.g. `fmt` in `fmt.Println`) resolves to its import
+        // statement. Recorded as a ref so goto/rename need no separate import path.
+        if let Some(import_span) = self.imports.import_spans.get(value.as_str()).copied() {
+            self.record_ref(span, Some(import_span), None, RefKind::Module);
+        }
         let binding_id = self.scopes.lookup_binding_id(&value);
         if let Some(id) = binding_id {
             // Don't mark assignment targets as "used" - only mark actual uses

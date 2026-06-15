@@ -128,6 +128,19 @@ impl TaskState<'_> {
                     RefKind::Type,
                 );
 
+                // The qualifier segment (e.g. `mod` in `mod.Type`) resolves to its
+                // import statement, mirrored as a Module ref.
+                if let Some((qualifier, _)) = type_name.split_once('.')
+                    && let Some(import_span) = self.imports.import_spans.get(qualifier).copied()
+                {
+                    let qualifier_span = Span::new(
+                        annotation_span.file_id,
+                        annotation_span.byte_offset,
+                        qualifier.len() as u32,
+                    );
+                    self.record_ref(qualifier_span, Some(import_span), None, RefKind::Module);
+                }
+
                 if self.bound_position_depth == 0
                     && let Some(builtin) =
                         crate::checker::infer::BuiltinBound::from_qualified_id(&qualified_name)
