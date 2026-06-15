@@ -209,21 +209,33 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(expression) = find_expression_at(&file.items, offset) else {
-            return Ok(None);
-        };
+        // Resolution facts lead for name references: the checker already resolved
+        // the token to a definition, so read its type and doc directly. The
+        // expression walker below remains the fallback for locals, literals, and
+        // arbitrary sub-expressions, whose types aren't in the ref table.
+        let ref_decl = snapshot.ref_at(file_id, offset).and_then(|r| {
+            let def = snapshot.definitions().get(r.qualified_name.as_ref()?.as_str())?;
+            Some((def.ty().clone(), r.span, def.doc().cloned()))
+        });
 
-        let (ty, span) = hover::resolve_declaration_hover(expression, offset, file, &snapshot)
-            .unwrap_or_else(|| hover::get_hover_type_and_span(expression, offset));
+        let (ty, span, doc) = if let Some((ty, span, doc)) = ref_decl {
+            (ty, span, doc)
+        } else {
+            let Some(expression) = find_expression_at(&file.items, offset) else {
+                return Ok(None);
+            };
+            let (ty, span) = hover::resolve_declaration_hover(expression, offset, file, &snapshot)
+                .unwrap_or_else(|| hover::get_hover_type_and_span(expression, offset));
+            let doc = hover::get_hover_doc(expression, offset, file, &snapshot).or_else(|| {
+                let type_id = ty.get_qualified_id()?;
+                snapshot.definitions().get(type_id)?.doc().cloned()
+            });
+            (ty, span, doc)
+        };
 
         if ty.is_type_var() || ty.is_error() {
             return Ok(None);
         }
-
-        let doc = hover::get_hover_doc(expression, offset, file, &snapshot).or_else(|| {
-            let type_id = ty.get_qualified_id()?;
-            snapshot.definitions().get(type_id)?.doc().cloned()
-        });
 
         let content = match doc {
             Some(doc) => format!("```lisette\n{ty}\n```\n\n---\n\n{doc}"),
