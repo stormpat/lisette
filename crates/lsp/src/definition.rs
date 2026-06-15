@@ -4,7 +4,6 @@ use syntax::types::unqualified_name;
 use crate::offset_in_span;
 use crate::snapshot::AnalysisSnapshot;
 use crate::traversal::find_expression_at;
-use crate::type_name;
 
 pub(crate) fn get_root_expression(e: &Expression) -> &Expression {
     let mut current = e;
@@ -33,29 +32,6 @@ pub(crate) fn find_struct_field_span(
     } else {
         None
     }
-}
-
-pub(crate) fn resolve_struct_call_field(
-    field_assignments: &[syntax::ast::StructFieldAssignment],
-    ty: &syntax::types::Type,
-    offset: u32,
-    snapshot: &AnalysisSnapshot,
-) -> Option<syntax::ast::Span> {
-    let type_id = type_name(ty);
-
-    field_assignments
-        .iter()
-        .find(|fa| offset_in_span(offset, &fa.name_span))
-        .and_then(|fa| {
-            type_id
-                .as_deref()
-                .and_then(|tid| find_struct_field_span(tid, &fa.name, snapshot))
-        })
-        .or_else(|| {
-            type_id
-                .as_deref()
-                .and_then(|tid| snapshot.definitions().get(tid).and_then(|d| d.name_span()))
-        })
 }
 
 /// True when the span points into a generated `go:` typedef file. Used by rename
@@ -335,12 +311,6 @@ pub(crate) fn resolve_definition_span(
                 } => Some(*identifier_span),
 
                 Expression::VariableDeclaration { name_span, .. } => Some(*name_span),
-
-                Expression::StructCall {
-                    field_assignments,
-                    ty,
-                    ..
-                } => resolve_struct_call_field(field_assignments, ty, offset, snapshot),
 
                 other => extra_match(other),
             }

@@ -25,7 +25,7 @@ use crate::completion::{
 };
 use crate::definition::{
     find_struct_field_span, is_go_typedef_span, resolve_definition_span, resolve_enum_in_pattern,
-    resolve_match_pattern_definition, resolve_struct_call_field, word_at_offset,
+    resolve_match_pattern_definition, word_at_offset,
 };
 use crate::paths::uri_to_module_file;
 use crate::project::find_project_root;
@@ -338,12 +338,6 @@ impl LanguageServer for Backend {
                 .definitions()
                 .get(qname.as_str())
                 .and_then(|d| d.name_span()),
-
-            syntax::ast::Expression::StructCall {
-                field_assignments,
-                ty,
-                ..
-            } => resolve_struct_call_field(field_assignments, ty, offset, &snapshot),
 
             syntax::ast::Expression::Function { name_span, .. }
                 if offset_in_span(offset, name_span) =>
