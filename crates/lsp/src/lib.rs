@@ -308,8 +308,7 @@ impl LanguageServer for Backend {
         // Resolution facts (recorded by the checker) are the source of truth.
         // The legacy expression walk below is a fallback for tokens not yet
         // covered by the ref table (e.g. import aliases, word-at-cursor).
-        if let Some(definition_span) =
-            snapshot.ref_at(file_id, offset).and_then(|r| r.definition_span)
+        if let Some(definition_span) = snapshot.ref_target_at(file_id, offset)
             && let Some(response) = goto_location(&snapshot, definition_span)
         {
             return Ok(Some(response));
@@ -877,10 +876,10 @@ impl LanguageServer for Backend {
             }
 
             syntax::ast::Expression::DotAccess { member, .. } if !member.is_empty() => {
-                // The ref at the cursor is the precise member token; its
-                // definition_span is the rename target.
+                // The ref at the cursor is the precise member token; its target
+                // (resolved lazily) is the rename destination.
                 if let Some(resolved) = snapshot.ref_at(file_id, offset)
-                    && let Some(definition_span) = resolved.definition_span
+                    && let Some(definition_span) = snapshot.ref_target_at(file_id, offset)
                     && !is_go_typedef_span(&snapshot, &definition_span)
                 {
                     Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {

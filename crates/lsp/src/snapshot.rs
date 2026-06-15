@@ -127,6 +127,23 @@ impl AnalysisSnapshot {
             .min_by_key(|r| r.span.byte_length)
     }
 
+    /// The definition span the ref under the cursor points to, resolved lazily
+    /// from its qualified name against the (now-complete) definitions map. The
+    /// ref's eagerly-stored `definition_span` can be stale (`None`) for forward
+    /// references recorded mid-registration, so prefer the live lookup; fall back
+    /// to the stored span for refs without a qualified name (e.g. locals).
+    pub(crate) fn ref_target_at(&self, file_id: u32, offset: u32) -> Option<syntax::ast::Span> {
+        let resolved = self.ref_at(file_id, offset)?;
+        match &resolved.qualified_name {
+            Some(qname) => self
+                .definitions()
+                .get(qname.as_str())
+                .and_then(|d| d.name_span())
+                .or(resolved.definition_span),
+            None => resolved.definition_span,
+        }
+    }
+
     pub(crate) fn definitions(&self) -> &HashMap<Symbol, Definition> {
         &self.result.definitions
     }
