@@ -9228,6 +9228,35 @@ fn main() {
     client.shutdown().await;
 }
 
+/// The name ref for an enum struct-variant literal is narrowed to the variant
+/// token, so the variant resolves but the qualifier does not bleed into it
+/// (the ref previously spanned the whole `Shape.Move { .. }` literal).
+#[tokio::test]
+async fn goto_definition_struct_variant_literal_name_is_precise() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "\
+enum Shape { Move { x: int, y: int }, Stay }
+fn main() {
+  let s = Shape.Move { x: 1, y: 2 }
+}";
+    client.open(TEST_URI, source).await;
+
+    // `Move` (line 2, col 17) resolves to the variant declaration (line 0, col 13).
+    let loc = definition_location(&client.goto_definition(TEST_URI, 2, 17).await.unwrap()).unwrap();
+    assert_eq!((loc.range.start.line, loc.range.start.character), (0, 13));
+
+    // The `Shape` qualifier (line 2, col 12) must not resolve to the variant.
+    let on_variant = client
+        .goto_definition(TEST_URI, 2, 12)
+        .await
+        .and_then(|r| definition_location(&r))
+        .is_some_and(|loc| loc.range.start.line == 0 && loc.range.start.character == 13);
+    assert!(!on_variant, "the qualifier must not resolve to the variant");
+
+    client.shutdown().await;
+}
+
 #[tokio::test]
 async fn rename_variant_with_whitespace_in_qualifier_targets_the_variant_token() {
     let mut client = TestClient::new().await;
