@@ -2,9 +2,7 @@ use syntax::ast::{Expression, Pattern, Span, TypedPattern};
 use syntax::program::{Definition, DefinitionBody};
 
 use crate::analysis::find_module_by_alias;
-use crate::definition::{
-    get_root_expression, resolve_enum_in_pattern, resolve_match_pattern_definition,
-};
+use crate::definition::get_root_expression;
 use crate::offset_in_span;
 use crate::snapshot::AnalysisSnapshot;
 use crate::traversal::find_expression_at;
@@ -430,26 +428,6 @@ pub(crate) fn get_hover_doc(
             }
 
             let span = snapshot.definitions().get(type_id.as_str())?.name_span()?;
-            find_doc_at_definition_span(span, snapshot)
-        }
-
-        Expression::Match { arms, .. } => {
-            let span = resolve_match_pattern_definition(arms, offset, file, snapshot)?;
-            find_doc_at_definition_span(span, snapshot)
-        }
-
-        Expression::IfLet {
-            pattern,
-            typed_pattern,
-            ..
-        }
-        | Expression::WhileLet {
-            pattern,
-            typed_pattern,
-            ..
-        } => {
-            let span =
-                resolve_enum_in_pattern(pattern, typed_pattern.as_ref(), offset, file, snapshot)?;
             find_doc_at_definition_span(span, snapshot)
         }
 
