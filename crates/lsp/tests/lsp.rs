@@ -11785,7 +11785,7 @@ fn run(p: Point) -> int {
 }
 
 #[tokio::test]
-async fn inlay_hint_variadic_only_labels_fixed_params() {
+async fn inlay_hint_variadic_labels_first_arg_only() {
     let mut client = TestClient::new().await;
     client.initialize().await;
     let source = "\
@@ -11800,9 +11800,10 @@ fn main() {
         .await
         .unwrap();
 
+    // The fixed `prefix` is labeled, and the variadic `vals` labels only its first arg.
     assert_eq!(
         inlay_hint_triples(&hints),
-        vec![(2, 18, "prefix:".to_string())]
+        vec![(2, 18, "prefix:".to_string()), (2, 25, "vals:".to_string())]
     );
 
     client.shutdown().await;
@@ -11926,5 +11927,235 @@ async fn inlay_hint_range_past_eof_is_empty() {
         "a range entirely past EOF must not scan the whole file: {hints:?}"
     );
 
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_for_loop_variable() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn main() { for i in 0..3 { i } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![(0, 17, ": int".to_string())]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_match_tuple_binding() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn pick(p: (int, string)) -> int { match p { (a, b) => a } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![
+            (0, 47, ": int".to_string()),
+            (0, 50, ": string".to_string())
+        ]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_match_enum_payload() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source =
+        "fn m(o: Option<int>) -> int { match o { Option.Some(n) => n, Option.None => 0 } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![(0, 53, ": int".to_string())]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_if_let_binding() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn u(o: Option<int>) -> int { if let Some(x) = o { x } else { 0 } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![(0, 43, ": int".to_string())]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_while_let_binding() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn drain(o: Option<int>) -> int { let mut c: Option<int> = o; while let Some(x) = c { c = Option.None } 0 }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![(0, 78, ": int".to_string())]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_lambda_param_and_return() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn main() { (|x| x + 1)(5) }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![
+            (0, 24, "x:".to_string()),
+            (0, 15, ": int".to_string()),
+            (0, 17, "-> int".to_string())
+        ]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_lambda_skips_annotated_param() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn main() { (|x: int| x + 1)(5) }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![(0, 29, "x:".to_string()), (0, 22, "-> int".to_string())]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_curried_lambda_skips_outer_return() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source = "fn main() { ((|x| |y| x + y)(1))(2) }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![
+            (0, 33, "y:".to_string()),
+            (0, 29, "x:".to_string()),
+            (0, 16, ": int".to_string()),
+            (0, 20, ": int".to_string()),
+            (0, 22, "-> int".to_string())
+        ]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn hover_match_tuple_binding_shows_element_type() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    // A tuple pattern in a match arm carries a typed pattern; `a` must resolve to its
+    // element type `int`, not the whole `(int, string)`.
+    let source = "fn pick(p: (int, string)) -> int { match p { (a, b) => a } }";
+    client.open(TEST_URI, source).await;
+
+    let hover = client.hover(TEST_URI, 0, 46).await;
+    let content = hover_content(&hover.unwrap());
+    assert!(content.contains("int"));
+    assert!(!content.contains("string"));
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_parameter_position_for_index_arg() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    // Regression: param-name hints anchor at the start of `items[..]`, not the `[`.
+    let source = "fn add(x: int, y: int) -> int { x + y }\nfn s(items: Slice<int>) -> int { add(items[0], items[1]) }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![(1, 37, "x:".to_string()), (1, 47, "y:".to_string())]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_match_slice_prefix_and_rest() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source =
+        "fn head(items: Slice<int>) -> int { match items { [] => 0, [first, ..rest] => first } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    // `first` binds the element type; `rest` binds the remaining slice.
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![
+            (0, 65, ": int".to_string()),
+            (0, 73, ": Slice<int>".to_string())
+        ]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_lambda_return_over_index_body() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    // The `-> int` return hint anchors at the body's left edge (`ys`), not the `[`.
+    let source =
+        "fn ap(f: fn(Slice<int>) -> int) -> int { f([1, 2]) }\nfn d() -> int { ap(|ys| ys[0]) }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    assert_eq!(
+        inlay_hint_triples(&hints),
+        vec![
+            (1, 19, "f:".to_string()),
+            (1, 22, ": Slice<int>".to_string()),
+            (1, 24, "-> int".to_string())
+        ]
+    );
     client.shutdown().await;
 }
