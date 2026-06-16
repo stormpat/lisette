@@ -1027,7 +1027,7 @@ impl TaskState<'_> {
                 binding
                     .annotation
                     .as_ref()
-                    .map(|a| self.convert_to_type(store, a, span))
+                    .map(|a| self.convert_to_type_inner(store, a, span, true))
                     .unwrap_or_else(|| self.new_type_var())
             })
             .collect();

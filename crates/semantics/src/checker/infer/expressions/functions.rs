@@ -1077,7 +1077,7 @@ impl InferCtx<'_, '_> {
                     binding
                         .annotation
                         .as_ref()
-                        .map(|a| self.convert_to_type(store, a, pattern_span))
+                        .map(|a| self.convert_to_type_inner(store, a, pattern_span, true))
                         .unwrap_or_else(|| self.new_type_var())
                 });
 

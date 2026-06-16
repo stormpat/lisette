@@ -26,6 +26,16 @@ impl TaskState<'_> {
     }
 
     pub fn convert_to_type(&mut self, store: &Store, annotation: &Annotation, span: &Span) -> Type {
+        self.convert_to_type_inner(store, annotation, span, false)
+    }
+
+    pub(crate) fn convert_to_type_inner(
+        &mut self,
+        store: &Store,
+        annotation: &Annotation,
+        span: &Span,
+        variadic_allowed: bool,
+    ) -> Type {
         match annotation {
             Annotation::Unknown => self.new_type_var(),
 
@@ -34,9 +44,17 @@ impl TaskState<'_> {
                 return_type,
                 ..
             } => {
+                let last_param = params.len().wrapping_sub(1);
                 let new_params: Vec<Type> = params
                     .iter()
-                    .map(|param| self.convert_to_type(store, param, span))
+                    .enumerate()
+                    .map(|(index, param)| {
+                        if index == last_param {
+                            self.convert_to_type_inner(store, param, span, true)
+                        } else {
+                            self.convert_to_type(store, param, span)
+                        }
+                    })
                     .collect();
                 // For function type annotations, omitted return type means Unit (`()`),
                 // not a type variable. This ensures `fn(T)` is `fn(T) -> ()`.
@@ -60,6 +78,14 @@ impl TaskState<'_> {
                 params,
                 span: annotation_span,
             } => {
+                if type_name == "VarArgs" && !variadic_allowed {
+                    self.sink
+                        .push(diagnostics::infer::variadic_type_not_allowed(
+                            *annotation_span,
+                        ));
+                    return Type::Error;
+                }
+
                 // Unit is internal — `()` desugars to Constructor { name: "Unit" }.
                 // Return the interned unit type directly, unless a user-defined
                 // type named `Unit` exists in scope.

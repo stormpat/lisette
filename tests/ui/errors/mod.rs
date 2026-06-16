@@ -8526,6 +8526,44 @@ impl Foo {
 }
 
 #[test]
+fn infer_variadic_type_not_allowed_struct_field() {
+    let input = r#"
+struct Foo {
+  items: VarArgs<int>
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_variadic_type_not_allowed_type_alias() {
+    let input = r#"
+type Args = VarArgs<int>
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_variadic_type_not_allowed_return_type() {
+    let input = r#"
+fn test() -> VarArgs<int> {
+  []
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_variadic_type_not_allowed_nested() {
+    let input = r#"
+fn test(xs: Slice<VarArgs<int>>) {
+  let _ = xs
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_spread_missing_required_positional_arg() {
     let input = r#"
 import url "go:net/url"
