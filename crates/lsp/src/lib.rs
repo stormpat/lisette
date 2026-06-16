@@ -6,6 +6,7 @@ mod hover;
 mod inlay_hints;
 mod loader;
 mod paths;
+mod patterns;
 mod position;
 mod project;
 mod signature_help;
