@@ -3118,6 +3118,13 @@ pub fn control_flow_in_expression(keyword: &str, span: Span) -> LisetteDiagnosti
     ))
 }
 
+pub fn variadic_param_not_last(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Variadic parameter must be last")
+        .with_infer_code("variadic_param_not_last")
+        .with_span_label(&span, "a `VarArgs<T>` must be the last function parameter")
+        .with_help("Move this `VarArgs<T>` parameter to the end of the parameter list")
+}
+
 pub fn spread_on_non_variadic(span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Invalid spread argument")
         .with_infer_code("spread_on_non_variadic")

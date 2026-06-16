@@ -8502,6 +8502,30 @@ fn test(args: Slice<int>) {
 }
 
 #[test]
+fn infer_variadic_param_not_last() {
+    let input = r#"
+fn test(rest: VarArgs<int>, trailing: int) -> int {
+  trailing
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_variadic_param_not_last_method() {
+    let input = r#"
+struct Foo { n: int }
+
+impl Foo {
+  fn test(self, rest: VarArgs<int>, trailing: int) -> int {
+    trailing
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_spread_missing_required_positional_arg() {
     let input = r#"
 import url "go:net/url"
