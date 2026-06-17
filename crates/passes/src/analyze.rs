@@ -63,7 +63,7 @@ pub fn analyze(input: AnalyzeInput) -> AnalyzeOutput {
         .iter()
         .map(|c| EmitStamp {
             module_id: c.module_id.clone(),
-            artifact_hash: compute_emit_artifact_hash(c.source_hash, &go_module),
+            artifact_hash: compute_emit_artifact_hash(c.production_hash, &go_module),
         })
         .collect();
 
