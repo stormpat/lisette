@@ -385,10 +385,10 @@ impl Planner<'_> {
         }
     }
 
-    /// Address a struct-call field whose enum variant stores it behind a pointer
-    /// (recursive-enum cycle breaker). Fields that are already a reference or a
-    /// `Ref<T>` value pass through unchanged; others are captured into a temp so
-    /// Go can take their address.
+    /// Address a struct-call field stored behind a compiler-inserted pointer
+    /// (recursive-enum cycle breaker). Such a field is by value, so capture it
+    /// into a temp Go can take the address of. User `Ref<T>` fields are not
+    /// recursive and pass through this untouched.
     fn wrap_recursive_enum_field(
         &mut self,
         statements: &mut Vec<LoweredStatement>,
@@ -401,9 +401,6 @@ impl Planner<'_> {
             .as_ref()
             .is_some_and(|e| e.pointer_fields.contains(field.name.as_str()));
         if !needs_pointer {
-            return value;
-        }
-        if matches!(*field.value, Expression::Reference { .. }) || field.value.get_type().is_ref() {
             return value;
         }
         let temp = self.hoist_tmp_value_statement(statements, "ptr", &value);
@@ -505,7 +502,7 @@ impl Planner<'_> {
                 variant
                     .fields
                     .iter()
-                    .filter(|f| f.go_type.starts_with('*'))
+                    .filter(|f| f.is_recursive)
                     .map(|f| f.source_name.clone())
                     .collect()
             } else {

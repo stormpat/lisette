@@ -33,12 +33,14 @@ pub(crate) struct FieldLayout {
     pub(crate) go_name: String,
     pub(crate) go_type: String,
     pub(crate) is_function: bool,
+    pub(crate) is_recursive: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct FieldTypeInfo {
     pub(crate) go_type: String,
     pub(crate) is_function: bool,
+    pub(crate) is_recursive: bool,
 }
 
 pub(crate) type FieldTypeMap = HashMap<(usize, usize), FieldTypeInfo>;
@@ -107,12 +109,14 @@ impl EnumLayout {
                     .map(|i| i.go_type.clone())
                     .unwrap_or_else(|| "any".to_string());
                 let is_function = info.is_some_and(|i| i.is_function);
+                let is_recursive = info.is_some_and(|i| i.is_recursive);
 
                 FieldLayout {
                     source_name,
                     go_name,
                     go_type,
                     is_function,
+                    is_recursive,
                 }
             })
             .collect();

@@ -63,8 +63,6 @@ pub(crate) enum ArgumentPlan {
     NullableCoercion(NullableCoerceKind),
     /// Unwrap a Go pointer parameter at the call site (`&x` or `*x`).
     GoPointerUnwrap,
-    /// `&` wrap for recursive enum constructor arguments.
-    RecursiveEnumPointer,
     /// Lower a tagged Go-function value (prelude-dispatch arg).
     TaggedGoLowering,
 }

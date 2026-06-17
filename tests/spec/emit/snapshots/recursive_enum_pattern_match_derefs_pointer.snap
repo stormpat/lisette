@@ -16,8 +16,8 @@ description: |
 ---
 package main
 
-func MakeListCons(arg0 int, arg1 *List) List {
-	return List{Tag: ListCons, Cons0: arg0, Cons1: arg1}
+func MakeListCons(arg0 int, arg1 List) List {
+	return List{Tag: ListCons, Cons0: arg0, Cons1: &arg1}
 }
 
 func MakeListNil() List {

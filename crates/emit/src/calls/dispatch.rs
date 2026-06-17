@@ -15,7 +15,7 @@ use crate::types::native::NativeGoType;
 use syntax::ast::{Annotation, Expression, StructKind};
 use syntax::program::{CallKind, Definition, DefinitionBody};
 use syntax::types::{
-    SimpleKind, SubstitutionMap, Symbol, Type, build_substitution_map, substitute, unqualified_name,
+    SimpleKind, SubstitutionMap, Symbol, Type, build_substitution_map, substitute,
 };
 
 struct TupleStructTarget {
@@ -389,96 +389,6 @@ impl Planner<'_> {
                         .unwrap_or(module_name);
                     let qualified = format!("{}.{}.{}", module_name, type_name, member);
                     return self.lookup_definition_type(&qualified, None);
-                }
-                None
-            }
-            _ => None,
-        }
-    }
-
-    pub(super) fn get_recursive_enum_pointer_indices(
-        &mut self,
-        function: &Expression,
-    ) -> HashSet<usize> {
-        let Some((enum_id, variant_name)) = self.get_make_function_info(function) else {
-            return HashSet::default();
-        };
-
-        let Some(layout) = self.enum_layout(&enum_id) else {
-            return HashSet::default();
-        };
-
-        let Some(variant) = layout.get_variant(&variant_name) else {
-            return HashSet::default();
-        };
-
-        variant
-            .fields
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| f.go_type.starts_with('*'))
-            .map(|(i, _)| i)
-            .collect()
-    }
-
-    fn get_make_function_info(&mut self, function: &Expression) -> Option<(String, String)> {
-        fn enum_id_from_type(ty: &Type) -> Option<String> {
-            if let Type::Function(f) = ty.unwrap_forall()
-                && let Type::Nominal { id, .. } = f.return_type.as_ref()
-            {
-                return Some(id.to_string());
-            }
-            None
-        }
-
-        match function {
-            Expression::Identifier { value, ty, .. } => {
-                let enum_id = enum_id_from_type(ty)?;
-                let variant = unqualified_name(value);
-                let enum_name = unqualified_name(&enum_id);
-                let qualified = format!("{}.{}", enum_name, variant);
-                if self.facts.has_make_function_name(&qualified) {
-                    return Some((enum_id, variant.to_string()));
-                }
-                if let Type::Function(f) = ty.unwrap_forall() {
-                    for key in self.facts.make_function_keys() {
-                        if let Some((e_name, v_name)) = key.split_once('.')
-                            && e_name == enum_name
-                            && let Some(layout) = self.enum_layout(&enum_id)
-                            && let Some(v) = layout.get_variant(v_name)
-                            && v.fields.len() == f.params.len()
-                        {
-                            return Some((enum_id, v_name.to_string()));
-                        }
-                    }
-                }
-                None
-            }
-            Expression::DotAccess {
-                expression,
-                member,
-                ty,
-                ..
-            } => {
-                if let Expression::Identifier {
-                    value: enum_name, ..
-                } = expression.as_ref()
-                {
-                    let qualified = format!("{}.{}", enum_name, member);
-                    if self.facts.has_make_function_name(&qualified) {
-                        let enum_id = enum_id_from_type(ty)?;
-                        return Some((enum_id, member.to_string()));
-                    }
-                }
-                if let Expression::DotAccess {
-                    member: type_name, ..
-                } = expression.as_ref()
-                {
-                    let qualified = format!("{}.{}", type_name, member);
-                    if self.facts.has_make_function_name(&qualified) {
-                        let enum_id = enum_id_from_type(ty)?;
-                        return Some((enum_id, member.to_string()));
-                    }
                 }
                 None
             }

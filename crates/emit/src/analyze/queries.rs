@@ -275,6 +275,7 @@ impl Planner<'_> {
                     FieldTypeInfo {
                         go_type,
                         is_function,
+                        is_recursive: recursive,
                     },
                 );
             }

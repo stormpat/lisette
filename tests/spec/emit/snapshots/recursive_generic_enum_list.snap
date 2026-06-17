@@ -17,8 +17,8 @@ func MakeListNil[T any]() List[T] {
 	return List[T]{Tag: ListNil}
 }
 
-func MakeListCons[T any](arg0 T, arg1 *List[T]) List[T] {
-	return List[T]{Tag: ListCons, Cons0: arg0, Cons1: arg1}
+func MakeListCons[T any](arg0 T, arg1 List[T]) List[T] {
+	return List[T]{Tag: ListCons, Cons0: arg0, Cons1: &arg1}
 }
 
 type ListTag int
@@ -35,7 +35,5 @@ type List[T any] struct {
 }
 
 func test() List[int] {
-	ptr_1 := MakeListNil[int]()
-	ptr_2 := MakeListCons(2, &ptr_1)
-	return MakeListCons(1, &ptr_2)
+	return MakeListCons(1, MakeListCons(2, MakeListNil[int]()))
 }

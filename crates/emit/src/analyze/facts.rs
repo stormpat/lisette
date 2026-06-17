@@ -214,14 +214,6 @@ impl<'a> EmitFacts<'a> {
             .map(String::as_str)
     }
 
-    pub(crate) fn has_make_function_name(&self, key: &str) -> bool {
-        self.globals.make_function_names.contains_key(key)
-    }
-
-    pub(crate) fn make_function_keys(&self) -> impl Iterator<Item = &str> {
-        self.globals.make_function_names.keys().map(String::as_str)
-    }
-
     pub(crate) fn go_call_strategy(&self, qualified_name: &str) -> Option<&GoCallStrategy> {
         self.globals.go_call_strategies.get(qualified_name)
     }

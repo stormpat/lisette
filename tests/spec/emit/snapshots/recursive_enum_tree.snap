@@ -17,8 +17,8 @@ func MakeTreeLeaf(arg0 int) Tree {
 	return Tree{Tag: TreeLeaf, Leaf: arg0}
 }
 
-func MakeTreeNode(arg0 *Tree, arg1 *Tree) Tree {
-	return Tree{Tag: TreeNode, Node0: arg0, Node1: arg1}
+func MakeTreeNode(arg0 Tree, arg1 Tree) Tree {
+	return Tree{Tag: TreeNode, Node0: &arg0, Node1: &arg1}
 }
 
 type TreeTag int
@@ -36,7 +36,5 @@ type Tree struct {
 }
 
 func test() Tree {
-	ptr_1 := MakeTreeLeaf(1)
-	ptr_2 := MakeTreeLeaf(2)
-	return MakeTreeNode(&ptr_1, &ptr_2)
+	return MakeTreeNode(MakeTreeLeaf(1), MakeTreeLeaf(2))
 }

@@ -19,8 +19,8 @@ func MakeListNil() List {
 	return List{Tag: ListNil}
 }
 
-func MakeListCons(arg0 int, arg1 *List) List {
-	return List{Tag: ListCons, Cons0: arg0, Cons1: arg1}
+func MakeListCons(arg0 int, arg1 List) List {
+	return List{Tag: ListCons, Cons0: arg0, Cons1: &arg1}
 }
 
 type ListTag int
@@ -38,7 +38,6 @@ type List struct {
 
 func main() {
 	make_ := MakeListCons
-	ptr_1 := MakeListNil()
-	xs := make_(1, &ptr_1)
+	xs := make_(1, MakeListNil())
 	_ = xs
 }

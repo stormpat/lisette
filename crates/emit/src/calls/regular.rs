@@ -1,7 +1,6 @@
 use crate::abi::is_tagged_shape_fn_value;
 use crate::calls::dispatch::is_prelude_variant_constructor;
 use crate::calls::go_interop::is_go_receiver;
-use rustc_hash::FxHashSet as HashSet;
 
 use crate::EmitEffects;
 use crate::Planner;
@@ -23,7 +22,6 @@ use syntax::types::Type;
 struct CalleeAnalysis<'a> {
     fn_param_types: Vec<Type>,
     generic_fn_param_types: Option<&'a [Type]>,
-    pointer_indices: HashSet<usize>,
     is_go_call: bool,
     is_prelude_dispatch: bool,
 }
@@ -31,7 +29,6 @@ struct CalleeAnalysis<'a> {
 struct CallArgsContext<'a> {
     fn_param_types: &'a [Type],
     generic_fn_param_types: Option<&'a [Type]>,
-    pointer_indices: &'a HashSet<usize>,
     is_go_call: bool,
     /// Suppresses the Go-fn identity short-circuit on fn-typed params
     /// dispatching into prelude generic helpers (e.g. `OptionAndThen`).
@@ -176,7 +173,6 @@ impl<'a> Planner<'a> {
         let args_ctx = CallArgsContext {
             fn_param_types: &analysis.fn_param_types,
             generic_fn_param_types: analysis.generic_fn_param_types,
-            pointer_indices: &analysis.pointer_indices,
             is_go_call: analysis.is_go_call,
             is_prelude_dispatch: analysis.is_prelude_dispatch,
             spread,
@@ -221,7 +217,6 @@ impl<'a> Planner<'a> {
     }
 
     fn analyze_callee(&mut self, function: &Expression) -> CalleeAnalysis<'a> {
-        let pointer_indices = self.get_recursive_enum_pointer_indices(function);
         let fn_param_types: Vec<Type> = function
             .get_type()
             .unwrap_forall()
@@ -247,7 +242,6 @@ impl<'a> Planner<'a> {
         CalleeAnalysis {
             fn_param_types,
             generic_fn_param_types,
-            pointer_indices,
             is_go_call,
             is_prelude_dispatch,
         }
@@ -362,11 +356,11 @@ impl<'a> Planner<'a> {
     }
 
     /// Classify and lower a single call argument: dispatch is plan-driven and
-    /// returns typed setup. The plain `Direct` / `RecursiveEnumPointer` /
-    /// `TaggedGoLowering` paths produce typed `TempBind` setup; the remaining
-    /// adapter paths (`GoCallbackAdapter`, `LoweredFnShapeAdapter`,
-    /// `NullableCoercion`, `GoPointerUnwrap`) capture their string emission as
-    /// a single `RawGo` until each is individually converted.
+    /// returns typed setup. The plain `Direct` / `TaggedGoLowering` paths produce
+    /// typed `TempBind` setup; the remaining adapter paths (`GoCallbackAdapter`,
+    /// `LoweredFnShapeAdapter`, `NullableCoercion`, `GoPointerUnwrap`) capture
+    /// their string emission as a single `RawGo` until each is individually
+    /// converted.
     fn lower_call_arg(
         &mut self,
         arg: &Expression,
@@ -379,7 +373,7 @@ impl<'a> Planner<'a> {
             .generic_fn_param_types
             .and_then(|params| effective_param_type(index, params));
 
-        let plan = self.plan_argument(arg, index, ctx, effective_param_ty, generic_param_ty);
+        let plan = self.plan_argument(arg, ctx, effective_param_ty, generic_param_ty);
 
         match plan {
             ArgumentPlan::GoCallbackAdapter(kind) => self.lower_callback_wrapper(
@@ -406,14 +400,6 @@ impl<'a> Planner<'a> {
                 effective_param_ty.expect("GoPointerUnwrap requires effective_param_ty"),
                 fx,
             ),
-            ArgumentPlan::RecursiveEnumPointer => {
-                let (mut setup, value) = self.lower_value(arg, ExpressionContext::value(), fx);
-                if matches!(arg, Expression::Reference { .. }) || arg.get_type().is_ref() {
-                    return (setup, value);
-                }
-                let temp = self.hoist_tmp_value_statement(&mut setup, "ptr", &value);
-                (setup, format!("&{}", temp))
-            }
             ArgumentPlan::TaggedGoLowering => {
                 let target =
                     effective_param_ty.expect("TaggedGoLowering requires effective_param_ty");
@@ -432,7 +418,6 @@ impl<'a> Planner<'a> {
     fn plan_argument(
         &self,
         arg: &Expression,
-        index: usize,
         ctx: &CallArgsContext<'_>,
         effective_param_ty: Option<&Type>,
         generic_param_ty: Option<&Type>,
@@ -457,9 +442,6 @@ impl<'a> Planner<'a> {
                 .is_some()
         {
             return ArgumentPlan::GoPointerUnwrap;
-        }
-        if ctx.pointer_indices.contains(&index) {
-            return ArgumentPlan::RecursiveEnumPointer;
         }
         let suppress = would_suppress_tagged_go(ctx, effective_param_ty);
         if suppress

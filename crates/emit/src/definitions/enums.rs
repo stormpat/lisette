@@ -202,9 +202,16 @@ impl Planner<'_> {
             .enumerate()
             .map(|(index, field)| {
                 let argument = format!("arg{}", index);
-                let param = format!("{} {}", argument, field.go_type);
-                let field_assignment = format!("{}: {}", field.go_name, argument);
-                (field_assignment, param)
+                if field.is_recursive {
+                    let pointee = field.go_type.trim_start_matches('*');
+                    let param = format!("{} {}", argument, pointee);
+                    let field_assignment = format!("{}: &{}", field.go_name, argument);
+                    (field_assignment, param)
+                } else {
+                    let param = format!("{} {}", argument, field.go_type);
+                    let field_assignment = format!("{}: {}", field.go_name, argument);
+                    (field_assignment, param)
+                }
             })
             .unzip();
         let fields = fields.join(", ");
