@@ -407,11 +407,11 @@ impl<'source> Parser<'source> {
     pub fn parse_function_call(
         &mut self,
         expression: Expression,
-        type_args: Vec<Annotation>,
+        raw_type_args: Vec<Annotation>,
     ) -> Expression {
         let start_offset = expression.get_span().byte_offset;
 
-        if type_args.is_empty()
+        if raw_type_args.is_empty()
             && matches!(&expression, Expression::Identifier { value, qualified: None, .. } if value == "make")
             && let Some(recovered) = self.try_go_make_shim(&expression)
         {
@@ -425,7 +425,8 @@ impl<'source> Parser<'source> {
             expression: expression.into(),
             args,
             spread: spread.into(),
-            type_args,
+            raw_type_args,
+            resolved_type_args: Vec::new(),
             span: self.span_from_offset(start_offset),
             call_kind: None,
         }
