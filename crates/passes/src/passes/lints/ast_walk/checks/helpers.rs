@@ -1,7 +1,7 @@
 use ecow::EcoString;
 use rustc_hash::FxHashSet as HashSet;
 use syntax::ast::{
-    BinaryOperator, Expression, FormatStringPart, Literal, Pattern, Span, UnaryOperator,
+    BinaryOperator, Binding, Expression, FormatStringPart, Literal, Pattern, Span, UnaryOperator,
 };
 use syntax::program::DefinitionBody;
 use syntax::types::{SimpleKind, Type, unqualified_name};
@@ -12,6 +12,12 @@ use semantics::store::Store;
 pub(super) use crate::passes::comparison::{
     expressions_equivalent, flip_comparison, is_side_effect_free, signed_integer_literal,
 };
+
+pub(super) fn first_param_is_self(params: &[Binding]) -> bool {
+    params.first().is_some_and(|param| {
+        matches!(&param.pattern, Pattern::Identifier { identifier, .. } if identifier == "self")
+    })
+}
 
 pub(super) fn struct_field_names(
     store: &Store,
