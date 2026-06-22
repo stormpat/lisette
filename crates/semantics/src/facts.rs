@@ -69,7 +69,9 @@ pub struct Facts {
 
 #[derive(Debug, Clone)]
 pub struct GenericCallCheck {
-    pub return_ty: Type,
+    /// A type that must be fully resolved once inference finishes; if it still has
+    /// unbound type variables, the call's generic parameter couldn't be inferred.
+    pub ty: Type,
     pub span: Span,
 }
 

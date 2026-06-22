@@ -384,6 +384,9 @@ impl InferCtx<'_, '_> {
             None
         };
 
+        let variadic_elem_var = callee_ty.resolve_in(&self.env).is_variadic();
+        let callee_param_count = callee_ty.resolve_in(&self.env).param_count();
+
         let (param_types, param_mutability, return_ty, bounds) =
             self.extract_call_signature(callee_ty, &args, &callee_expression);
 
@@ -485,14 +488,33 @@ impl InferCtx<'_, '_> {
         self.check_native_mutating_call(&callee_expression, result_unused, &span);
         self.check_native_equals_ufcs(&callee_expression, &new_args);
 
-        if self.is_generic_callee(&callee_expression)
+        let resolved_return = return_ty.resolve_in(&self.env);
+        let return_check_recorded = self.is_generic_callee(&callee_expression)
             && type_args.is_empty()
-            && !self.is_enum_type(store, &return_ty.resolve_in(&self.env))
+            && !self.is_enum_type(store, &resolved_return);
+        if return_check_recorded {
+            self.facts
+                .generic_call_checks
+                .push(crate::facts::GenericCallCheck {
+                    ty: return_ty.clone(),
+                    span,
+                });
+        }
+
+        // A zero-variadic-arg call can't infer its `VarArgs<T>` parameter from args.
+        // Record the element type; the deferred pass rejects it only if it stays
+        // unbound. Skip when the return-type check above already records it.
+        if type_args.is_empty()
+            && new_spread.is_none()
+            && let Some(elem_ty) = &variadic_elem_var
+            && new_args.len() < callee_param_count
+            && !(return_check_recorded
+                && resolved_return.contains_type(&elem_ty.resolve_in(&self.env)))
         {
             self.facts
                 .generic_call_checks
                 .push(crate::facts::GenericCallCheck {
-                    return_ty: return_ty.clone(),
+                    ty: elem_ty.clone(),
                     span,
                 });
         }
@@ -705,8 +727,11 @@ impl InferCtx<'_, '_> {
                     self.unify(&receiver_param, &receiver_ty_stripped, span);
                 }
             }
-            self.unify(&instantiated, &callee_expression.get_type(), span);
         }
+
+        // Write the substituted type back onto the callee node so its type (and
+        // hover) reflects explicit type arguments, as an inferred call already does.
+        self.unify(&instantiated, &callee_expression.get_type(), span);
 
         (instantiated, type_args.to_vec(), resolved_args)
     }

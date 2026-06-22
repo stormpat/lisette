@@ -167,7 +167,8 @@ impl<'a> Planner<'a> {
             function,
             resolved_type_args,
             call_ty,
-            !args.is_empty() || spread.is_some(),
+            args.len(),
+            spread.is_some(),
             &mut function_string,
             expression_ctx,
             fx,
@@ -375,11 +376,13 @@ impl<'a> Planner<'a> {
         function: &Expression,
         type_args: &[Type],
         call_ty: Option<&Type>,
-        has_value_args: bool,
+        value_arg_count: usize,
+        has_spread: bool,
         function_string: &mut String,
         ctx: ExpressionContext<'_>,
         fx: &mut EmitEffects,
     ) -> String {
+        let has_value_args = value_arg_count > 0 || has_spread;
         if let Some(recipe) = self.callee_collapsed_recipe(function) {
             if has_value_args && self.collapsed_callee_fully_inferable(function) {
                 return String::new();
@@ -394,7 +397,8 @@ impl<'a> Planner<'a> {
         let slot_ty = ctx.expected_slot_type();
 
         if type_args_string.is_empty()
-            && let Some(inferred) = self.infer_return_only_type_args(function, fx)
+            && let Some(inferred) =
+                self.infer_return_only_type_args(function, value_arg_count, has_spread, fx)
         {
             type_args_string = match slot_ty {
                 Some(t) => self.prelude_container_type_args(t, fx).unwrap_or(inferred),

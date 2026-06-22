@@ -326,6 +326,8 @@ impl Planner<'_> {
     pub(super) fn infer_return_only_type_args(
         &mut self,
         function: &Expression,
+        value_arg_count: usize,
+        has_spread: bool,
         fx: &mut EmitEffects,
     ) -> Option<String> {
         let definition_ty = self.get_callee_definition_type(function)?;
@@ -337,9 +339,19 @@ impl Planner<'_> {
         };
         let generic_params = &f.params;
 
+        // A trailing `VarArgs<T>` is an inference source only when the call passes
+        // variadic args; without them Go can't infer that parameter's type.
+        let variadic_idx = generic_params
+            .iter()
+            .position(|p| p.get_name() == Some("VarArgs"))
+            .filter(|&i| i == generic_params.len() - 1);
+        let variadic_has_args = has_spread || variadic_idx.is_some_and(|i| value_arg_count > i);
+
         let all_inferrable = vars.iter().all(|var| {
             let param_ty = Type::Parameter(var.clone());
-            generic_params.iter().any(|pt| pt.contains_type(&param_ty))
+            generic_params.iter().enumerate().any(|(i, pt)| {
+                pt.contains_type(&param_ty) && (Some(i) != variadic_idx || variadic_has_args)
+            })
         });
 
         let instantiated_ty = function.get_type();

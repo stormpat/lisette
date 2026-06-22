@@ -1849,3 +1849,36 @@ fn build() -> IntList {
 "#;
     assert_emit_snapshot!(input);
 }
+
+// Zero variadic args, so `T` must be forwarded explicitly: `first[int]()`.
+#[test]
+fn empty_varargs_call_forwards_inferred_type_arg() {
+    let input = r#"
+fn first<T>(xs: VarArgs<T>) -> Option<T> { None }
+
+fn test() {
+  let r: Option<int> = first()
+  if r.unwrap_or(7) != 7 {
+    panic("expected 7")
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+// The fixed arg doesn't determine `T`; the variadic got none, so forward it:
+// `g[int](5)`.
+#[test]
+fn empty_varargs_with_fixed_arg_forwards_inferred_type_arg() {
+    let input = r#"
+fn g<T>(head: int, rest: VarArgs<T>) -> Option<T> { None }
+
+fn test() {
+  let r: Option<int> = g(5)
+  if r.unwrap_or(9) != 9 {
+    panic("expected 9")
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}

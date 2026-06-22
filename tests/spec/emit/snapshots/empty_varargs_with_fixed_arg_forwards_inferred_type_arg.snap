@@ -1,0 +1,19 @@
+---
+source: tests/spec/emit/functions.rs
+description: "\nfn g<T>(head: int, rest: VarArgs<T>) -> Option<T> { None }\n\nfn test() {\n  let r: Option<int> = g(5)\n  if r.unwrap_or(9) != 9 {\n    panic(\"expected 9\")\n  }\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+func g[T any](_ int, _ ...T) (T, bool) {
+	return *new(T), false
+}
+
+func test() {
+	option_1 := lisette.OptionFromCommaOk[int](g[int](5))
+	r := option_1
+	if r.UnwrapOr(9) != 9 {
+		panic("expected 9")
+	}
+}
