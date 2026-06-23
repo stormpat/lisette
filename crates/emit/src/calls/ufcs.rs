@@ -1,3 +1,4 @@
+use crate::calls::dispatch::{CallArgShape, all_type_params_inferrable};
 use crate::calls::native::apply_inline_import;
 use crate::calls::regular::effective_param_type;
 use crate::plan::calls::plan_variadic_spread;
@@ -16,6 +17,7 @@ use syntax::program::ReceiverCoercion;
 use syntax::types::Type;
 
 impl Planner<'_> {
+    #[allow(clippy::too_many_arguments)]
     fn ufcs_type_args(
         &mut self,
         function: &Expression,
@@ -23,6 +25,7 @@ impl Planner<'_> {
         member: &str,
         receiver_ty: &Type,
         type_args: &[Type],
+        arg_shape: CallArgShape,
         fx: &mut EmitEffects,
     ) -> Option<String> {
         let method_key = format!("{}.{}", qualified_name, member);
@@ -55,11 +58,11 @@ impl Planner<'_> {
             return (!go_type_strs.is_empty()).then(|| format!("[{}]", go_type_strs.join(", ")));
         }
 
-        let all_inferable = vars.iter().all(|var| {
-            let param_ty = Type::Parameter(var.clone());
-            f.params.iter().any(|pt| pt.contains_type(&param_ty))
-        });
-        if all_inferable {
+        let receiver_count = match function.get_type() {
+            Type::Function(inst) if inst.params.len() + 1 == f.params.len() => 1,
+            _ => 0,
+        };
+        if all_type_params_inferrable(vars, &f.params, receiver_count, arg_shape) {
             return None;
         }
 
@@ -133,6 +136,10 @@ impl Planner<'_> {
             qualified_name,
             member,
             type_args,
+            CallArgShape {
+                value_count: args.len(),
+                has_spread: spread.is_some(),
+            },
             fx,
         );
         (setup, format!("{}({})", fn_name, new_args.join(", ")))
@@ -209,6 +216,7 @@ impl Planner<'_> {
         self.stage_composite(arg, ExpressionContext::value(), fx)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_ufcs_qualified_call(
         &mut self,
         function: &Expression,
@@ -216,10 +224,19 @@ impl Planner<'_> {
         qualified_name: &str,
         member: &str,
         type_args: &[Type],
+        arg_shape: CallArgShape,
         fx: &mut EmitEffects,
     ) -> String {
         let type_args_string = self
-            .ufcs_type_args(function, qualified_name, member, receiver_ty, type_args, fx)
+            .ufcs_type_args(
+                function,
+                qualified_name,
+                member,
+                receiver_ty,
+                type_args,
+                arg_shape,
+                fx,
+            )
             .unwrap_or_default();
 
         let method_key = format!("{}.{}", qualified_name, member);

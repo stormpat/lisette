@@ -12,15 +12,45 @@ use crate::names::go_name;
 use crate::plan::bodies::LoweredStatement;
 use crate::plan::calls::CalleePlan;
 use crate::types::native::NativeGoType;
+use syntax::EcoString;
 use syntax::ast::{Expression, StructKind};
 use syntax::program::{CallKind, Definition, DefinitionBody};
 use syntax::types::{
-    SimpleKind, SubstitutionMap, Symbol, Type, build_substitution_map, substitute,
+    CompoundKind, SimpleKind, SubstitutionMap, Symbol, Type, build_substitution_map, substitute,
 };
 
 struct TupleStructTarget {
     go_ty: String,
     field_tys: Vec<Type>,
+}
+
+/// The shape of a call's value arguments, used to decide which type parameters
+/// Go can infer. `value_count` excludes any receiver argument.
+#[derive(Clone, Copy)]
+pub(crate) struct CallArgShape {
+    pub value_count: usize,
+    pub has_spread: bool,
+}
+
+pub(crate) fn all_type_params_inferrable(
+    vars: &[EcoString],
+    params: &[Type],
+    receiver_count: usize,
+    arg_shape: CallArgShape,
+) -> bool {
+    let variadic_idx = params
+        .iter()
+        .position(|p| p.is_native(CompoundKind::VarArgs))
+        .filter(|&i| i == params.len() - 1);
+    let variadic_has_args = arg_shape.has_spread
+        || variadic_idx.is_some_and(|i| arg_shape.value_count + receiver_count > i);
+
+    vars.iter().all(|var| {
+        let param_ty = Type::Parameter(var.clone());
+        params.iter().enumerate().any(|(i, pt)| {
+            pt.contains_type(&param_ty) && (Some(i) != variadic_idx || variadic_has_args)
+        })
+    })
 }
 
 impl Planner<'_> {
@@ -326,6 +356,7 @@ impl Planner<'_> {
     pub(super) fn infer_return_only_type_args(
         &mut self,
         function: &Expression,
+        arg_shape: CallArgShape,
         fx: &mut EmitEffects,
     ) -> Option<String> {
         let definition_ty = self.get_callee_definition_type(function)?;
@@ -336,11 +367,7 @@ impl Planner<'_> {
             return None;
         };
         let generic_params = &f.params;
-
-        let all_inferrable = vars.iter().all(|var| {
-            let param_ty = Type::Parameter(var.clone());
-            generic_params.iter().any(|pt| pt.contains_type(&param_ty))
-        });
+        let all_inferrable = all_type_params_inferrable(&vars, generic_params, 0, arg_shape);
 
         let instantiated_ty = function.get_type();
         let mut mapping: HashMap<String, Type> = HashMap::default();

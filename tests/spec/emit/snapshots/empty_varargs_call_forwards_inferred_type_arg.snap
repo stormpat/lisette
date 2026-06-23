@@ -1,0 +1,19 @@
+---
+source: tests/spec/emit/functions.rs
+description: "\nfn first<T>(xs: VarArgs<T>) -> Option<T> { None }\n\nfn test() {\n  let r: Option<int> = first()\n  if r.unwrap_or(7) != 7 {\n    panic(\"expected 7\")\n  }\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+func first[T any](_ ...T) (T, bool) {
+	return *new(T), false
+}
+
+func test() {
+	option_1 := lisette.OptionFromCommaOk[int](first[int]())
+	r := option_1
+	if r.UnwrapOr(7) != 7 {
+		panic("expected 7")
+	}
+}

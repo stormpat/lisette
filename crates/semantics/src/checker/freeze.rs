@@ -297,7 +297,7 @@ impl<'a> FreezeFolder<'a> {
 
     pub fn freeze_facts(&self, facts: &mut crate::facts::Facts) {
         for check in &mut facts.generic_call_checks {
-            self.env.resolve_in_place(&mut check.return_ty);
+            self.env.resolve_in_place(&mut check.ty);
         }
         for check in &mut facts.empty_collection_checks {
             self.env.resolve_in_place(&mut check.ty);

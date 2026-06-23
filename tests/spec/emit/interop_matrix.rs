@@ -1758,6 +1758,22 @@ fn main() {
 }
 
 #[test]
+fn interop_collapsed_empty_varargs_reconstructs_type_arg() {
+    let input = r#"
+import "go:example.com/cat"
+
+fn main() {
+  let r: Slice<int> = cat.Cat(1)
+}
+"#;
+    let typedef = r#"
+#[go(collapsed_type_params, "T")]
+pub fn Cat<T>(n: int, xs: VarArgs<T>) -> Slice<T>
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/cat", typedef)]);
+}
+
+#[test]
 fn interop_collapsed_type_param_reconstructs_return_only_param() {
     let input = r#"
 import "go:example.com/pick"

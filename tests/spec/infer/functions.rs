@@ -2476,3 +2476,140 @@ fn main() {
     )
     .assert_no_errors();
 }
+
+#[test]
+fn generic_empty_varargs_call_without_type_arg_errors() {
+    infer(
+        r#"
+fn f<T>(xs: VarArgs<T>) {}
+
+fn main() {
+  f()
+}
+"#,
+    )
+    .assert_infer_code("missing_type_argument");
+}
+
+#[test]
+fn generic_varargs_call_with_args_infers_type() {
+    infer(
+        r#"
+fn f<T>(xs: VarArgs<T>) {}
+
+fn main() {
+  f(1, 2)
+}
+"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
+fn generic_varargs_call_with_explicit_type_arg_ok() {
+    infer(
+        r#"
+fn f<T>(xs: VarArgs<T>) {}
+
+fn main() {
+  f<int>()
+}
+"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
+fn generic_leading_param_with_empty_varargs_ok() {
+    infer(
+        r#"
+fn f<T>(head: T, rest: VarArgs<T>) -> T { head }
+
+fn main() {
+  let x = f(1)
+}
+"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
+fn generic_empty_varargs_with_unresolved_return_type_errors() {
+    infer(
+        r#"
+fn f<T>(xs: VarArgs<T>) -> Option<T> { None }
+
+fn main() {
+  let r = f()
+}
+"#,
+    )
+    .assert_infer_code("missing_type_argument");
+}
+
+#[test]
+fn generic_empty_varargs_with_type_resolved_by_later_use_ok() {
+    infer(
+        r#"
+fn f<T>(xs: VarArgs<T>) -> Option<T> { None }
+
+fn main() {
+  let r = f()
+  let x: int = r.unwrap_or(0)
+}
+"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
+fn generic_empty_varargs_with_type_resolved_by_annotation_ok() {
+    infer(
+        r#"
+fn f<T>(xs: VarArgs<T>) -> Option<T> { None }
+
+fn main() {
+  let r: Option<int> = f()
+}
+"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
+fn generic_empty_varargs_method_call_without_type_arg_errors() {
+    infer(
+        r#"
+struct Box {}
+
+impl Box {
+  fn first<T>(self, xs: VarArgs<T>) -> Option<T> { None }
+}
+
+fn main() {
+  let b = Box {}
+  let r = b.first()
+}
+"#,
+    )
+    .assert_infer_code("missing_type_argument");
+}
+
+#[test]
+fn generic_empty_varargs_method_call_with_annotation_ok() {
+    infer(
+        r#"
+struct Box {}
+
+impl Box {
+  fn first<T>(self, xs: VarArgs<T>) -> Option<T> { None }
+}
+
+fn main() {
+  let b = Box {}
+  let r: Option<int> = b.first()
+}
+"#,
+    )
+    .assert_no_errors();
+}

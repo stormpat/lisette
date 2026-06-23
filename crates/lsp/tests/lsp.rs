@@ -198,6 +198,28 @@ async fn goto_definition_promoted_field() {
 }
 
 #[tokio::test]
+async fn hover_on_explicit_type_arg_call_shows_substituted_signature() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    client
+        .open(
+            TEST_URI,
+            "fn f<T>(xs: VarArgs<T>) {}\n\nfn main() {\n  f<Option<int>>()\n}",
+        )
+        .await;
+
+    // Hover the `f` callee in `f<Option<int>>()`.
+    let hover = client.hover(TEST_URI, 3, 2).await.expect("hover");
+    let content = hover_content(&hover);
+    assert!(
+        content.contains("VarArgs<Option<int>>"),
+        "expected substituted signature, got: {content}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn hover_promoted_method_shows_type() {
     let mut client = TestClient::new().await;
     client.initialize().await;
