@@ -1,5 +1,7 @@
 use crate::abi::is_tagged_shape_fn_value;
-use crate::calls::dispatch::is_prelude_variant_constructor;
+use crate::calls::dispatch::{
+    CallArgShape, all_type_params_inferrable, is_prelude_variant_constructor,
+};
 use crate::calls::go_interop::is_go_receiver;
 
 use crate::EmitEffects;
@@ -167,8 +169,10 @@ impl<'a> Planner<'a> {
             function,
             resolved_type_args,
             call_ty,
-            args.len(),
-            spread.is_some(),
+            CallArgShape {
+                value_count: args.len(),
+                has_spread: spread.is_some(),
+            },
             &mut function_string,
             expression_ctx,
             fx,
@@ -261,10 +265,14 @@ impl<'a> Planner<'a> {
     }
 
     /// True when Go can infer every type parameter of a collapsed callee from
-    /// its value parameters, i.e. each Lisette type-param var appears in some
-    /// parameter. A var present only in the return type (or otherwise absent
-    /// from the parameters) is not inferable, so the recipe must be rebuilt.
-    fn collapsed_callee_fully_inferable(&self, function: &Expression) -> bool {
+    /// its value parameters. A var present only in the return type, or only in a
+    /// trailing `VarArgs<T>` the call leaves empty, is not inferable, so the
+    /// recipe must be rebuilt.
+    fn collapsed_callee_fully_inferable(
+        &self,
+        function: &Expression,
+        arg_shape: CallArgShape,
+    ) -> bool {
         let Some(Type::Forall { vars, body }) = self.callee_definition(function).map(|d| d.ty())
         else {
             return false;
@@ -272,10 +280,7 @@ impl<'a> Planner<'a> {
         let Type::Function(f) = body.as_ref() else {
             return false;
         };
-        vars.iter().all(|var| {
-            let param_ty = Type::Parameter(var.clone());
-            f.params.iter().any(|pt| pt.contains_type(&param_ty))
-        })
+        all_type_params_inferrable(vars, &f.params, 0, arg_shape)
     }
 
     fn reconstruct_collapsed_call_type_args(
@@ -376,15 +381,14 @@ impl<'a> Planner<'a> {
         function: &Expression,
         type_args: &[Type],
         call_ty: Option<&Type>,
-        value_arg_count: usize,
-        has_spread: bool,
+        arg_shape: CallArgShape,
         function_string: &mut String,
         ctx: ExpressionContext<'_>,
         fx: &mut EmitEffects,
     ) -> String {
-        let has_value_args = value_arg_count > 0 || has_spread;
+        let has_value_args = arg_shape.value_count > 0 || arg_shape.has_spread;
         if let Some(recipe) = self.callee_collapsed_recipe(function) {
-            if has_value_args && self.collapsed_callee_fully_inferable(function) {
+            if has_value_args && self.collapsed_callee_fully_inferable(function, arg_shape) {
                 return String::new();
             }
             return self
@@ -397,8 +401,7 @@ impl<'a> Planner<'a> {
         let slot_ty = ctx.expected_slot_type();
 
         if type_args_string.is_empty()
-            && let Some(inferred) =
-                self.infer_return_only_type_args(function, value_arg_count, has_spread, fx)
+            && let Some(inferred) = self.infer_return_only_type_args(function, arg_shape, fx)
         {
             type_args_string = match slot_ty {
                 Some(t) => self.prelude_container_type_args(t, fx).unwrap_or(inferred),

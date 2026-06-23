@@ -378,14 +378,14 @@ impl InferCtx<'_, '_> {
                 })
             );
 
+        let resolved_callee = callee_ty.resolve_in(&self.env);
+        let variadic_elem_var = resolved_callee.is_variadic();
+        let callee_param_count = resolved_callee.get_function_params().map_or(0, |p| p.len());
         let variadic_elem_ty = if needs_variadic_check {
-            callee_ty.resolve_in(&self.env).is_variadic()
+            variadic_elem_var.clone()
         } else {
             None
         };
-
-        let variadic_elem_var = callee_ty.resolve_in(&self.env).is_variadic();
-        let callee_param_count = callee_ty.resolve_in(&self.env).param_count();
 
         let (param_types, param_mutability, return_ty, bounds) =
             self.extract_call_signature(callee_ty, &args, &callee_expression);
@@ -508,15 +508,17 @@ impl InferCtx<'_, '_> {
             && new_spread.is_none()
             && let Some(elem_ty) = &variadic_elem_var
             && new_args.len() < callee_param_count
-            && !(return_check_recorded
-                && resolved_return.contains_type(&elem_ty.resolve_in(&self.env)))
         {
-            self.facts
-                .generic_call_checks
-                .push(crate::facts::GenericCallCheck {
-                    ty: elem_ty.clone(),
-                    span,
-                });
+            let already_covered = return_check_recorded
+                && resolved_return.contains_type(&elem_ty.resolve_in(&self.env));
+            if !already_covered {
+                self.facts
+                    .generic_call_checks
+                    .push(crate::facts::GenericCallCheck {
+                        ty: elem_ty.clone(),
+                        span,
+                    });
+            }
         }
 
         if type_args.is_empty() && self.callee_has_phantom_type_param(&callee_expression) {

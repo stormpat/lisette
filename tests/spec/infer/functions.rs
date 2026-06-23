@@ -2575,3 +2575,41 @@ fn main() {
     )
     .assert_no_errors();
 }
+
+#[test]
+fn generic_empty_varargs_method_call_without_type_arg_errors() {
+    infer(
+        r#"
+struct Box {}
+
+impl Box {
+  fn first<T>(self, xs: VarArgs<T>) -> Option<T> { None }
+}
+
+fn main() {
+  let b = Box {}
+  let r = b.first()
+}
+"#,
+    )
+    .assert_infer_code("missing_type_argument");
+}
+
+#[test]
+fn generic_empty_varargs_method_call_with_annotation_ok() {
+    infer(
+        r#"
+struct Box {}
+
+impl Box {
+  fn first<T>(self, xs: VarArgs<T>) -> Option<T> { None }
+}
+
+fn main() {
+  let b = Box {}
+  let r: Option<int> = b.first()
+}
+"#,
+    )
+    .assert_no_errors();
+}

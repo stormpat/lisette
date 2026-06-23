@@ -1,0 +1,36 @@
+---
+source: tests/spec/emit/functions.rs
+description: |
+  
+  struct Box {}
+  
+  impl Box {
+    fn first<T>(self, xs: VarArgs<T>) -> Option<T> { None }
+  }
+  
+  fn test() {
+    let b = Box {}
+    let r: Option<int> = b.first()
+    if r.unwrap_or(7) != 7 {
+      panic("expected 7")
+    }
+  }
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+type Box struct{}
+
+func Box_first[T any](_ Box, _ ...T) (T, bool) {
+	return *new(T), false
+}
+
+func test() {
+	b := Box{}
+	option_1 := lisette.OptionFromCommaOk[int](Box_first[int](b))
+	r := option_1
+	if r.UnwrapOr(7) != 7 {
+		panic("expected 7")
+	}
+}

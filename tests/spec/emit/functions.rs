@@ -1882,3 +1882,23 @@ fn test() {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn empty_varargs_method_call_forwards_inferred_type_arg() {
+    let input = r#"
+struct Box {}
+
+impl Box {
+  fn first<T>(self, xs: VarArgs<T>) -> Option<T> { None }
+}
+
+fn test() {
+  let b = Box {}
+  let r: Option<int> = b.first()
+  if r.unwrap_or(7) != 7 {
+    panic("expected 7")
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
