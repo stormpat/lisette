@@ -484,7 +484,7 @@ impl InferCtx<'_, '_> {
                             expected_ty: last_item_expected_ty.clone(),
                             span: item_span,
                         });
-                } else if !expected.is_unit() {
+                } else if !expected.is_unit() && !expected.is_error() {
                     self.sink
                         .push(diagnostics::infer::statement_as_tail(item_span));
                 }
@@ -561,11 +561,13 @@ impl InferCtx<'_, '_> {
             None
         };
 
+        let test_fn_name = self.scopes.test_fn_name().map(str::to_string);
         self.sink.push(diagnostics::infer::name_not_found(
             variable_name,
             span,
             &available_names,
             hint_ty.as_ref(),
+            test_fn_name.as_deref(),
         ));
     }
 }
