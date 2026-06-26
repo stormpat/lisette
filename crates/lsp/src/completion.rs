@@ -219,22 +219,7 @@ pub(crate) fn get_instance_completions(
         return items;
     }
 
-    if let Some(syntax::program::Definition {
-        body: syntax::program::DefinitionBody::Struct { fields, .. },
-        ..
-    }) = snapshot.definitions().get(type_id)
-    {
-        for field in fields {
-            if same_module || field.visibility.is_public() {
-                items.push(CompletionItem {
-                    label: field.name.to_string(),
-                    kind: Some(CompletionItemKind::FIELD),
-                    detail: Some(field.ty.to_string()),
-                    ..Default::default()
-                });
-            }
-        }
-    }
+    struct_field_completions(type_id, snapshot, same_module, &mut items);
 
     let method_prefix = format!("{type_id}.");
     for (qname, definition) in snapshot.definitions().iter() {
@@ -256,6 +241,75 @@ pub(crate) fn get_instance_completions(
         }
     }
 
+    items
+}
+
+/// A struct's own field completions, honoring visibility. No methods.
+pub(crate) fn struct_field_completions(
+    type_id: &str,
+    snapshot: &AnalysisSnapshot,
+    same_module: bool,
+    items: &mut Vec<CompletionItem>,
+) {
+    if let Some(syntax::program::Definition {
+        body: syntax::program::DefinitionBody::Struct { fields, .. },
+        ..
+    }) = snapshot.definitions().get(type_id)
+    {
+        for field in fields {
+            if same_module || field.visibility.is_public() {
+                items.push(CompletionItem {
+                    label: field.name.to_string(),
+                    kind: Some(CompletionItemKind::FIELD),
+                    detail: Some(field.ty.to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+}
+
+/// The struct literal and its assignments when `offset` is at a field name.
+pub(crate) fn detect_struct_literal_field_context(
+    file: &syntax::program::File,
+    offset: u32,
+) -> Option<(&Type, &[syntax::ast::StructFieldAssignment])> {
+    let tokens = Lexer::new(&file.source, 0).lex().tokens;
+    let split = tokens.partition_point(|t| (t.byte_offset as usize) < offset as usize);
+    if !in_field_name_position(&tokens[..split]) {
+        return None;
+    }
+
+    let Expression::StructCall {
+        ty,
+        field_assignments,
+        ..
+    } = find_expression_at(&file.items, offset)?
+    else {
+        return None;
+    };
+    Some((ty, field_assignments))
+}
+
+/// Whether the token before any partial name is `{` or `,` (field name), not `:` (value).
+fn in_field_name_position(before: &[Token]) -> bool {
+    let end = match before.last() {
+        Some(t) if t.kind == Tk::Identifier => before.len() - 1,
+        _ => before.len(),
+    };
+    end >= 1 && matches!(before[end - 1].kind, Tk::LeftCurlyBrace | Tk::Comma)
+}
+
+/// A struct literal body's completions: unassigned fields, no methods.
+pub(crate) fn get_struct_literal_completions(
+    type_id: &str,
+    snapshot: &AnalysisSnapshot,
+    same_module: bool,
+    assigned: &[syntax::ast::StructFieldAssignment],
+) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    struct_field_completions(type_id, snapshot, same_module, &mut items);
+    items.retain(|item| !assigned.iter().any(|fa| fa.name.as_str() == item.label));
     items
 }
 
@@ -324,7 +378,7 @@ pub(crate) fn get_type_completions(
     items
 }
 
-fn id_is_in_module(qualified_id: &str, module: &str) -> bool {
+pub(crate) fn id_is_in_module(qualified_id: &str, module: &str) -> bool {
     qualified_id.starts_with(module) && qualified_id.as_bytes().get(module.len()) == Some(&b'.')
 }
 

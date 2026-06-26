@@ -1334,6 +1334,194 @@ fn main() {
 }
 
 #[tokio::test]
+async fn completion_struct_literal_offers_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+impl Point {
+  pub fn sum(self) -> int { self.x + self.y }
+}
+fn main() {
+  let s = Point {  }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Cursor inside the literal body on line 5: `  let s = Point { | }`.
+    let response = client.completion(TEST_URI, 5, 18).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(labels.contains(&"x".to_string()), "got: {labels:?}");
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+    // A literal body wants fields only — not the struct's methods.
+    assert!(!labels.contains(&"sum".to_string()), "got: {labels:?}");
+    assert!(
+        !labels.iter().any(|l| l == "fn" || l == "let"),
+        "got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_value_position_offers_no_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let s = Point { x: 1 }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Cursor right after the colon, before the value: `  let s = Point { x:| 1 }`.
+    let response = client.completion(TEST_URI, 2, 20).await;
+    let labels = completion_labels(&response.expect("completions"));
+
+    // A value position is not a field-name position: no fields, fall through to general completions.
+    assert!(!labels.contains(&"y".to_string()), "got: {labels:?}");
+    assert!(labels.iter().any(|l| l == "let"), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_nested_resolves_inner_struct() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Inner { a: int, b: int }
+struct Outer { inner: Inner }
+fn main() {
+  let s = Outer { inner: Inner {  } }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Cursor inside the nested literal: `… Outer { inner: Inner { | } }` on line 3.
+    let response = client.completion(TEST_URI, 3, 33).await;
+    let labels = completion_labels(&response.expect("nested struct literal field completions"));
+
+    // The inner literal offers Inner's fields, not Outer's.
+    assert!(labels.contains(&"a".to_string()), "got: {labels:?}");
+    assert!(labels.contains(&"b".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"inner".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_ignores_comma_in_comment() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    // A comma inside a comment is not a field separator: the field name detection
+    // is token-based, so it must not treat this as a field-name position.
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let s = Point { x: 1 //,
+  }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Cursor before the closing brace on line 3: `  |}`.
+    let response = client.completion(TEST_URI, 3, 2).await;
+    let labels = completion_labels(&response.expect("completions"));
+
+    assert!(!labels.contains(&"x".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"y".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_omits_assigned_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let s = Point { x: 1,  }
+}";
+    client.open(TEST_URI, source).await;
+
+    // Cursor after `x: 1, ` on line 2: `  let s = Point { x: 1, | }`.
+    let response = client.completion(TEST_URI, 2, 24).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"x".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_respects_field_visibility() {
+    let mut client = TestClient::new().await;
+
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path();
+
+    std::fs::write(
+        root_path.join("lisette.toml"),
+        "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root_path.join("src/shapes")).unwrap();
+    std::fs::write(
+        root_path.join("src/shapes/shapes.lis"),
+        "pub struct Box { pub w: int, h: int }\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root_path.join("src/main")).unwrap();
+    std::fs::write(
+        root_path.join("src/main/main.lis"),
+        "import \"shapes\"\nfn main() {\n  let b = shapes.Box {  }\n}\n",
+    )
+    .unwrap();
+
+    client.initialize_with_root(root_path).await;
+
+    let shapes_uri = format!(
+        "file://{}",
+        root_path.join("src/shapes/shapes.lis").display()
+    );
+    let main_uri = format!("file://{}", root_path.join("src/main/main.lis").display());
+
+    client
+        .open(
+            &shapes_uri,
+            &std::fs::read_to_string(root_path.join("src/shapes/shapes.lis")).unwrap(),
+        )
+        .await;
+    client
+        .open(
+            &main_uri,
+            &std::fs::read_to_string(root_path.join("src/main/main.lis")).unwrap(),
+        )
+        .await;
+
+    // Cursor inside the cross-module literal body: `  let b = shapes.Box { | }`.
+    let response = client.completion(&main_uri, 2, 23).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(
+        labels.contains(&"w".to_string()),
+        "public field, got: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"h".to_string()),
+        "private field, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn completion_dot_on_for_loop_variable() {
     let mut client = TestClient::new().await;
     client.initialize().await;
