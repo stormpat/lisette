@@ -82,6 +82,10 @@ impl Type {
                 format!("({})", formatted)
             }
 
+            Type::Array { len, elem } => {
+                format!("Array<{}, {}>", elem.stringify(), len)
+            }
+
             Type::Error => "<error>".to_string(),
 
             Type::ImportNamespace(module_id) => {

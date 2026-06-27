@@ -3248,6 +3248,47 @@ pub fn variadic_type_not_allowed(span: Span) -> LisetteDiagnostic {
         .with_help("Use `Slice<T>` to hold a collection of values")
 }
 
+pub fn array_type_arity(actual: usize, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("`Array` takes exactly two type arguments")
+        .with_infer_code("array_type_arity")
+        .with_span_label(
+            &span,
+            format!("expected `Array<T, N>`, found {actual} argument(s)"),
+        )
+        .with_help("Write `Array<ElementType, Length>`, e.g. `Array<int, 3>`")
+}
+
+pub fn array_size_not_literal(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array size must be an integer literal")
+        .with_infer_code("array_size_not_literal")
+        .with_span_label(&span, "expected an integer literal here")
+        .with_help("Array sizes are part of the type and must be constant, e.g. `Array<int, 3>`")
+}
+
+pub fn array_length_mismatch(expected: u64, actual: u64, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array length mismatch")
+        .with_infer_code("array_length_mismatch")
+        .with_span_label(
+            &span,
+            format!("expected an array of length {expected}, found length {actual}"),
+        )
+        .with_help("Fixed-size arrays of different lengths are distinct types")
+}
+
+pub fn array_literal_length_mismatch(
+    expected: u64,
+    actual: usize,
+    span: Span,
+) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array literal has the wrong number of elements")
+        .with_infer_code("array_literal_length_mismatch")
+        .with_span_label(
+            &span,
+            format!("expected {expected} element(s), found {actual}"),
+        )
+        .with_help("An `Array<T, N>` literal must list exactly `N` elements")
+}
+
 pub fn spread_on_non_variadic(span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Invalid spread argument")
         .with_infer_code("spread_on_non_variadic")

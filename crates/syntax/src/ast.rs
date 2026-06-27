@@ -643,6 +643,9 @@ pub enum Annotation {
     Opaque {
         span: Span,
     },
+    /// An integer literal in type-argument position, e.g. the `3` in
+    /// `Array<int, 3>`. Only meaningful as the size of an `Array`; rejected
+    /// elsewhere during annotation→type conversion.
     Constant {
         value: u64,
         text: Option<String>,

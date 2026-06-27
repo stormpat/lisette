@@ -111,6 +111,13 @@ impl TaskState<'_> {
                     return Type::Parameter(type_name.into());
                 }
 
+                // `Array<T, N>` is a builtin with a const-integer size argument,
+                // so it cannot go through the generic prelude-resolution path
+                // (which only handles type arguments).
+                if type_name == "Array" {
+                    return self.convert_array_annotation(store, params, *annotation_span, span);
+                }
+
                 let Some((qualified_name, ty)) =
                     self.resolve_type_with_arity(store, type_name, params.len())
                 else {
@@ -256,6 +263,8 @@ impl TaskState<'_> {
             Annotation::Constant {
                 span: const_span, ..
             } => {
+                // Integers are only meaningful as an `Array` length; anywhere
+                // else (including `Array`'s element position) they are invalid.
                 self.sink
                     .push(diagnostics::infer::integer_in_type_position(*const_span));
                 Type::Error
@@ -264,6 +273,45 @@ impl TaskState<'_> {
             Annotation::Opaque { .. } => {
                 unreachable!("Annotation::Opaque should not be converted to a type")
             }
+        }
+    }
+
+    fn convert_array_annotation(
+        &mut self,
+        store: &Store,
+        params: &[Annotation],
+        annotation_span: Span,
+        span: &Span,
+    ) -> Type {
+        if params.len() != 2 {
+            self.sink.push(diagnostics::infer::array_type_arity(
+                params.len(),
+                annotation_span,
+            ));
+            // Convert any present annotations for error recovery / name usage.
+            for param in params {
+                let _ = self.convert_to_type(store, param, span);
+            }
+            return Type::Error;
+        }
+
+        let elem = self.convert_to_type(store, &params[0], span);
+        let len = match &params[1] {
+            Annotation::Constant { value, .. } => *value,
+            other => {
+                self.sink
+                    .push(diagnostics::infer::array_size_not_literal(other.get_span()));
+                return Type::Error;
+            }
+        };
+
+        if elem.contains_error() {
+            return Type::Error;
+        }
+
+        Type::Array {
+            len,
+            elem: Box::new(elem),
         }
     }
 

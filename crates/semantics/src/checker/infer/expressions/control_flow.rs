@@ -173,6 +173,7 @@ impl InferCtx<'_, '_> {
             }
             Type::Parameter(_) => {}
             Type::Tuple(_) => {}
+            Type::Array { .. } => {}
             Type::Never | Type::Error => {}
             Type::ImportNamespace(_) => {}
             Type::ReceiverPlaceholder => {}

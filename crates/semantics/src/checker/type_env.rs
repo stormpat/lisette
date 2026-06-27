@@ -164,6 +164,10 @@ impl TypeEnv {
                 body: Box::new(body),
             }),
             Type::Tuple(elements) => self.resolve_slice(elements).map(Type::Tuple),
+            Type::Array { len, elem } => self.resolve_changed(elem).map(|elem| Type::Array {
+                len: *len,
+                elem: Box::new(elem),
+            }),
             _ => None,
         }
     }
@@ -231,6 +235,7 @@ impl TypeEnv {
             }
             Type::Forall { body, .. } => self.occurs(id, body),
             Type::Tuple(elements) => elements.iter().any(|e| self.occurs(id, e)),
+            Type::Array { elem, .. } => self.occurs(id, elem),
             _ => false,
         }
     }

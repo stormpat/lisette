@@ -40,6 +40,7 @@ fn type_key(ty: &Type) -> String {
             let elem_keys: Vec<String> = elements.iter().map(type_key).collect();
             format!("({})", elem_keys.join(", "))
         }
+        Type::Array { len, elem } => format!("[{}]{}", len, type_key(elem)),
         Type::Function(_) => "fn".to_string(),
         Type::Var { .. } | Type::Parameter(_) | Type::Error => "param".to_string(),
         Type::Forall { body, .. } => type_key(body),

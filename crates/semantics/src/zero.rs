@@ -83,6 +83,13 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
             }
             Ok(())
         }
+        // Array<T, N>'s zero zeroes each element, so it has a zero iff T does.
+        Type::Array { elem, .. } => has_zero(store, elem, from_module).map_err(|mut nz| {
+            let mut chain = vec![EcoString::from("[]")];
+            chain.append(&mut nz.chain);
+            nz.chain = chain;
+            nz
+        }),
         Type::Function(_) => Err(NoZero {
             chain: vec![],
             reason: NoZeroReason::NoZeroForType,

@@ -42,6 +42,7 @@ fn can_carry_mutation(
         Type::Tuple(elems) => elems
             .iter()
             .any(|e| can_carry_mutation(e, env, store, visited)),
+        Type::Array { elem, .. } => can_carry_mutation(elem, env, store, visited),
         Type::Nominal { id, params, .. } => {
             let peeled = store.peel_alias(&resolved);
             if !matches!(&peeled, Type::Nominal { id: pid, .. } if pid == id) {

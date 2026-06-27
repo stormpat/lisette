@@ -260,6 +260,10 @@ pub fn substitute(ty: &Type, map: &HashMap<EcoString, Type>) -> Type {
             }
         }
         Type::Tuple(elements) => Type::Tuple(elements.iter().map(|e| substitute(e, map)).collect()),
+        Type::Array { len, elem } => Type::Array {
+            len: *len,
+            elem: Box::new(substitute(elem, map)),
+        },
         Type::Compound { kind, args } => Type::Compound {
             kind: *kind,
             args: args.iter().map(|a| substitute(a, map)).collect(),
@@ -409,6 +413,15 @@ pub enum Type {
 
     Tuple(Vec<Type>),
 
+    /// Fixed-size array (`Array<T, N>` → Go `[N]T`). The length `N` is part of
+    /// the type, so arrays of different lengths never unify — exactly like
+    /// `Tuple` arity. `len` is always a compile-time constant (Go has no const
+    /// generics, so the size can never be a type variable).
+    Array {
+        len: u64,
+        elem: Box<Type>,
+    },
+
     /// Poison type returned after an error has been reported.
     /// Unifies with everything silently, preventing cascading diagnostics.
     Error,
@@ -454,6 +467,11 @@ impl std::fmt::Debug for Type {
             Type::Parameter(name) => f.debug_tuple("Parameter").field(name).finish(),
             Type::Never => write!(f, "Never"),
             Type::Tuple(elements) => f.debug_tuple("Tuple").field(elements).finish(),
+            Type::Array { len, elem } => f
+                .debug_struct("Array")
+                .field("len", len)
+                .field("elem", elem)
+                .finish(),
             Type::Error => write!(f, "Error"),
             Type::ImportNamespace(module_id) => {
                 f.debug_tuple("ImportNamespace").field(module_id).finish()
@@ -499,6 +517,16 @@ impl PartialEq for Type {
             (Type::Parameter(name1), Type::Parameter(name2)) => name1 == name2,
             (Type::Never, Type::Never) => true,
             (Type::Tuple(elems1), Type::Tuple(elems2)) => elems1 == elems2,
+            (
+                Type::Array {
+                    len: len1,
+                    elem: elem1,
+                },
+                Type::Array {
+                    len: len2,
+                    elem: elem2,
+                },
+            ) => len1 == len2 && elem1 == elem2,
             (Type::ImportNamespace(m1), Type::ImportNamespace(m2)) => m1 == m2,
             (Type::ReceiverPlaceholder, Type::ReceiverPlaceholder) => true,
             (Type::Simple(k1), Type::Simple(k2)) => k1 == k2,
@@ -643,6 +671,7 @@ impl Type {
                 c
             }
             Type::Tuple(elements) => elements.iter().collect(),
+            Type::Array { elem, .. } => vec![elem],
             Type::Forall { body, .. } => vec![body],
             _ => vec![],
         }
@@ -979,6 +1008,17 @@ impl Type {
         matches!(self, Type::Tuple(_))
     }
 
+    pub fn array_len(&self) -> Option<u64> {
+        match self {
+            Type::Array { len, .. } => Some(*len),
+            _ => None,
+        }
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, Type::Array { .. })
+    }
+
     pub fn as_import_namespace(&self) -> Option<&str> {
         match self {
             Type::ImportNamespace(module_id) => Some(module_id),
@@ -1039,6 +1079,7 @@ impl Type {
                 f.params.iter().any(|p| p.contains_unknown()) || f.return_type.contains_unknown()
             }
             Type::Tuple(elements) => elements.iter().any(|e| e.contains_unknown()),
+            Type::Array { elem, .. } => elem.contains_unknown(),
             Type::Nominal { params, .. } => params.iter().any(|p| p.contains_unknown()),
             Type::Forall { body, .. } => body.contains_unknown(),
             _ => false,
@@ -1238,6 +1279,7 @@ impl Type {
                 f.params.iter().any(Type::contains_error) || f.return_type.contains_error()
             }
             Type::Tuple(elements) => elements.iter().any(Type::contains_error),
+            Type::Array { elem, .. } => elem.contains_error(),
             Type::Forall { body, .. } => body.contains_error(),
             _ => false,
         }
@@ -1253,6 +1295,7 @@ impl Type {
             }
             Type::Forall { body, .. } => body.has_unbound_variables(),
             Type::Tuple(elements) => elements.iter().any(|e| e.has_unbound_variables()),
+            Type::Array { elem, .. } => elem.has_unbound_variables(),
             Type::Compound { args, .. } => args.iter().any(|a| a.has_unbound_variables()),
             Type::Simple(_)
             | Type::Parameter(_)
@@ -1303,6 +1346,10 @@ impl Type {
                     arg.remove_found_type_names(names);
                 }
             }
+            Type::Array { elem, .. } => {
+                names.remove("Array");
+                elem.remove_found_type_names(names);
+            }
             Type::Simple(kind) => {
                 names.remove(kind.leaf_name());
             }
@@ -1329,6 +1376,7 @@ impl Type {
                 let path = module_id.strip_prefix("go:").unwrap_or(module_id);
                 path.rsplit('/').next()
             }
+            Type::Array { .. } => Some("Array"),
             _ => None,
         }
     }
@@ -1628,6 +1676,10 @@ impl Type {
                     .map(|a| Self::remove_vars_impl(a, vars))
                     .collect(),
             },
+            Type::Array { len, elem } => Type::Array {
+                len: *len,
+                elem: Box::new(Self::remove_vars_impl(elem, vars)),
+            },
             Type::Simple(_) | Type::Parameter(_) => ty.clone(),
             Type::Never | Type::Error | Type::ImportNamespace(_) | Type::ReceiverPlaceholder => {
                 ty.clone()
@@ -1648,6 +1700,7 @@ impl Type {
             Type::Var { .. } => false,
             Type::Forall { body, .. } => body.contains_type(target),
             Type::Tuple(elements) => elements.iter().any(|e| e.contains_type(target)),
+            Type::Array { elem, .. } => elem.contains_type(target),
             Type::Compound { args, .. } => args.iter().any(|a| a.contains_type(target)),
             Type::Simple(_)
             | Type::Parameter(_)
