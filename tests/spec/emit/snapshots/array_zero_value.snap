@@ -1,0 +1,13 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nstruct Buf {\n  data: Array<int, 4>,\n}\n\nfn empty() -> Buf {\n  Buf { .. }\n}\n"
+---
+package main
+
+type Buf struct {
+	data [4]int
+}
+
+func empty() Buf {
+	return Buf{data: [4]int{}}
+}

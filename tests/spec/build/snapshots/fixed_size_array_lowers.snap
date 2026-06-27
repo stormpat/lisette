@@ -1,0 +1,26 @@
+---
+source: tests/spec/build/mod.rs
+---
+// === main.go ===
+package main
+
+import "fmt"
+
+type Grid struct {
+	cells [3]int
+}
+
+func first(xs [3]int) int {
+	return xs[0]
+}
+
+func make_arr() [3]int {
+	return [3]int{10, 20, 30}
+}
+
+func main() {
+	xs := [3]int{1, 2, 3}
+	g := Grid{cells: [3]int{4, 5, 6}}
+	same := xs == make_arr()
+	fmt.Println(len(xs), xs[0], same, first(g.cells))
+}

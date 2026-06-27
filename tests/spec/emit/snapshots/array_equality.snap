@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn same(a: Array<int, 2>, b: Array<int, 2>) -> bool {\n  a == b\n}\n"
+---
+package main
+
+func same(a, b [2]int) bool {
+	return a == b
+}

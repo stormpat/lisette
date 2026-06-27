@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn test() -> Array<int, 3> {\n  [1, 2, 3]\n}\n"
+---
+package main
+
+func test() [3]int {
+	return [3]int{1, 2, 3}
+}

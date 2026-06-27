@@ -58,6 +58,13 @@ pub fn tuple_type(types: Vec<Type>) -> Type {
     Type::Tuple(types)
 }
 
+pub fn array_type(len: u64, elem: Type) -> Type {
+    Type::Array {
+        len,
+        elem: Box::new(elem),
+    }
+}
+
 pub fn con_type(name: &str, args: Vec<Type>) -> Type {
     Type::Nominal {
         id: format!("_entry_.{}", name).into(),

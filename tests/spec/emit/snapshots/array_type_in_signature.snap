@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn first(xs: Array<int, 3>) -> int {\n  xs[0]\n}\n"
+---
+package main
+
+func first(xs [3]int) int {
+	return xs[0]
+}
