@@ -3289,6 +3289,30 @@ pub fn array_literal_length_mismatch(
         .with_help("An `Array<T, N>` literal must list exactly `N` elements")
 }
 
+pub fn array_new_cannot_infer_size(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Cannot infer the array element type and length")
+        .with_infer_code("array_new_cannot_infer_size")
+        .with_span_label(&span, "`Array.new` needs an element type and a length here")
+        .with_help("Write the type arguments, e.g. `Array.new<int, 3>()`, or annotate the binding")
+}
+
+pub fn array_new_no_zero(element: &dyn std::fmt::Display, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error(format!("`{element}` has no zero value"))
+        .with_infer_code("array_new_no_zero")
+        .with_span_label(
+            &span,
+            format!("`Array.new` zero-fills every element, but `{element}` has none"),
+        )
+        .with_help("Build the array from a literal instead, e.g. `let xs: Array<T, N> = [..]`")
+}
+
+pub fn array_new_takes_no_arguments(actual: usize, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("`Array.new` takes no value arguments")
+        .with_infer_code("array_new_takes_no_arguments")
+        .with_span_label(&span, format!("found {actual} argument(s)"))
+        .with_help("The element type and length are type arguments: `Array.new<int, 3>()`")
+}
+
 pub fn spread_on_non_variadic(span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Invalid spread argument")
         .with_infer_code("spread_on_non_variadic")

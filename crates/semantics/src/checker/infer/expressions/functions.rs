@@ -345,6 +345,14 @@ impl InferCtx<'_, '_> {
         span: Span,
         expected_ty: &Type,
     ) -> Expression {
+        // `Array.new<T, N>()` is a builtin constructor. Arrays can't be declared
+        // in the prelude (their length is part of the type, with no const
+        // generics), so it has no prelude signature and is resolved inline,
+        // mirroring the inline `.length()` method.
+        if expression.as_dotted_path().as_deref() == Some("Array.new") {
+            return self.infer_array_new_call(&expression, args, type_args, span, expected_ty);
+        }
+
         let store = self.store;
         let callee_ty = self.new_type_var();
 
@@ -553,6 +561,105 @@ impl InferCtx<'_, '_> {
             ty: call_ty,
             span,
             call_kind: Some(call_kind),
+        }
+    }
+
+    /// Infer `Array.new<T, N>()` — the zero value of a fixed-size array. The
+    /// element type and length come from the turbofish, or (when omitted) from
+    /// the expected type. The element must have a zero, since `[N]T{}`
+    /// zero-fills every slot.
+    fn infer_array_new_call(
+        &mut self,
+        callee: &Expression,
+        args: Vec<Expression>,
+        type_args: Vec<Annotation>,
+        span: Span,
+        expected_ty: &Type,
+    ) -> Expression {
+        let store = self.store;
+
+        // Resolve (element, length) from the turbofish, else the expected type.
+        let resolved = if type_args.is_empty() {
+            let peeled = store.peel_alias(&expected_ty.resolve_in(&self.env));
+            match peeled {
+                Type::Array { len, elem } => Some((elem.as_ref().clone(), len)),
+                _ => {
+                    self.sink
+                        .push(diagnostics::infer::array_new_cannot_infer_size(span));
+                    None
+                }
+            }
+        } else if type_args.len() == 2 {
+            let elem = self.convert_to_type(store, &type_args[0], &span);
+            match &type_args[1] {
+                Annotation::Constant { value, .. } => Some((elem, *value)),
+                other => {
+                    self.sink
+                        .push(diagnostics::infer::array_size_not_literal(other.get_span()));
+                    None
+                }
+            }
+        } else {
+            self.sink
+                .push(diagnostics::infer::array_type_arity(type_args.len(), span));
+            None
+        };
+
+        // `Array.new` takes no value arguments; still infer any for recovery.
+        if !args.is_empty() {
+            self.sink
+                .push(diagnostics::infer::array_new_takes_no_arguments(
+                    args.len(),
+                    span,
+                ));
+        }
+        let new_args: Vec<Expression> = args
+            .into_iter()
+            .map(|arg| {
+                let var = self.new_type_var();
+                self.with_value_context(|s| s.infer_expression(arg, &var))
+            })
+            .collect();
+
+        let array_ty = match resolved {
+            Some((elem, len)) => {
+                let from_module = self.cursor.module_id.clone();
+                if let Err(no_zero) = self.has_zero(&elem, &from_module) {
+                    self.sink.push(diagnostics::infer::array_new_no_zero(
+                        &no_zero.leaf_ty.stringify(),
+                        span,
+                    ));
+                }
+                self.type_array(len, elem)
+            }
+            None => Type::Error,
+        };
+
+        self.unify(expected_ty, &array_ty, &span);
+
+        let callee_ty = Type::function(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Box::new(array_ty.clone()),
+        );
+        let callee_expression = Expression::Identifier {
+            value: "Array.new".into(),
+            ty: callee_ty,
+            span: callee.get_span(),
+            binding_id: None,
+            qualified: None,
+        };
+
+        Expression::Call {
+            expression: callee_expression.into(),
+            args: new_args,
+            spread: Box::new(None),
+            raw_type_args: type_args,
+            resolved_type_args: Vec::new(),
+            ty: array_ty,
+            span,
+            call_kind: Some(CallKind::NativeConstructor(NativeTypeKind::Array)),
         }
     }
 
