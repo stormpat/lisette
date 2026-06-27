@@ -1522,6 +1522,140 @@ async fn completion_struct_literal_respects_field_visibility() {
 }
 
 #[tokio::test]
+async fn completion_struct_literal_enum_variant_offers_variant_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+enum Action { Move { x: int, y: int }, Stop }
+fn main() {
+  let a = Action.Move {  }
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 23).await;
+    let labels = completion_labels(&response.expect("enum variant field completions"));
+
+    assert!(labels.contains(&"x".to_string()), "got: {labels:?}");
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"Stop".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"Move".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_keeps_field_being_typed() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let s = Point { x }
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 19).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(
+        labels.contains(&"x".to_string()),
+        "field being typed must remain, got: {labels:?}"
+    );
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_unclosed_brace_offers_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let s = Point {
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 18).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(labels.contains(&"x".to_string()), "got: {labels:?}");
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_no_space_after_brace_offers_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let s = Point {}
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 17).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(labels.contains(&"x".to_string()), "got: {labels:?}");
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_after_spread_offers_no_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let base = Point { x: 1, y: 2 }
+  let s = Point { ..base,  }
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 3, 26).await;
+    let labels = completion_labels(&response.expect("completions"));
+
+    assert!(!labels.contains(&"x".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"y".to_string()), "got: {labels:?}");
+    assert!(labels.iter().any(|l| l == "let"), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_struct_literal_before_spread_offers_fields() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+struct Point { x: int, y: int }
+fn main() {
+  let base = Point { x: 1, y: 2 }
+  let s = Point { x: 1, ..base }
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 3, 23).await;
+    let labels = completion_labels(&response.expect("struct literal field completions"));
+
+    assert!(labels.contains(&"y".to_string()), "got: {labels:?}");
+    assert!(!labels.contains(&"x".to_string()), "got: {labels:?}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn completion_dot_on_for_loop_variable() {
     let mut client = TestClient::new().await;
     client.initialize().await;

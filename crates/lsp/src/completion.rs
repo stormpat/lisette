@@ -269,11 +269,11 @@ pub(crate) fn struct_field_completions(
     }
 }
 
-/// The struct literal and its assignments when `offset` is at a field name.
+/// The struct literal's name, type, and assignments when `offset` is at a field name.
 pub(crate) fn detect_struct_literal_field_context(
     file: &syntax::program::File,
     offset: u32,
-) -> Option<(&Type, &[syntax::ast::StructFieldAssignment])> {
+) -> Option<(&str, &Type, &[syntax::ast::StructFieldAssignment])> {
     let tokens = Lexer::new(&file.source, 0).lex().tokens;
     let split = tokens.partition_point(|t| (t.byte_offset as usize) < offset as usize);
     if !in_field_name_position(&tokens[..split]) {
@@ -281,14 +281,23 @@ pub(crate) fn detect_struct_literal_field_context(
     }
 
     let Expression::StructCall {
+        name,
         ty,
         field_assignments,
+        spread,
         ..
     } = find_expression_at(&file.items, offset)?
     else {
         return None;
     };
-    Some((ty, field_assignments))
+
+    if let Some(spread_span) = spread.span()
+        && offset >= spread_span.byte_offset
+    {
+        return None;
+    }
+
+    Some((name.as_str(), ty, field_assignments))
 }
 
 /// Whether the token before any partial name is `{` or `,` (field name), not `:` (value).
@@ -300,17 +309,57 @@ fn in_field_name_position(before: &[Token]) -> bool {
     end >= 1 && matches!(before[end - 1].kind, Tk::LeftCurlyBrace | Tk::Comma)
 }
 
-/// A struct literal body's completions: unassigned fields, no methods.
+/// A struct or enum-variant literal's unset fields, plus the one being typed. No methods.
 pub(crate) fn get_struct_literal_completions(
     type_id: &str,
+    call_name: &str,
     snapshot: &AnalysisSnapshot,
     same_module: bool,
     assigned: &[syntax::ast::StructFieldAssignment],
+    offset: u32,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     struct_field_completions(type_id, snapshot, same_module, &mut items);
-    items.retain(|item| !assigned.iter().any(|fa| fa.name.as_str() == item.label));
+    enum_variant_field_completions(type_id, call_name, snapshot, &mut items);
+    items.retain(|item| {
+        !assigned
+            .iter()
+            .any(|fa| fa.name.as_str() == item.label && !cursor_on_name(fa, offset))
+    });
     items
+}
+
+/// An enum struct-variant's fields, resolved from the literal's `Enum.Variant` name.
+fn enum_variant_field_completions(
+    type_id: &str,
+    call_name: &str,
+    snapshot: &AnalysisSnapshot,
+    items: &mut Vec<CompletionItem>,
+) {
+    let Some(syntax::program::Definition {
+        body: syntax::program::DefinitionBody::Enum { variants, .. },
+        ..
+    }) = snapshot.definitions().get(type_id)
+    else {
+        return;
+    };
+    let variant_name = call_name.rsplit_once('.').map_or(call_name, |(_, v)| v);
+    let Some(variant) = variants.iter().find(|v| v.name == variant_name) else {
+        return;
+    };
+    for field in variant.fields.iter() {
+        items.push(CompletionItem {
+            label: field.name.to_string(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some(field.ty.to_string()),
+            ..Default::default()
+        });
+    }
+}
+
+fn cursor_on_name(fa: &syntax::ast::StructFieldAssignment, offset: u32) -> bool {
+    let start = fa.name_span.byte_offset;
+    offset >= start && offset <= start + fa.name_span.byte_length
 }
 
 fn collect_interface_methods(

@@ -1238,11 +1238,18 @@ impl LanguageServer for Backend {
         }
 
         // In a struct literal's field-name position, offer the unassigned fields.
-        if let Some((ty, assigned)) = detect_struct_literal_field_context(file, offset)
+        if let Some((name, ty, assigned)) = detect_struct_literal_field_context(file, offset)
             && let Some(type_id) = type_name(ty)
         {
             let same_module = id_is_in_module(&type_id, &file.module_id);
-            let items = get_struct_literal_completions(&type_id, &snapshot, same_module, assigned);
+            let items = get_struct_literal_completions(
+                &type_id,
+                name,
+                &snapshot,
+                same_module,
+                assigned,
+                offset,
+            );
             return Ok(Some(CompletionResponse::Array(items)));
         }
 
