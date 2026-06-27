@@ -656,6 +656,21 @@ impl InferCtx<'_, '_> {
                     iterable_ty_args[0].clone()
                 }
             }
+
+            // `Array<T, N>` yields its element `T`. The element lives in the
+            // dedicated `Type::Array` variant, not in `get_type_params`, so read
+            // it directly. A `Ref<Array<...>>` peers to "Array" via `get_name`
+            // but isn't directly iterable — deref it first (`arr.*`).
+            "Array" => match &resolved_iterable_ty {
+                Type::Array { elem, .. } => elem.as_ref().clone(),
+                _ => {
+                    self.sink.push(diagnostics::infer::not_iterable(
+                        &resolved_iterable_ty,
+                        new_iterable.get_span(),
+                    ));
+                    Type::Error
+                }
+            },
             "Map" if iterable_ty_args.len() >= 2 => Type::Tuple(vec![
                 iterable_ty_args[0].clone(),
                 iterable_ty_args[1].clone(),
