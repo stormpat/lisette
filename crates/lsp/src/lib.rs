@@ -22,7 +22,8 @@ use tower_lsp::lsp_types::*;
 use crate::analysis::{offset_in_span, type_name};
 use crate::completion::{
     DotContext, attribute_completions, definition_to_completion_kind, detect_dot_context,
-    get_instance_completions, get_module_prefix, get_type_completions, resolve_variable_type,
+    detect_struct_literal_field_context, get_instance_completions, get_module_prefix,
+    get_struct_literal_completions, get_type_completions, id_is_in_module, resolve_variable_type,
 };
 use crate::definition::{
     find_struct_field_span, is_generated_typedef_span, lookup_definition_span,
@@ -1183,8 +1184,7 @@ impl LanguageServer for Backend {
         if let Some(ctx) = detect_dot_context(file, offset, &snapshot) {
             let items = match ctx {
                 DotContext::Instance(type_id) => {
-                    let same_module = type_id.starts_with(file.module_id.as_str())
-                        && type_id.as_bytes().get(file.module_id.len()) == Some(&b'.');
+                    let same_module = id_is_in_module(&type_id, &file.module_id);
                     get_instance_completions(&type_id, &snapshot, same_module)
                 }
                 DotContext::TypeLevel(type_id) => {
@@ -1228,14 +1228,29 @@ impl LanguageServer for Backend {
                 if let Some(type_id) =
                     resolve_variable_type(prefix, file, offset, &snapshot, indexed)
                 {
-                    let same_module = type_id.starts_with(file.module_id.as_str())
-                        && type_id.as_bytes().get(file.module_id.len()) == Some(&b'.');
+                    let same_module = id_is_in_module(&type_id, &file.module_id);
                     let items = get_instance_completions(&type_id, &snapshot, same_module);
                     return Ok(Some(CompletionResponse::Array(items)));
                 }
             }
 
             return Ok(Some(CompletionResponse::Array(vec![])));
+        }
+
+        // In a struct literal's field-name position, offer the unassigned fields.
+        if let Some((name, ty, assigned)) = detect_struct_literal_field_context(file, offset)
+            && let Some(type_id) = type_name(ty)
+        {
+            let same_module = id_is_in_module(&type_id, &file.module_id);
+            let items = get_struct_literal_completions(
+                &type_id,
+                name,
+                &snapshot,
+                same_module,
+                assigned,
+                offset,
+            );
+            return Ok(Some(CompletionResponse::Array(items)));
         }
 
         let mut items = Vec::new();
