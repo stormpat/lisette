@@ -94,6 +94,14 @@ pub fn check_not_comparable(env: &TypeEnv, store: &Store, ty: &Type) -> Option<&
         }
     }
 
+    // Fixed-size arrays are comparable iff their element type is (Go's rule),
+    // unlike slices which are never comparable.
+    if let Type::Array { elem, .. } = ty
+        && check_not_comparable(env, store, &elem.resolve_in(env)).is_some()
+    {
+        return Some("an array containing non-comparable elements");
+    }
+
     None
 }
 

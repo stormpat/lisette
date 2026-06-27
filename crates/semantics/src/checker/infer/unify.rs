@@ -234,6 +234,24 @@ impl InferCtx<'_, '_> {
             }
 
             (
+                Type::Array {
+                    len: len1,
+                    elem: elem1,
+                },
+                Type::Array {
+                    len: len2,
+                    elem: elem2,
+                },
+            ) => {
+                if len1 != len2 {
+                    return Err(UnifyError::ArityMismatch);
+                }
+                let elem1 = elem1.as_ref().clone();
+                let elem2 = elem2.as_ref().clone();
+                self.try_unify(&elem1, &elem2, span)
+            }
+
+            (
                 Nominal {
                     underlying_ty: Some(underlying),
                     ..
@@ -715,6 +733,16 @@ impl InferCtx<'_, '_> {
                 .with_span_label(span, "infinite type detected here"),
 
             UnifyError::ArityMismatch => {
+                if let (Some(expected_len), Some(actual_len)) =
+                    (expected.array_len(), actual.array_len())
+                {
+                    return diagnostics::infer::array_length_mismatch(
+                        expected_len,
+                        actual_len,
+                        *span,
+                    );
+                }
+
                 if let (Some(expected_arity), Some(actual_arity)) =
                     (expected.tuple_arity(), actual.tuple_arity())
                 {
