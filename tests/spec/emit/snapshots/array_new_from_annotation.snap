@@ -1,0 +1,10 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn make() -> Array<int, 3> {\n  let xs: Array<int, 3> = Array.new()\n  xs\n}\n"
+---
+package main
+
+func make_() [3]int {
+	xs := [3]int{}
+	return xs
+}

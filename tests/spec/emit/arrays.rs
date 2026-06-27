@@ -77,3 +77,24 @@ fn empty() -> Buf {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn array_new_turbofish() {
+    let input = r#"
+fn make() -> Array<int, 5> {
+  Array.new<int, 5>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_new_from_annotation() {
+    let input = r#"
+fn make() -> Array<int, 3> {
+  let xs: Array<int, 3> = Array.new()
+  xs
+}
+"#;
+    assert_emit_snapshot!(input);
+}

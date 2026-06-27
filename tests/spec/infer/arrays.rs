@@ -66,3 +66,38 @@ fn array_of_slices_is_not_comparable() {
     )
     .assert_infer_code("type_mismatch");
 }
+
+#[test]
+fn array_new_with_turbofish() {
+    infer("Array.new<int, 5>()").assert_type(array_type(5, int_type()));
+}
+
+#[test]
+fn array_new_infers_size_from_annotation() {
+    infer("let a: Array<int, 3> = Array.new(); a").assert_last_type(array_type(3, int_type()));
+}
+
+#[test]
+fn array_new_without_size_errors() {
+    infer("Array.new()").assert_infer_code("array_new_cannot_infer_size");
+}
+
+#[test]
+fn array_new_non_literal_size_errors() {
+    infer("Array.new<int, int>()").assert_infer_code("array_size_not_literal");
+}
+
+#[test]
+fn array_new_wrong_arity_errors() {
+    infer("Array.new<int>()").assert_infer_code("array_type_arity");
+}
+
+#[test]
+fn array_new_rejects_value_arguments() {
+    infer("Array.new<int, 3>(5)").assert_infer_code("array_new_takes_no_arguments");
+}
+
+#[test]
+fn array_new_element_without_zero_errors() {
+    infer("Array.new<Channel<int>, 2>()").assert_infer_code("array_new_no_zero");
+}
