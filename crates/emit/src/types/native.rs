@@ -10,6 +10,7 @@ pub(crate) enum NativeGoType {
     Sender,
     Receiver,
     String,
+    Array,
 }
 
 impl NativeGoType {
@@ -22,6 +23,7 @@ impl NativeGoType {
             NativeTypeKind::Sender => Self::Sender,
             NativeTypeKind::Receiver => Self::Receiver,
             NativeTypeKind::String => Self::String,
+            NativeTypeKind::Array => Self::Array,
         }
     }
 
@@ -42,6 +44,10 @@ impl NativeGoType {
             Self::Sender => format!("chan<- {}", type_args[0]),
             Self::Receiver => format!("<-chan {}", type_args[0]),
             Self::String => "string".to_string(),
+            // `Type::Array` is lowered directly in `go_type` (it carries its
+            // length as a field, not a stringified type arg), so it never
+            // reaches the native type-syntax path.
+            Self::Array => unreachable!("Array types are lowered directly in go_type"),
         }
     }
 
@@ -54,6 +60,7 @@ impl NativeGoType {
             Self::Sender => "Sender",
             Self::Receiver => "Receiver",
             Self::String => "string",
+            Self::Array => "Array",
         }
     }
 
@@ -66,6 +73,7 @@ impl NativeGoType {
             Self::Sender => "Sender",
             Self::Receiver => "Receiver",
             Self::String => "String",
+            Self::Array => "Array",
         }
     }
 }

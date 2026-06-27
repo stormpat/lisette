@@ -703,27 +703,41 @@ impl InferCtx<'_, '_> {
         args: &DotAccessResolutionArgs,
     ) -> Option<(Expression, DotAccessKind)> {
         let store = self.store;
-        if !matches!(
-            args.deref_ty,
-            Type::Nominal { .. } | Type::Parameter(_) | Type::Compound { .. } | Type::Simple(_)
-        ) {
-            return None;
-        }
 
-        let method_ty = self
-            .get_all_methods(store, &args.deref_ty)
-            .get(args.member_name)
-            .cloned()?;
+        // Fixed-size arrays don't fit the nominal/prelude `impl` method model
+        // (their length is part of the type, so a prelude `self` receiver would
+        // pin a single length). Their small builtin method surface is defined
+        // inline instead.
+        let (method_ty, is_exported) = if let Type::Array { .. } = &args.deref_ty {
+            (
+                self.array_method_type(args.member_name, &args.deref_ty)?,
+                true,
+            )
+        } else {
+            if !matches!(
+                args.deref_ty,
+                Type::Nominal { .. } | Type::Parameter(_) | Type::Compound { .. } | Type::Simple(_)
+            ) {
+                return None;
+            }
 
-        if self.is_type_level_receiver(args.expression)
-            && self.method_is_promoted(&args.deref_ty, args.member_name)
-        {
-            return self.as_promoted_method_expression(args, &method_ty);
-        }
+            let method_ty = self
+                .get_all_methods(store, &args.deref_ty)
+                .get(args.member_name)
+                .cloned()?;
 
-        self.check_instance_method_access(&args.deref_ty, &method_ty, args);
+            if self.is_type_level_receiver(args.expression)
+                && self.method_is_promoted(&args.deref_ty, args.member_name)
+            {
+                return self.as_promoted_method_expression(args, &method_ty);
+            }
 
-        let is_exported = self.is_dot_access_exported(&args.deref_ty, args.member_name);
+            self.check_instance_method_access(&args.deref_ty, &method_ty, args);
+
+            let is_exported = self.is_dot_access_exported(&args.deref_ty, args.member_name);
+            (method_ty, is_exported)
+        };
+
         let kind = DotAccessKind::InstanceMethod { is_exported };
 
         let (mut method_ty, _) = self.instantiate(&method_ty);
@@ -760,6 +774,24 @@ impl InferCtx<'_, '_> {
             args.build_dot_access(method_ty, Some(kind), receiver_coercion),
             kind,
         ))
+    }
+
+    /// Type of a builtin method on a fixed-size `Array` receiver. v1 exposes
+    /// only `length` (→ `int`), lowered to Go's `len`. Returns `None` for any
+    /// other member so resolution falls through to a `member_not_found` error.
+    fn array_method_type(&mut self, member: &str, array_ty: &Type) -> Option<Type> {
+        match member {
+            "length" => {
+                let int_ty = self.type_int();
+                Some(Type::function(
+                    vec![array_ty.clone()],
+                    vec![false],
+                    Default::default(),
+                    Box::new(int_ty),
+                ))
+            }
+            _ => None,
+        }
     }
 
     fn as_promoted_method_expression(

@@ -44,6 +44,7 @@ static INLINE_METHODS: &[InlineRule] = &[
             N::Sender,
             N::Receiver,
             N::String,
+            N::Array,
         ],
         method: "length",
         arity: 0,
