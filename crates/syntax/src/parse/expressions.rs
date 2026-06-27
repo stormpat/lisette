@@ -645,9 +645,7 @@ impl<'source> Parser<'source> {
                 break;
             }
 
-            // Integer literals are valid type-args only as an `Array` size
-            // (e.g. `Array.new<int, 3>()`); `parse_annotation` lowers them to
-            // `Constant`, and conversion rejects them elsewhere.
+            // Integer turbofish arg (the `N` in `Array.new<T, N>()`).
             type_args.push(self.parse_annotation());
 
             if self.is_right_angle_like() {

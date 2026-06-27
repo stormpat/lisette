@@ -704,10 +704,8 @@ impl InferCtx<'_, '_> {
     ) -> Option<(Expression, DotAccessKind)> {
         let store = self.store;
 
-        // Fixed-size arrays don't fit the nominal/prelude `impl` method model
-        // (their length is part of the type, so a prelude `self` receiver would
-        // pin a single length). Their small builtin method surface is defined
-        // inline instead.
+        // Arrays have no prelude `impl` (length is part of the type); their
+        // methods are resolved inline.
         let (method_ty, is_exported) = if let Type::Array { .. } = &args.deref_ty {
             (
                 self.array_method_type(args.member_name, &args.deref_ty)?,
@@ -776,9 +774,7 @@ impl InferCtx<'_, '_> {
         ))
     }
 
-    /// Type of a builtin method on a fixed-size `Array` receiver. v1 exposes
-    /// only `length` (→ `int`), lowered to Go's `len`. Returns `None` for any
-    /// other member so resolution falls through to a `member_not_found` error.
+    /// Builtin method on an array receiver. Only `length` for now.
     fn array_method_type(&mut self, member: &str, array_ty: &Type) -> Option<Type> {
         match member {
             "length" => {

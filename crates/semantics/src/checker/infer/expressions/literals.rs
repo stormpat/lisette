@@ -127,8 +127,8 @@ impl InferCtx<'_, '_> {
             Literal::Slice(elements) => {
                 let resolved = expected_ty.resolve_in(&self.env);
 
-                // A `[...]` literal in an `Array<T, N>` context constructs a
-                // fixed-size array, not a slice. The element count must equal N.
+                // In an array context a list literal builds a fixed-size array;
+                // the element count must equal the declared length.
                 if let Type::Array { len, elem } = &resolved {
                     let len = *len;
                     let elem_expected_ty = elem.as_ref().clone();

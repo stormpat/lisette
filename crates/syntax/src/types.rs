@@ -413,10 +413,8 @@ pub enum Type {
 
     Tuple(Vec<Type>),
 
-    /// Fixed-size array (`Array<T, N>` → Go `[N]T`). The length `N` is part of
-    /// the type, so arrays of different lengths never unify — exactly like
-    /// `Tuple` arity. `len` is always a compile-time constant (Go has no const
-    /// generics, so the size can never be a type variable).
+    /// Fixed-size array `Array<T, N>`, lowered to Go `[N]T`. The length is part
+    /// of the type, so different-length arrays never unify.
     Array {
         len: u64,
         elem: Box<Type>,

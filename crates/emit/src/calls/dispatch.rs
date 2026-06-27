@@ -193,7 +193,6 @@ impl Planner<'_> {
                 Some((Vec::new(), format!("[]{}{{}}", element)))
             }
             (NativeGoType::Array, "new") => {
-                // The call's result type carries both the length and element.
                 let peeled = ctx.call_ty.map(|t| self.facts.peel_alias(t));
                 if let Some(syntax::types::Type::Array { len, elem }) = &peeled {
                     let element = self.go_type_string(elem);

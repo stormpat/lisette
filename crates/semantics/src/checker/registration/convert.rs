@@ -111,9 +111,8 @@ impl TaskState<'_> {
                     return Type::Parameter(type_name.into());
                 }
 
-                // `Array<T, N>` is a builtin with a const-integer size argument,
-                // so it cannot go through the generic prelude-resolution path
-                // (which only handles type arguments).
+                // `Array` carries a const-integer size, so it can't use the
+                // generic prelude-resolution path.
                 if type_name == "Array" {
                     return self.convert_array_annotation(store, params, *annotation_span, span);
                 }
@@ -263,8 +262,7 @@ impl TaskState<'_> {
             Annotation::Constant {
                 span: const_span, ..
             } => {
-                // Integers are only meaningful as an `Array` length; anywhere
-                // else (including `Array`'s element position) they are invalid.
+                // Integers are valid only as an `Array` length.
                 self.sink
                     .push(diagnostics::infer::integer_in_type_position(*const_span));
                 Type::Error

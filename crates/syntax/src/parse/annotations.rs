@@ -85,9 +85,7 @@ impl<'source> Parser<'source> {
         if self.advance_if(LeftAngleBracket) {
             let mut type_params = vec![];
 
-            // Integer literals are accepted here (the `3` in `Array<int, 3>`);
-            // `parse_annotation` lowers them to `Constant`, and conversion
-            // rejects them anywhere but an array size.
+            // Integer type-args (the `N` in `Array<T, N>`); rejected elsewhere in convert.
             while self.can_start_annotation() {
                 type_params.push(self.parse_annotation());
                 match self.current_token().kind {

@@ -401,8 +401,7 @@ impl Planner<'_> {
             "bool" => "false".to_string(),
             "string" => "\"\"".to_string(),
             "struct{}" => "struct{}{}".to_string(),
-            // Fixed-size array `[N]E`: its zero is `[N]E{}` (elements zeroed).
-            // Distinguished from `[]E` slices by a digit after the `[`.
+            // `[N]E` (digit after `[`) zeroes to `[N]E{}`.
             s if s.starts_with('[') && s.as_bytes().get(1).is_some_and(u8::is_ascii_digit) => {
                 format!("{}{{}}", s)
             }

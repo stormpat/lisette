@@ -345,10 +345,7 @@ impl InferCtx<'_, '_> {
         span: Span,
         expected_ty: &Type,
     ) -> Expression {
-        // `Array.new<T, N>()` is a builtin constructor. Arrays can't be declared
-        // in the prelude (their length is part of the type, with no const
-        // generics), so it has no prelude signature and is resolved inline,
-        // mirroring the inline `.length()` method.
+        // `Array.new` has no prelude signature (no const generics); resolve inline.
         if expression.as_dotted_path().as_deref() == Some("Array.new") {
             return self.infer_array_new_call(&expression, args, type_args, span, expected_ty);
         }
@@ -564,10 +561,7 @@ impl InferCtx<'_, '_> {
         }
     }
 
-    /// Infer `Array.new<T, N>()` — the zero value of a fixed-size array. The
-    /// element type and length come from the turbofish, or (when omitted) from
-    /// the expected type. The element must have a zero, since `[N]T{}`
-    /// zero-fills every slot.
+    /// Infer `Array.new<T, N>()`: the zero value of a fixed-size array.
     fn infer_array_new_call(
         &mut self,
         callee: &Expression,

@@ -62,8 +62,7 @@ impl Planner<'_> {
         elements: &[Expression],
         ty: &Type,
     ) -> (Vec<LoweredStatement>, String) {
-        // The same `[...]` literal builds a Go slice or a fixed-size array
-        // depending on its inferred type: `[]E` vs `[N]E`.
+        // A list literal builds a slice or a fixed-size array, per its type.
         let (element_lisette_ty, type_prefix, is_array) = match ty {
             Type::Array { len, elem } => (elem.as_ref().clone(), format!("[{}]", len), true),
             _ => (

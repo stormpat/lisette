@@ -657,10 +657,8 @@ impl InferCtx<'_, '_> {
                 }
             }
 
-            // `Array<T, N>` yields its element `T`. The element lives in the
-            // dedicated `Type::Array` variant, not in `get_type_params`, so read
-            // it directly. A `Ref<Array<...>>` peers to "Array" via `get_name`
-            // but isn't directly iterable — deref it first (`arr.*`).
+            // Array yields its element directly (not via `get_type_params`).
+            // A `Ref<Array>` peers to "Array" here but must be deref'd first.
             "Array" => match &resolved_iterable_ty {
                 Type::Array { elem, .. } => elem.as_ref().clone(),
                 _ => {
