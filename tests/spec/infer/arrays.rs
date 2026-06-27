@@ -114,3 +114,18 @@ fn array_for_loop_element_type_mismatch() {
     infer("let arr: Array<int, 3> = [1, 2, 3]; for x in arr { let _y: string = x }")
         .assert_infer_code("type_mismatch");
 }
+
+#[test]
+fn zero_length_array() {
+    infer("let xs: Array<int, 0> = []; xs").assert_last_type(array_type(0, int_type()));
+}
+
+#[test]
+fn integer_in_type_position_errors() {
+    infer("let xs: Slice<3> = []; xs").assert_infer_code("int_literal_not_a_type");
+}
+
+#[test]
+fn index_through_ref_deref() {
+    infer("let arr: Array<int, 3> = [1, 2, 3]; let r = &arr; r.*[0]").assert_last_type(int_type());
+}

@@ -112,3 +112,13 @@ fn sum(a: Array<int, 3>) -> int {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn zero_length_array() {
+    let input = r#"
+fn empty() -> Array<int, 0> {
+  []
+}
+"#;
+    assert_emit_snapshot!(input);
+}

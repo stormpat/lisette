@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn empty() -> Array<int, 0> {\n  []\n}\n"
+---
+package main
+
+func empty() [0]int {
+	return [0]int{}
+}
