@@ -1442,7 +1442,7 @@ pub fn not_iterable(ty: &Type, span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Not iterable")
         .with_infer_code("not_iterable")
         .with_span_label(&span, format!("`{}` is not iterable", ty))
-        .with_help("Use `Slice`, `Map`, `Range`, `Channel`, or `string`")
+        .with_help("Use `Slice`, `Array`, `Map`, `Range`, `Channel`, or `string`")
 }
 
 pub fn tuple_literal_required_in_loop(span: Span) -> LisetteDiagnostic {
@@ -3303,7 +3303,9 @@ pub fn array_new_no_zero(element: &dyn std::fmt::Display, span: Span) -> Lisette
             &span,
             format!("`Array.new` zero-fills every element, but `{element}` has none"),
         )
-        .with_help("Build the array from a literal instead, e.g. `let xs: Array<T, N> = [..]`")
+        .with_help(
+            "Build the array from a list literal instead, e.g. `let xs: Array<int, 3> = [1, 2, 3]`",
+        )
 }
 
 pub fn array_new_takes_no_arguments(actual: usize, span: Span) -> LisetteDiagnostic {
