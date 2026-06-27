@@ -129,3 +129,21 @@ fn integer_in_type_position_errors() {
 fn index_through_ref_deref() {
     infer("let arr: Array<int, 3> = [1, 2, 3]; let r = &arr; r.*[0]").assert_last_type(int_type());
 }
+
+#[test]
+fn slice_of_arrays_element_is_array() {
+    infer("let xs: Slice<Array<int, 3>> = [[1, 2, 3]]; xs[0]")
+        .assert_last_type(array_type(3, int_type()));
+}
+
+#[test]
+fn map_value_array_index_is_array() {
+    infer("let m: Map<string, Array<int, 3>> = Map.new(); m[\"k\"]")
+        .assert_last_type(array_type(3, int_type()));
+}
+
+#[test]
+fn comparable_array_map_key_indexing() {
+    infer("let m: Map<Array<int, 2>, string> = Map.new(); m[[1, 2]]")
+        .assert_last_type(string_type());
+}

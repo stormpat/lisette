@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn count(m: Map<Array<int, 2>, string>) -> int {\n  m.length()\n}\n"
+---
+package main
+
+func count(m map[[2]int]string) int {
+	return len(m)
+}

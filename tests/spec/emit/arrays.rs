@@ -122,3 +122,29 @@ fn empty() -> Array<int, 0> {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn array_in_containers() {
+    let input = r#"
+type Addr = Array<byte, 4>
+
+struct Holder {
+  slice_of_arr: Slice<Array<int, 3>>,
+  map_val_arr: Map<string, Array<int, 3>>,
+  ptr_to_arr: Ref<Array<int, 3>>,
+  multidim: Array<Array<int, 3>, 2>,
+  aliased: Addr,
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_as_map_key() {
+    let input = r#"
+fn count(m: Map<Array<int, 2>, string>) -> int {
+  m.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
