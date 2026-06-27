@@ -98,3 +98,17 @@ fn make() -> Array<int, 3> {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn array_for_loop() {
+    let input = r#"
+fn sum(a: Array<int, 3>) -> int {
+  let mut total = 0
+  for x in a {
+    total = total + x
+  }
+  total
+}
+"#;
+    assert_emit_snapshot!(input);
+}

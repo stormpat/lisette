@@ -101,3 +101,16 @@ fn array_new_rejects_value_arguments() {
 fn array_new_element_without_zero_errors() {
     infer("Array.new<Channel<int>, 2>()").assert_infer_code("array_new_no_zero");
 }
+
+#[test]
+fn array_for_loop_binds_element_type() {
+    // `_y: int = x` only type-checks if the loop variable is inferred as `int`.
+    infer("let arr: Array<int, 3> = [1, 2, 3]; for x in arr { let _y: int = x }")
+        .assert_no_errors();
+}
+
+#[test]
+fn array_for_loop_element_type_mismatch() {
+    infer("let arr: Array<int, 3> = [1, 2, 3]; for x in arr { let _y: string = x }")
+        .assert_infer_code("type_mismatch");
+}
