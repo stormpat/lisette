@@ -2929,11 +2929,11 @@ pub fn test_impl_on_production_type(type_name: &str, span: Span) -> LisetteDiagn
 }
 
 pub fn prelude_type_shadowed(name: &str, span: Span) -> LisetteDiagnostic {
-    LisetteDiagnostic::error("Cannot shadow prelude type")
+    LisetteDiagnostic::error("Cannot shadow built-in type")
         .with_infer_code("prelude_type_shadowed")
-        .with_span_label(&span, format!("`{}` is a prelude type", name))
+        .with_span_label(&span, format!("`{}` is a built-in type", name))
         .with_help(format!(
-            "Choose a different name — `{}` is defined in the prelude and cannot be redefined",
+            "Choose a different name; `{}` is built in and cannot be redefined",
             name
         ))
 }

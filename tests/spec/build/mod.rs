@@ -2539,6 +2539,7 @@ fn shadowing_prelude_types_is_forbidden() {
         ("Ref", "pub struct Ref { pub name: string }"),
         ("Map", "pub struct Map { pub items: Slice<int> }"),
         ("Slice", "pub struct Slice { pub data: string }"),
+        ("Array", "pub enum Array { A, B }"),
         ("Option", "pub enum Option { Some(int), None }"),
         ("Result", "pub enum Result { Ok(int), Err(string) }"),
     ] {
