@@ -268,6 +268,10 @@ impl<T, E> Partial<T, E> {
   fn map_err<F>(self, f: fn(E) -> F) -> Partial<T, F>
 }
 
+// `Array<T, N>` (fixed-size array, Go `[N]T`) is built into the compiler, not
+// declared here: its length `N` is a const value, not a type, so it can't be a
+// prelude generic. Handled inline (indexing, `.length()`, `Array.new`, `for`).
+
 /// A growable, indexable sequence of elements. Equivalent to Go's `[]T`.
 ///
 /// Example:
