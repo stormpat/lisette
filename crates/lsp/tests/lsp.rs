@@ -1817,6 +1817,76 @@ fn main() {
 }
 
 #[tokio::test]
+async fn completion_dot_on_array_variable() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let xs: Array<int, 3> = [1, 2, 3]
+  xs.length()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 5).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "length"),
+        "array value dot should offer 'length', got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_array_type_dot_offers_new() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let _ = Array.
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 1, 16).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "new"),
+        "Array type dot should offer 'new', got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_dot_on_ref_to_array() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn use_ref(r: Ref<Array<int, 3>>) {
+  r.length()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 1, 4).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "length"),
+        "ref-to-array dot should offer 'length', got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn completion_dot_on_string_variable() {
     let mut client = TestClient::new().await;
     client.initialize().await;
