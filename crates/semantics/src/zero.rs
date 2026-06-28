@@ -2,6 +2,7 @@
 //! literal spreads) and by the `replaceable_with_zero_fill` lint.
 
 use ecow::EcoString;
+use rustc_hash::FxHashSet;
 use syntax::program::DefinitionBody;
 use syntax::types::{CompoundKind, SimpleKind, SubstitutionMap, Symbol, Type, substitute};
 
@@ -35,6 +36,16 @@ pub enum NoZeroReason {
 /// no zero is available; `Ok(())` otherwise.
 #[allow(clippy::result_large_err)]
 pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZero> {
+    has_zero_seen(store, ty, from_module, &mut FxHashSet::default())
+}
+
+#[allow(clippy::result_large_err)]
+fn has_zero_seen(
+    store: &Store,
+    ty: &Type,
+    from_module: &str,
+    visited: &mut FxHashSet<String>,
+) -> Result<(), NoZero> {
     match ty {
         Type::Simple(kind) => match kind {
             SimpleKind::Bool
@@ -74,7 +85,7 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
         },
         Type::Tuple(elements) => {
             for (i, e) in elements.iter().enumerate() {
-                if let Err(mut nz) = has_zero(store, e, from_module) {
+                if let Err(mut nz) = has_zero_seen(store, e, from_module, visited) {
                     let mut chain = vec![EcoString::from(i.to_string())];
                     chain.append(&mut nz.chain);
                     nz.chain = chain;
@@ -84,7 +95,7 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
             Ok(())
         }
         // An array has a zero iff its element does.
-        Type::Array { elem, .. } => has_zero(store, elem, from_module),
+        Type::Array { elem, .. } => has_zero_seen(store, elem, from_module, visited),
         Type::Function(_) => Err(NoZero {
             chain: vec![],
             reason: NoZeroReason::NoZeroForType,
@@ -95,9 +106,9 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
                 // Option<T>'s zero is None regardless of T. Stop recursion.
                 return Ok(());
             }
-            has_zero_nominal(store, id, params, from_module, ty)
+            has_zero_nominal(store, id, params, from_module, ty, visited)
         }
-        Type::Forall { body, .. } => has_zero(store, body, from_module),
+        Type::Forall { body, .. } => has_zero_seen(store, body, from_module, visited),
         Type::Var { .. } | Type::Parameter(_) | Type::ReceiverPlaceholder => {
             // Conservative: unresolved/abstract types have no known zero.
             Err(NoZero {
@@ -121,11 +132,19 @@ fn has_zero_nominal(
     params: &[Type],
     from_module: &str,
     original_ty: &Type,
+    visited: &mut FxHashSet<String>,
 ) -> Result<(), NoZero> {
     // Go-imported nominal: every Go field has a Go zero by language definition.
     // Accept the whole nominal without recursing into its fields (Go's own
     // `T{}` zeroing is what the emit will use).
     if id.as_str().starts_with("go:") {
+        return Ok(());
+    }
+
+    // Cycle guard. A type already on the recursion path is a recursive value
+    // type (rejected separately as infinite-size); treat it as zero-having so
+    // the walk terminates instead of overflowing the stack.
+    if !visited.insert(id.to_string()) {
         return Ok(());
     }
 
@@ -164,7 +183,7 @@ fn has_zero_nominal(
                 } else {
                     substitute(&f.ty, &map)
                 };
-                if let Err(mut nz) = has_zero(store, &resolved, from_module) {
+                if let Err(mut nz) = has_zero_seen(store, &resolved, from_module, visited) {
                     let mut chain = vec![f.name.clone()];
                     chain.append(&mut nz.chain);
                     nz.chain = chain;
@@ -193,7 +212,7 @@ fn has_zero_nominal(
             } else {
                 substitute(&underlying, &map)
             };
-            has_zero(store, &resolved, from_module)
+            has_zero_seen(store, &resolved, from_module, visited)
         }
         // Enums and other definitions have no zero unless we add a designated
         // default-variant mechanism later.

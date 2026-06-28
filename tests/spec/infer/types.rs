@@ -4156,6 +4156,22 @@ fn recursive_struct_without_ref_rejected() {
 }
 
 #[test]
+fn recursive_struct_through_array_rejected() {
+    // A fixed-size array stores its element inline, so it is direct containment
+    // (like a tuple) — recursion through it is infinite-size, not indirection.
+    infer(
+        r#"
+    struct Node {
+      kids: Array<Node, 2>,
+    }
+
+    fn main() {}
+        "#,
+    )
+    .assert_infer_code("recursive_type");
+}
+
+#[test]
 fn recursive_struct_through_option_self_rejected() {
     infer(
         r#"
