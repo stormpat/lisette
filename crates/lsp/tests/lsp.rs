@@ -321,6 +321,7 @@ async fn completion_includes_prelude_types() {
     assert!(labels.iter().any(|l| l == "bool"));
     assert!(labels.iter().any(|l| l == "Option"));
     assert!(labels.iter().any(|l| l == "Result"));
+    assert!(labels.iter().any(|l| l == "Array"));
 
     client.shutdown().await;
 }

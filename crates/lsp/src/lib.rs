@@ -1356,7 +1356,7 @@ impl LanguageServer for Backend {
         const PRELUDE_TYPES: &[&str] = &[
             "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32",
             "uint64", "float32", "float64", "string", "bool", "rune", "byte", "Option", "Result",
-            "Slice", "Map", "Channel",
+            "Slice", "Map", "Channel", "Array",
         ];
         for ty in PRELUDE_TYPES {
             items.push(CompletionItem {
