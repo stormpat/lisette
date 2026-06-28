@@ -31,6 +31,7 @@ pub(crate) fn type_name(ty: &syntax::types::Type) -> Option<String> {
         } => args.first().and_then(type_name),
         syntax::types::Type::Compound { kind, .. } => Some(format!("prelude.{}", kind.leaf_name())),
         syntax::types::Type::Simple(kind) => Some(format!("prelude.{}", kind.leaf_name())),
+        syntax::types::Type::Array { .. } => Some("prelude.Array".to_string()),
         _ => None,
     }
 }

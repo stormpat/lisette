@@ -153,6 +153,12 @@ pub(crate) fn detect_dot_context(
     else {
         return None;
     };
+
+    // `Array` is a reserved builtin type; `Array.x` is always type-level. Must
+    // run before the member check; a trailing `}` is slurped as a non-empty member.
+    if matches!(expression.as_ref(), Expression::Identifier { value, .. } if value == "Array") {
+        return Some(DotContext::TypeLevel("prelude.Array".to_string()));
+    }
     if !member.is_empty() {
         if !matches!(
             get_root_expression(expression),
@@ -200,6 +206,17 @@ pub(crate) fn get_instance_completions(
     same_module: bool,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
+
+    // Arrays have no prelude `impl`; surface their inline methods (see `array_method_type`).
+    if type_id == "prelude.Array" {
+        items.push(CompletionItem {
+            label: "length".to_string(),
+            kind: Some(CompletionItemKind::METHOD),
+            detail: Some("fn() -> int".to_string()),
+            ..Default::default()
+        });
+        return items;
+    }
 
     if let Some(syntax::program::Definition {
         body: syntax::program::DefinitionBody::Interface { definition },
@@ -400,6 +417,16 @@ pub(crate) fn get_type_completions(
     snapshot: &AnalysisSnapshot,
     current_module: &str,
 ) -> Vec<CompletionItem> {
+    // `Array.new` is an inline builtin constructor, not a prelude definition.
+    if type_id == "prelude.Array" {
+        return vec![CompletionItem {
+            label: "new".to_string(),
+            kind: Some(CompletionItemKind::METHOD),
+            detail: Some("fn() -> Array<T, N>".to_string()),
+            ..Default::default()
+        }];
+    }
+
     let target = alias_target(type_id, snapshot);
     let method_id = target.as_deref().unwrap_or(type_id);
 
