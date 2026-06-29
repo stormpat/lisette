@@ -1,0 +1,17 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn flags() -> Array<Option<Ref<bool>>, 2> {\n  Array.new<Option<Ref<bool>>, 2>()\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+func flags() [2]lisette.Option[*bool] {
+	return func() [2]lisette.Option[*bool] {
+		var arr [2]lisette.Option[*bool]
+		for i := range arr {
+			arr[i] = lisette.MakeOptionNone[*bool]()
+		}
+		return arr
+	}()
+}

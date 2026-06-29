@@ -148,3 +148,75 @@ fn count(m: Map<Array<int, 2>, string>) -> int {
 "#;
     assert_emit_snapshot!(input);
 }
+
+// Zero values: primitive elements keep Go's `[N]T{}` zero-fill, but elements
+// whose Lisette zero differs from Go's (e.g. `Option<T>`: None vs `Some(nil)`)
+// must be filled per index.
+
+#[test]
+fn array_new_primitive_elements_use_go_zero_fill() {
+    let input = r#"
+fn ints() -> Array<int, 3> {
+  Array.new<int, 3>()
+}
+
+fn bools() -> Array<bool, 2> {
+  Array.new<bool, 2>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_new_option_element_fills_with_none() {
+    let input = r#"
+fn opts() -> Array<Option<int>, 2> {
+  Array.new<Option<int>, 2>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_new_struct_with_option_field_fills() {
+    let input = r#"
+struct Horse {
+  speed: int,
+  fast: Option<int>,
+}
+
+fn herd() -> Array<Horse, 2> {
+  Array.new<Horse, 2>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_zero_value_struct_field_with_option_element() {
+    let input = r#"
+struct Horse {
+  speed: int,
+  fast: Option<int>,
+}
+
+struct Stable {
+  horses: Array<Horse, 2>,
+}
+
+fn empty() -> Stable {
+  Stable { .. }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_new_option_ref_element_fills_with_none() {
+    let input = r#"
+fn flags() -> Array<Option<Ref<bool>>, 2> {
+  Array.new<Option<Ref<bool>>, 2>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}

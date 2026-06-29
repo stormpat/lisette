@@ -323,6 +323,7 @@ impl Planner<'_> {
                     parts.join(", ")
                 )
             }
+            Type::Array { len, elem } => self.array_zero(*len, elem),
             _ => format!("{}{{}}", self.go_type_string(ty)),
         }
     }
@@ -368,6 +369,40 @@ impl Planner<'_> {
             return self.lisette_zero(underlying);
         }
         format!("{}{{}}", self.go_type_string(ty))
+    }
+
+    /// Array zero value. Go's `[N]E{}` fills with Go zeros, which differ from
+    /// Lisette's for some elements (`Option<T>`: Go gives `Some(nil)`, not
+    /// `None`), so non-trivial elements are filled with `lisette_zero` instead.
+    pub(crate) fn array_zero(&mut self, len: u64, elem: &Type) -> String {
+        let elem_go = self.go_type_string(elem);
+        if self.array_element_go_zero_ok(elem) {
+            return format!("[{}]{}{{}}", len, elem_go);
+        }
+        let zero = self.lisette_zero(elem);
+        // Unlike Slice/Map/Channel `.new` (which emit empty containers), an
+        // array can't be empty: its length N is part of the type, so the zero
+        // MUST generate N elements. Go has no array-literal syntax to repeat a
+        // value across all N slots (`[N]E{z}` only sets index 0), so we loop
+        // and assign every index.
+        format!(
+            "func() [{len}]{elem_go} {{ var arr [{len}]{elem_go}; for i := range arr {{ arr[i] = {zero} }}; return arr }}()"
+        )
+    }
+
+    /// True when Go's `[N]ty{}` already matches Lisette's zero. Conservative:
+    /// non-trivial elements are filled per index by `array_zero`.
+    fn array_element_go_zero_ok(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Simple(_) => true,
+            Type::Compound {
+                kind: CompoundKind::Slice,
+                ..
+            } => true,
+            Type::Array { elem, .. } => self.array_element_go_zero_ok(elem),
+            Type::Tuple(elements) => elements.iter().all(|e| self.array_element_go_zero_ok(e)),
+            _ => false,
+        }
     }
 
     /// Address a struct-call field stored behind a compiler-inserted pointer

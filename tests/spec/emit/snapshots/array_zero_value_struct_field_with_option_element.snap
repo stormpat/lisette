@@ -1,0 +1,29 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nstruct Horse {\n  speed: int,\n  fast: Option<int>,\n}\n\nstruct Stable {\n  horses: Array<Horse, 2>,\n}\n\nfn empty() -> Stable {\n  Stable { .. }\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+type Horse struct {
+	speed int
+	fast  lisette.Option[int]
+}
+
+type Stable struct {
+	horses [2]Horse
+}
+
+func empty() Stable {
+	return Stable{horses: func() [2]Horse {
+		var arr [2]Horse
+		for i := range arr {
+			arr[i] = Horse{
+				speed: 0,
+				fast:  lisette.MakeOptionNone[int](),
+			}
+		}
+		return arr
+	}()}
+}
