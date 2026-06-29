@@ -215,6 +215,12 @@ pub(crate) fn get_instance_completions(
             detail: Some("fn() -> int".to_string()),
             ..Default::default()
         });
+        items.push(CompletionItem {
+            label: "as_slice".to_string(),
+            kind: Some(CompletionItemKind::METHOD),
+            detail: Some("fn() -> Slice<T>".to_string()),
+            ..Default::default()
+        });
         return items;
     }
 

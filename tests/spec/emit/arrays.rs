@@ -220,3 +220,13 @@ fn flags() -> Array<Option<Ref<bool>>, 2> {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn array_as_slice_copies_into_new_slice() {
+    let input = r#"
+fn to_slice(a: Array<int, 3>) -> Slice<int> {
+  a.as_slice()
+}
+"#;
+    assert_emit_snapshot!(input);
+}

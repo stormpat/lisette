@@ -774,7 +774,7 @@ impl InferCtx<'_, '_> {
         ))
     }
 
-    /// Builtin method on an array receiver. Only `length` for now.
+    /// Builtin method on an array receiver: `length` and `as_slice`.
     fn array_method_type(&mut self, member: &str, array_ty: &Type) -> Option<Type> {
         match member {
             "length" => {
@@ -784,6 +784,18 @@ impl InferCtx<'_, '_> {
                     vec![false],
                     Default::default(),
                     Box::new(int_ty),
+                ))
+            }
+            "as_slice" => {
+                let Type::Array { elem, .. } = array_ty else {
+                    return None;
+                };
+                let slice_ty = self.type_slice((**elem).clone());
+                Some(Type::function(
+                    vec![array_ty.clone()],
+                    vec![false],
+                    Default::default(),
+                    Box::new(slice_ty),
                 ))
             }
             _ => None,

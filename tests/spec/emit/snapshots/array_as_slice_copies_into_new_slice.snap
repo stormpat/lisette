@@ -1,0 +1,15 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn to_slice(a: Array<int, 3>) -> Slice<int> {\n  a.as_slice()\n}\n"
+---
+package main
+
+func to_slice(a [3]int) []int {
+	return func(a [3]int) []int {
+		out := make([]int, len(a))
+		for i := range a {
+			out[i] = a[i]
+		}
+		return out
+	}(a)
+}

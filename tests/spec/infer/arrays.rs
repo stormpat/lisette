@@ -153,3 +153,9 @@ fn comparable_array_map_key_indexing() {
     infer("let m: Map<Array<int, 2>, string> = Map.new(); m[[1, 2]]")
         .assert_last_type(string_type());
 }
+
+#[test]
+fn array_as_slice_returns_slice_of_element() {
+    infer("let xs: Array<int, 3> = [1, 2, 3]; xs.as_slice()")
+        .assert_last_type(slice_type(int_type()));
+}

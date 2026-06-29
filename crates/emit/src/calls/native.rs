@@ -347,6 +347,22 @@ impl Planner<'_> {
             }
         }
 
+        // `arr.as_slice()` copies the fixed-size array into a fresh `[]T`. The
+        // array is passed by value so the copy is independent, and an array
+        // param needs no addressability (unlike `arr[:]`).
+        if matches!(ctx.native_type, NativeGoType::Array) && ctx.method == "as_slice" {
+            let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
+            if let Type::Array { elem, .. } = &receiver_ty {
+                let arr_go = self.go_type_string(&receiver_ty);
+                let elem_go = self.go_type_string(elem);
+                let (setup, receiver, _) = self.stage_native_dot_access_call(ctx);
+                let body = format!(
+                    "func(a {arr_go}) []{elem_go} {{ out := make([]{elem_go}, len(a)); for i := range a {{ out[i] = a[i] }}; return out }}({receiver})"
+                );
+                return (setup, body);
+            }
+        }
+
         let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
 
         if let Some(inlined) = apply_inline_lookup(
