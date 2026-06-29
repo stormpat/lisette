@@ -645,8 +645,12 @@ impl<'source> Parser<'source> {
                 break;
             }
 
-            // Integer turbofish arg (the `N` in `Array.new<T, N>()`).
-            type_args.push(self.parse_annotation());
+            // A turbofish arg is a type or an integer size (the `N` in `Array.new<T, N>()`).
+            if self.at_size_position_value() {
+                type_args.push(self.parse_size_type_arg());
+            } else {
+                type_args.push(self.parse_annotation());
+            }
 
             if self.is_right_angle_like() {
                 break;
