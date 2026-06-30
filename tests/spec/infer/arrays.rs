@@ -159,3 +159,17 @@ fn array_as_slice_returns_slice_of_element() {
     infer("let xs: Array<int, 3> = [1, 2, 3]; xs.as_slice()")
         .assert_last_type(slice_type(int_type()));
 }
+
+// A generic-param size is valid only in the prelude `Array` impl; in user code it
+// must error cleanly, not mint the nominal that leaks into emit and crashes.
+#[test]
+fn user_generic_param_array_size_errors_not_ice() {
+    infer("fn first<SIZE>(a: Array<int, SIZE>) -> int { 0 }")
+        .assert_infer_code("array_size_not_literal");
+}
+
+#[test]
+fn user_generic_param_array_size_in_struct_field_errors() {
+    infer("struct Buf<SIZE> { data: Array<int, SIZE> }")
+        .assert_infer_code("array_size_not_literal");
+}
