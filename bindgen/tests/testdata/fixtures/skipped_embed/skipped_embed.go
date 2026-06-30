@@ -15,9 +15,10 @@ type Box[T any] struct {
 
 func (Box[T]) M() int { return 0 }
 
-// Embeds Box[[2]int]: the array type argument is unrepresentable, so bindgen
-// skips the field; Host.M must stay flattened, not dropped with the skipped embed.
+// Embeds Box[hidden.Engine]: the internal-package type argument is
+// unrepresentable, so bindgen skips the field; Host.M must stay flattened, not
+// dropped with the skipped embed.
 type Host struct {
-	Box[[2]int]
+	Box[hidden.Engine]
 	Y int
 }

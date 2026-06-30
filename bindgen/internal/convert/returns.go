@@ -45,7 +45,7 @@ func ReturnsToLisette(signature *types.Signature, conv *Converter, qualifiedName
 
 func returnElementToLisette(t types.Type, seen map[types.Type]bool, conv *Converter) TypeResult {
 	if arr := unwrapArray(t); arr != nil {
-		return arrayReturnTypeResult(arr, seen, conv)
+		return arrayTypeResult(arr, seen, conv)
 	}
 	return toLisetteRecursive(t, seen, conv)
 }

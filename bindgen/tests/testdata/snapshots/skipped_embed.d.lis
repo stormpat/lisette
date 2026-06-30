@@ -7,11 +7,12 @@ pub struct Box<T> {
   pub V: T,
 }
 
-/// Embeds Box[[2]int]: the array type argument is unrepresentable, so bindgen
-/// skips the field; Host.M must stay flattened, not dropped with the skipped embed.
+/// Embeds Box[hidden.Engine]: the internal-package type argument is
+/// unrepresentable, so bindgen skips the field; Host.M must stay flattened, not
+/// dropped with the skipped embed.
 #[go(hidden_embed)]
 pub struct Host {
-  // SKIPPED field "Box": array-currently-not-representable — fixed-size array cannot currently be represented in Lisette
+  // SKIPPED field "Box": internal-package-ref — references type from internal package "github.com/ivov/lisette/bindgen/tests/testdata/fixtures/skipped_embed/internal/hidden"
   pub Y: int,
 }
 
