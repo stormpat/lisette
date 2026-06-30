@@ -588,6 +588,8 @@ impl<'s> TaskState<'s> {
             Type::Nominal { id, .. } => id.as_eco().clone(),
             Type::Compound { kind, .. } => format!("prelude.{}", kind.leaf_name()).into(),
             Type::Simple(kind) => format!("prelude.{}", kind.leaf_name()).into(),
+            // Array methods live on the prelude `Array` impl.
+            Type::Array { .. } => "prelude.Array".into(),
             _ => return Rc::new(MethodSignatures::default()),
         };
 

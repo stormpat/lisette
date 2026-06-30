@@ -675,6 +675,8 @@ fn method_lookup_key(ty: &Type) -> Option<Symbol> {
         Type::Nominal { id, .. } => Some(id.clone()),
         Type::Compound { kind, .. } => Some(Symbol::from_parts("prelude", kind.leaf_name())),
         Type::Simple(kind) => Some(Symbol::from_parts("prelude", kind.leaf_name())),
+        // Array methods live on the prelude `Array` impl.
+        Type::Array { .. } => Some(Symbol::from_parts("prelude", "Array")),
         _ => None,
     }
 }

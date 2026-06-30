@@ -4,9 +4,10 @@ use crate::checker::EnvResolve;
 use syntax::EcoString;
 use syntax::ast::{Annotation, Generic, Span};
 use syntax::program::{Definition, DefinitionBody};
-use syntax::types::{SubstitutionMap, Type, substitute, unqualified_name};
+use syntax::types::{SubstitutionMap, Symbol, Type, substitute, unqualified_name};
 
 use crate::checker::TaskState;
+use crate::prelude::PRELUDE_MODULE_ID;
 use crate::store::Store;
 
 impl TaskState<'_> {
@@ -294,23 +295,40 @@ impl TaskState<'_> {
         }
 
         let elem = self.convert_to_type(store, &params[0], span);
-        let len = match &params[1] {
-            Annotation::Constant { value, .. } => *value,
-            other => {
-                self.sink
-                    .push(diagnostics::infer::array_size_not_literal(other.get_span()));
-                return Type::Error;
-            }
-        };
-
         if elem.contains_error() {
             return Type::Error;
         }
 
-        Type::Array {
-            len,
-            elem: Box::new(elem),
+        // A literal size is the actual fixed-size array.
+        if let Annotation::Constant { value, .. } = &params[1] {
+            return Type::Array {
+                len: *value,
+                elem: Box::new(elem),
+            };
         }
+
+        // A generic-param size is the phantom self-type for the prelude `Array`
+        // impl, held as the `prelude.Array` nominal. Gated to the prelude: anywhere
+        // else the nominal would leak into user types and crash emit, so user code
+        // keeps the literal-size error.
+        if self.cursor.module_id == PRELUDE_MODULE_ID
+            && let Annotation::Constructor {
+                name, params: p, ..
+            } = &params[1]
+            && p.is_empty()
+            && self.scopes.lookup_type_param(name).is_some()
+        {
+            return Type::Nominal {
+                id: Symbol::from_parts("prelude", "Array"),
+                params: vec![elem, Type::Parameter(name.clone())],
+                underlying_ty: None,
+            };
+        }
+
+        self.sink.push(diagnostics::infer::array_size_not_literal(
+            params[1].get_span(),
+        ));
+        Type::Error
     }
 
     pub(super) fn classify_non_type_name(

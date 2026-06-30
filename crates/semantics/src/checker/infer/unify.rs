@@ -251,6 +251,19 @@ impl InferCtx<'_, '_> {
                 self.try_unify(&elem1, &elem2, span)
             }
 
+            // Bridge the phantom `prelude.Array` self-type (prelude method sigs
+            // only) to the real `Type::Array`: unify the element, ignore the size.
+            (Type::Array { elem, .. }, Nominal { id, params, .. })
+            | (Nominal { id, params, .. }, Type::Array { elem, .. })
+                if id.as_str() == "prelude.Array" =>
+            {
+                let elem = elem.as_ref().clone();
+                match params.first().cloned() {
+                    Some(nominal_elem) => self.try_unify(&elem, &nominal_elem, span),
+                    None => Ok(()),
+                }
+            }
+
             (
                 Nominal {
                     underlying_ty: Some(underlying),

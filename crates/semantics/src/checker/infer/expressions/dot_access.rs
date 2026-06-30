@@ -704,11 +704,13 @@ impl InferCtx<'_, '_> {
     ) -> Option<(Expression, DotAccessKind)> {
         let store = self.store;
 
-        // Arrays have no prelude `impl` (length is part of the type); their
-        // methods are resolved inline.
+        // Array methods are declared on the prelude `Array` impl and reached via
+        // the `method_lookup_key` bridge; the phantom `SIZE` is bound away in unify.
         let (method_ty, is_exported) = if let Type::Array { .. } = &args.deref_ty {
             (
-                self.array_method_type(args.member_name, &args.deref_ty)?,
+                self.get_all_methods(store, &args.deref_ty)
+                    .get(args.member_name)
+                    .cloned()?,
                 true,
             )
         } else {
@@ -772,34 +774,6 @@ impl InferCtx<'_, '_> {
             args.build_dot_access(method_ty, Some(kind), receiver_coercion),
             kind,
         ))
-    }
-
-    /// Builtin method on an array receiver: `length` and `as_slice`.
-    fn array_method_type(&mut self, member: &str, array_ty: &Type) -> Option<Type> {
-        match member {
-            "length" => {
-                let int_ty = self.type_int();
-                Some(Type::function(
-                    vec![array_ty.clone()],
-                    vec![false],
-                    Default::default(),
-                    Box::new(int_ty),
-                ))
-            }
-            "as_slice" => {
-                let Type::Array { elem, .. } = array_ty else {
-                    return None;
-                };
-                let slice_ty = self.type_slice((**elem).clone());
-                Some(Type::function(
-                    vec![array_ty.clone()],
-                    vec![false],
-                    Default::default(),
-                    Box::new(slice_ty),
-                ))
-            }
-            _ => None,
-        }
     }
 
     fn as_promoted_method_expression(

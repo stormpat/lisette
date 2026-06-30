@@ -207,23 +207,6 @@ pub(crate) fn get_instance_completions(
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
 
-    // Arrays have no prelude `impl`; surface their inline methods (see `array_method_type`).
-    if type_id == "prelude.Array" {
-        items.push(CompletionItem {
-            label: "length".to_string(),
-            kind: Some(CompletionItemKind::METHOD),
-            detail: Some("fn() -> int".to_string()),
-            ..Default::default()
-        });
-        items.push(CompletionItem {
-            label: "as_slice".to_string(),
-            kind: Some(CompletionItemKind::METHOD),
-            detail: Some("fn() -> Slice<T>".to_string()),
-            ..Default::default()
-        });
-        return items;
-    }
-
     if let Some(syntax::program::Definition {
         body: syntax::program::DefinitionBody::Interface { definition },
         ..
