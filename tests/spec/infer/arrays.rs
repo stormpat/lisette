@@ -160,6 +160,12 @@ fn array_as_slice_returns_slice_of_element() {
         .assert_last_type(slice_type(int_type()));
 }
 
+#[test]
+fn array_get_returns_option_of_element() {
+    infer("let xs: Array<int, 3> = [1, 2, 3]; xs.get(0)")
+        .assert_type_struct_generic("Option", vec![int_type()]);
+}
+
 // A generic-param size is valid only in the prelude `Array` impl; in user code it
 // must error cleanly, not mint the nominal that leaks into emit and crashes.
 #[test]

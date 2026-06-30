@@ -284,6 +284,9 @@ impl<T, SIZE> Array<T, SIZE> {
   /// Returns the size of the array.
   fn length(self) -> int
 
+  /// Returns the element at `index`, or `None` if out of bounds.
+  fn get(self, index: int) -> Option<T>
+
   /// Copies the elements into a new slice.
   fn as_slice(self) -> Slice<T>
 }

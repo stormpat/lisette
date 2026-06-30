@@ -230,3 +230,13 @@ fn to_slice(a: Array<int, 3>) -> Slice<int> {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn array_get_returns_bounds_checked_option() {
+    let input = r#"
+fn at(a: Array<int, 3>, i: int) -> Option<int> {
+  a.get(i)
+}
+"#;
+    assert_emit_snapshot!(input);
+}

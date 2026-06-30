@@ -1,0 +1,20 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn at(a: Array<int, 3>, i: int) -> Option<int> {\n  a.get(i)\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+func at(a [3]int, i int) (int, bool) {
+	v_1 := func(a [3]int, i int) lisette.Option[int] {
+		if i >= 0 && i < len(a) {
+			return lisette.MakeOptionSome(a[i])
+		}
+		return lisette.MakeOptionNone[int]()
+	}(a, i)
+	if v_1.Tag == lisette.OptionSome {
+		return v_1.SomeVal, true
+	}
+	return 0, false
+}

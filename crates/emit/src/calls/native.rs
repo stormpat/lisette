@@ -363,6 +363,26 @@ impl Planner<'_> {
             }
         }
 
+        // `arr.get(i)` returns `Option<T>` after a bounds check. No generic Go
+        // helper is possible (the size isn't a const generic), so it's inlined.
+        // Passing the index by value also launders a constant index, which Go
+        // would otherwise reject as out of range even inside the guard.
+        if matches!(ctx.native_type, NativeGoType::Array) && ctx.method == "get" {
+            let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
+            if let Type::Array { elem, .. } = &receiver_ty {
+                let arr_go = self.go_type_string(&receiver_ty);
+                let elem_go = self.go_type_string(elem);
+                let pkg = go_name::GO_STDLIB_PKG;
+                self.require_stdlib();
+                let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
+                let index = &emitted_args[0];
+                let body = format!(
+                    "func(a {arr_go}, i int) {pkg}.Option[{elem_go}] {{ if i >= 0 && i < len(a) {{ return {pkg}.MakeOptionSome(a[i]) }}; return {pkg}.MakeOptionNone[{elem_go}]() }}({receiver}, {index})"
+                );
+                return (setup, body);
+            }
+        }
+
         let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
 
         if let Some(inlined) = apply_inline_lookup(
