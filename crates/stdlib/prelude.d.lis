@@ -268,8 +268,7 @@ impl<T, E> Partial<T, E> {
   fn map_err<F>(self, f: fn(E) -> F) -> Partial<T, F>
 }
 
-/// A fixed-size array, lowered to Go's `[N]T`. The length is part of the type,
-/// so `Array<int, 3>` and `Array<int, 4>` are distinct types.
+/// A fixed-sized array, indexable sequence of elements. Equivalent to Go's `[N]T`.
 ///
 /// Example:
 ///   let xs: Array<int, 3> = [1, 2, 3]
@@ -277,12 +276,12 @@ impl<T, E> Partial<T, E> {
 ///   let s = xs.as_slice()
 type Array<T, SIZE>
 
-// `SIZE` is a phantom: methods may use it only as the self-type parameter, never
+// NOTE! `SIZE` is a phantom type: methods may use it only as the self-type parameter, never
 // in a param or return. A size-flowing method (e.g. `map -> Array<U, SIZE>`)
-// would leak the internal `prelude.Array` nominal into user code and crash emit;
-// that needs real const generics.
+// would leak the internal `prelude.Array` nominal into user code and crash emit. To get
+// around this we would need real const generics.
 impl<T, SIZE> Array<T, SIZE> {
-  /// Returns the number of elements (the array's fixed size).
+  /// Returns the size of the array.
   fn length(self) -> int
 
   /// Copies the elements into a new slice.
