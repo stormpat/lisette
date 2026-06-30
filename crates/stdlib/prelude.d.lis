@@ -276,10 +276,11 @@ impl<T, E> Partial<T, E> {
 ///   let s = xs.as_slice()
 type Array<T, SIZE>
 
-// NOTE! `SIZE` is a phantom type: methods may use it only as the self-type parameter, never
-// in a param or return. A size-flowing method (e.g. `map -> Array<U, SIZE>`)
-// would leak the internal `prelude.Array` nominal into user code and crash emit. To get
-// around this we would need real const generics.
+// NOTE! `SIZE` is a phantom type: methods may use it only as the self-type
+// parameter, never in a param or return. The unify bridge ignores the size, so a
+// size-flowing method (e.g. `map -> Array<U, SIZE>`) leaves SIZE uninferable and
+// every call fails with `Missing type argument`. Supporting it needs real const
+// generics.
 impl<T, SIZE> Array<T, SIZE> {
   /// Returns the size of the array.
   fn length(self) -> int
