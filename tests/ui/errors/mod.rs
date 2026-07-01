@@ -7839,6 +7839,27 @@ fn main() {}
     assert_multimodule_infer_error_snapshot!(result, source);
 }
 
+// A user impl on the built-in `Array` (literal size) must be rejected like a
+// foreign type, not ICE on the bare `Type::Array` receiver.
+#[test]
+fn infer_impl_on_builtin_array() {
+    let mut fs = MockFileSystem::new();
+
+    let source = r#"
+impl<T> Array<T, 3> {
+  fn first(self) -> int {
+    0
+  }
+}
+
+fn main() {}
+"#;
+    fs.add_file("main", "main.lis", source);
+
+    let result = infer_module("main", fs);
+    assert_multimodule_infer_error_snapshot!(result, source);
+}
+
 #[test]
 fn infer_non_pub_interface_with_pub_implementations() {
     let mut fs = MockFileSystem::new();
