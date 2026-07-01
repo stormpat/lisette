@@ -27,6 +27,12 @@ fn array_equality_is_bool() {
 }
 
 #[test]
+fn array_inequality_is_bool() {
+    infer("let xs: Array<int, 2> = [1, 2]; let ys: Array<int, 2> = [3, 4]; xs != ys")
+        .assert_last_type(bool_type());
+}
+
+#[test]
 fn nested_array_type() {
     infer("let xs: Array<Array<int, 3>, 2> = [[1, 2, 3], [4, 5, 6]]; xs")
         .assert_last_type(array_type(2, array_type(3, int_type())));

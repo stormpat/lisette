@@ -267,3 +267,39 @@ fn size(a: Addr) -> int {
 "#;
     assert_emit_snapshot!(input);
 }
+
+#[test]
+fn array_inequality() {
+    let input = r#"
+fn differ(a: Array<int, 2>, b: Array<int, 2>) -> bool {
+  a != b
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+// Go arrays are value types, so a direct element assignment mutates the local
+// copy; the assignment lowers to `b[0] = 9`.
+#[test]
+fn array_element_assignment() {
+    let input = r#"
+fn overwrite(a: Array<int, 3>) -> Array<int, 3> {
+  let mut b = a
+  b[0] = 9
+  b
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+// Assignment through a `Ref` mutates the pointee, lowering to `(*a)[0] = 9`, so
+// the caller observes the change.
+#[test]
+fn array_element_assignment_through_ref() {
+    let input = r#"
+fn bump(a: Ref<Array<int, 3>>) {
+  a.*[0] = 9
+}
+"#;
+    assert_emit_snapshot!(input);
+}
