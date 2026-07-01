@@ -128,7 +128,7 @@ fn zero_length_array() {
 
 #[test]
 fn integer_in_type_position_errors() {
-    infer("let xs: Slice<3> = []; xs").assert_infer_code("int_literal_not_a_type");
+    infer("let xs: Slice<3> = []; xs").assert_infer_code("integer_in_type_position");
 }
 
 #[test]

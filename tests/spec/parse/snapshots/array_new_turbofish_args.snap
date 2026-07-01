@@ -76,8 +76,9 @@ description: "\nfn test() { let _xs = Array.new<int, 3>(); }\n"
                                     byte_length: 3,
                                 },
                             },
-                            IntLiteral {
+                            Constant {
                                 value: 3,
+                                text: None,
                                 span: Span {
                                     file_id: 0,
                                     byte_offset: 38,
