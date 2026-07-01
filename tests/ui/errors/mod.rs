@@ -2695,6 +2695,43 @@ fn test() {
 }
 
 #[test]
+fn match_non_exhaustive_lists_all_missing_cases() {
+    let input = r#"
+enum Color {
+  Red,
+  Green,
+  Blue,
+}
+
+fn test(c: Color) -> int {
+  match c {
+    Color.Red => 1,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn match_non_exhaustive_three_missing_cases_uses_oxford_comma() {
+    let input = r#"
+enum Suit {
+  Hearts,
+  Diamonds,
+  Clubs,
+  Spades,
+}
+
+fn test(s: Suit) -> int {
+  match s {
+    Suit.Hearts => 1,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn match_non_exhaustive_tuple_struct_field_literal() {
     let input = r#"
 struct MP(int, string)
