@@ -673,16 +673,8 @@ func (c *Converter) convertType(result *ConvertResult, exp extract.SymbolExport)
 		result.LisetteType = basicToLisette(u)
 
 	default:
-		// `type UUID [16]byte` keeps its array newtype body, e.g. `Array<byte, 16>`.
-		if arr := unwrapArray(underlying); arr != nil {
-			t := arrayTypeResult(arr, make(map[types.Type]bool), c)
-			if t.SkipReason != nil {
-				result.SkipReason = withOpaqueType(t.SkipReason)
-				return
-			}
-			result.LisetteType = t.LisetteType
-			return
-		}
+		// Newtype body, e.g. `type UUID [16]byte` keeps `Array<byte, 16>` and
+		// `type Handler func(...)` keeps its function type.
 		t := ToLisette(underlying, c)
 		if t.SkipReason != nil {
 			result.SkipReason = withOpaqueType(t.SkipReason)

@@ -161,7 +161,7 @@ pub struct Regexp {
   pub Op: Op,
   pub Flags: Flags,
   pub Sub: Slice<Option<Ref<Regexp>>>,
-  pub Sub0: Array<Ref<Regexp>, 1>,
+  pub Sub0: Array<Option<Ref<Regexp>>, 1>,
   pub Rune: Slice<rune>,
   pub Rune0: Array<rune, 2>,
   pub Min: int,

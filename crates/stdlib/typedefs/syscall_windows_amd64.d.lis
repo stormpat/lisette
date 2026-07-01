@@ -1584,7 +1584,7 @@ pub struct DNSSRVData {
 
 pub struct DNSTXTData {
   pub StringCount: uint16,
-  pub StringArray: Array<Ref<uint16>, 1>,
+  pub StringArray: Array<Option<uint16>, 1>,
 }
 
 pub struct FileNotifyInformation {
