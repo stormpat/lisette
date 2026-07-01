@@ -4061,6 +4061,20 @@ fn map_with_function_key_rejected() {
     .assert_infer_code("non_comparable_map_key");
 }
 
+// A Go array is comparable iff its element is, so an array of a non-comparable
+// element (here a slice) is rejected as a map key, recursing into the element.
+#[test]
+fn map_with_array_of_non_comparable_element_key_rejected() {
+    infer(
+        r#"
+    fn main() {
+      let mut m: Map<Array<Slice<int>, 2>, string> = {};
+    }
+        "#,
+    )
+    .assert_infer_code("non_comparable_map_key");
+}
+
 #[test]
 fn map_with_string_key_allowed() {
     infer(

@@ -510,19 +510,31 @@ impl TaskState<'_> {
             return;
         }
 
-        let reason = if matches!(&resolved, Type::Function(_)) {
-            "functions"
-        } else if resolved.has_name("Slice") {
-            "slices"
-        } else if resolved.has_name("Map") {
-            "maps"
-        } else {
-            return;
-        };
+        if let Some(reason) = self.map_key_non_comparable_reason(&resolved) {
+            self.sink.push(diagnostics::infer::non_comparable_map_key(
+                &resolved, reason, span,
+            ));
+        }
+    }
 
-        self.sink.push(diagnostics::infer::non_comparable_map_key(
-            &resolved, reason, span,
-        ));
+    /// Why a type cannot be a Go map key, or `None` if it can. A Go array is
+    /// comparable iff its element is, so recurse into it; functions, slices, and
+    /// maps are never comparable. Interfaces and type parameters are left alone:
+    /// Go permits them as keys (an interface key panics only at runtime).
+    fn map_key_non_comparable_reason(&self, ty: &Type) -> Option<&'static str> {
+        let resolved = ty.resolve_in(&self.env);
+        if matches!(&resolved, Type::Function(_)) {
+            Some("functions")
+        } else if resolved.has_name("Slice") {
+            Some("slices")
+        } else if resolved.has_name("Map") {
+            Some("maps")
+        } else if let Type::Array { elem, .. } = &resolved {
+            self.map_key_non_comparable_reason(elem)
+                .map(|_| "arrays with non-comparable elements")
+        } else {
+            None
+        }
     }
 }
 
