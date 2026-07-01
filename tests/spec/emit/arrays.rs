@@ -240,3 +240,30 @@ fn at(a: Array<int, 3>, i: int) -> Option<int> {
 "#;
     assert_emit_snapshot!(input);
 }
+
+// A transparent alias over `Array` must behave like the array at use sites:
+// construction, indexing, and the prelude methods all lower natively, with no
+// comma-ok double-wrap around `.get()`.
+#[test]
+fn array_methods_through_type_alias() {
+    let input = r#"
+type Addr = Array<byte, 4>
+
+fn build() -> Addr {
+  [1, 2, 3, 4]
+}
+
+fn at(a: Addr, i: int) -> Option<byte> {
+  a.get(i)
+}
+
+fn to_slice(a: Addr) -> Slice<byte> {
+  a.as_slice()
+}
+
+fn size(a: Addr) -> int {
+  a.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}

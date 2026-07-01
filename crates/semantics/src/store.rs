@@ -619,6 +619,7 @@ impl Store {
                 Type::Nominal { id, .. } => Some(id.as_str().to_string()),
                 Type::Simple(kind) => Some(format!("prelude.{}", kind.leaf_name())),
                 Type::Compound { kind, .. } => Some(format!("prelude.{}", kind.leaf_name())),
+                Type::Array { .. } => Some("prelude.Array".to_string()),
                 _ => None,
             };
             // Follow only when the alias body names a different type. For

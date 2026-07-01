@@ -137,14 +137,14 @@ impl InferCtx<'_, '_> {
 
             // Alias follow-through: `type MyFoo = Foo` stores a Nominal
             // alias with Foo as `underlying_ty`. When the other side is a
-            // Simple/Compound, follow the alias to the underlying type.
+            // Simple/Compound/Array, follow the alias to the underlying type.
             (
                 Nominal {
                     id,
                     underlying_ty: Some(underlying),
                     ..
                 },
-                other @ (Type::Simple(_) | Type::Compound { .. }),
+                other @ (Type::Simple(_) | Type::Compound { .. } | Type::Array { .. }),
             ) => {
                 if matches!(other, Type::Simple(_)) && store.is_nominal_defined_type(id.as_str()) {
                     Err(UnifyError::TypeMismatch)
@@ -155,7 +155,7 @@ impl InferCtx<'_, '_> {
             }
 
             (
-                other @ (Type::Simple(_) | Type::Compound { .. }),
+                other @ (Type::Simple(_) | Type::Compound { .. } | Type::Array { .. }),
                 Nominal {
                     id,
                     underlying_ty: Some(underlying),

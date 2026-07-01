@@ -125,7 +125,10 @@ impl InferCtx<'_, '_> {
             }
 
             Literal::Slice(elements) => {
-                let resolved = expected_ty.resolve_in(&self.env);
+                // Peel a transparent alias so an alias over Array/Slice takes
+                // the array/element branch below instead of falling through to
+                // an unadapted Slice.
+                let resolved = store.peel_alias(&expected_ty.resolve_in(&self.env));
 
                 // In an array context a list literal builds a fixed-size array;
                 // the element count must equal the declared length.

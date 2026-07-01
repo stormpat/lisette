@@ -1,0 +1,58 @@
+---
+source: tests/spec/emit/arrays.rs
+description: |
+  
+  type Addr = Array<byte, 4>
+  
+  fn build() -> Addr {
+    [1, 2, 3, 4]
+  }
+  
+  fn at(a: Addr, i: int) -> Option<byte> {
+    a.get(i)
+  }
+  
+  fn to_slice(a: Addr) -> Slice<byte> {
+    a.as_slice()
+  }
+  
+  fn size(a: Addr) -> int {
+    a.length()
+  }
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+type Addr = [4]byte
+
+func build() Addr {
+	return [4]byte{1, 2, 3, 4}
+}
+
+func at(a Addr, i int) (byte, bool) {
+	v_1 := func(a [4]byte, i int) lisette.Option[byte] {
+		if i >= 0 && i < len(a) {
+			return lisette.MakeOptionSome(a[i])
+		}
+		return lisette.MakeOptionNone[byte]()
+	}(a, i)
+	if v_1.Tag == lisette.OptionSome {
+		return v_1.SomeVal, true
+	}
+	return 0, false
+}
+
+func to_slice(a Addr) []byte {
+	return func(a [4]byte) []byte {
+		out := make([]byte, len(a))
+		for i := range a {
+			out[i] = a[i]
+		}
+		return out
+	}(a)
+}
+
+func size(a Addr) int {
+	return len(a)
+}
