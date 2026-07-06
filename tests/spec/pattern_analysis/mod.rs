@@ -1138,6 +1138,48 @@ fn test(xs: Slice<int>, ys: Slice<Void>) -> int {
 }
 
 #[test]
+fn test_array_of_never_field_no_redundancy_check() {
+    let input = r#"
+struct Uninhabited {
+  n: Array<Never, 1>,
+  m: int,
+}
+
+fn test(s: Uninhabited) -> int {
+  match s {
+    Uninhabited { m, .. } => m,
+    Uninhabited { m: x, .. } => x,
+  }
+}
+"#;
+    infer(input).assert_no_errors();
+}
+
+#[test]
+fn test_zero_length_array_of_never_is_inhabited() {
+    let input = r#"
+fn test(arr: Array<Never, 0>) -> int {
+  match arr {
+    [] => 0,
+  }
+}
+"#;
+    infer(input).assert_no_errors();
+}
+
+#[test]
+fn test_array_of_never_nonempty_subject_is_uninhabited() {
+    let input = r#"
+fn test(arr: Array<Never, 1>) -> int {
+  match arr {
+    [_] => 0,
+  }
+}
+"#;
+    infer(input).assert_no_errors();
+}
+
+#[test]
 fn test_guard_if_true_not_exhaustive() {
     let input = r#"
 match 42 {

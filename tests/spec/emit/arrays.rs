@@ -1,6 +1,51 @@
 use crate::assert_emit_snapshot;
 
 #[test]
+fn array_let_destructure() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> int {
+  let [a, b, c] = arr
+  a + b + c
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_match_destructure() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> int {
+  match arr {
+    [a, b, c] => a + b + c
+  }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_rest_pattern_binds_sub_array() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> Array<int, 2> {
+  let [_first, ..rest] = arr
+  rest
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_let_else_rest_declares_sub_array() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> Array<int, 2> {
+  let [0, ..rest] = arr else { return [9, 9] }
+  rest
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn array_literal() {
     let input = r#"
 fn test() -> Array<int, 3> {

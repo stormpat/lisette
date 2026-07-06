@@ -1,10 +1,10 @@
 use crate::passes::walk::NodeCtx;
 use syntax::ast::{Pattern, RestPattern};
 
-pub fn check_rest_only_slice_pattern(pattern: &Pattern, ctx: &NodeCtx) {
+pub fn check_rest_only_pattern(pattern: &Pattern, ctx: &NodeCtx) {
     if let Pattern::Or { patterns, .. } = pattern {
         for p in patterns {
-            check_rest_only_slice_pattern(p, ctx);
+            check_rest_only_pattern(p, ctx);
         }
         return;
     }
@@ -23,6 +23,6 @@ pub fn check_rest_only_slice_pattern(pattern: &Pattern, ctx: &NodeCtx) {
         };
 
         ctx.sink
-            .push(diagnostics::lint::rest_only_slice_pattern(span, help));
+            .push(diagnostics::lint::rest_only_pattern(span, help));
     }
 }

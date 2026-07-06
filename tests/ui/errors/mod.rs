@@ -4812,6 +4812,51 @@ fn test() {
 }
 
 #[test]
+fn infer_array_size_too_large() {
+    let input = r#"
+fn f(x: Array<int, 18000000000000000000>) {}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_array_pattern_length_mismatch() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> int {
+  let [a, b] = arr
+  a
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_array_match_non_exhaustive_witness() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> int {
+  match arr {
+    [0, ..] => 1
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_array_match_non_exhaustive_full_witness_no_trailing_rest() {
+    let input = r#"
+fn f(arr: Array<bool, 2>) -> int {
+  match arr {
+    [true, true] => 3,
+    [true, false] => 2,
+    [false, true] => 1,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_irrefutable_while_let() {
     let input = r#"
 fn test() {

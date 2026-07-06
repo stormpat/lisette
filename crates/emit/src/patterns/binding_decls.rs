@@ -505,15 +505,24 @@ impl Planner<'_> {
                 prefix: tp,
                 element_type,
                 ..
+            })
+            | Some(TypedPattern::Array {
+                prefix: tp,
+                element_type,
+                ..
             }) => (element_type.clone(), Some(tp.as_slice())),
             _ => {
-                let Type::Nominal { params, .. } = resolved else {
-                    return;
-                };
-                let Some(element) = params.first().cloned() else {
-                    return;
-                };
-                (element, None)
+                if let Type::Array { element, .. } = resolved {
+                    (element.as_ref().clone(), None)
+                } else {
+                    let Type::Nominal { params, .. } = resolved else {
+                        return;
+                    };
+                    let Some(element) = params.first().cloned() else {
+                        return;
+                    };
+                    (element, None)
+                }
             }
         };
 
@@ -530,7 +539,18 @@ impl Planner<'_> {
         if let RestPattern::Bind { name, .. } = rest
             && let Some(go_name) = self.go_name_for_rest_binding(rest)
         {
-            self.declare_var_declaration(statements, name, go_name, resolved);
+            let rest_ty = match typed {
+                Some(TypedPattern::Array {
+                    length,
+                    element_type,
+                    ..
+                }) => Type::Array {
+                    length: length.saturating_sub(prefix.len() as u64),
+                    element: Box::new(element_type.clone()),
+                },
+                _ => resolved.clone(),
+            };
+            self.declare_var_declaration(statements, name, go_name, &rest_ty);
         }
     }
 

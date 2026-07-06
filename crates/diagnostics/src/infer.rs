@@ -3285,6 +3285,23 @@ pub fn array_length_mismatch(expected: u64, actual: u64, span: Span) -> LisetteD
         .with_help("Fixed-size arrays of different lengths are distinct types")
 }
 
+pub fn array_pattern_length_mismatch(
+    expected: u64,
+    actual: usize,
+    has_rest: bool,
+    span: Span,
+) -> LisetteDiagnostic {
+    let label = if has_rest {
+        format!("found {actual} elements, expected at most {expected}")
+    } else {
+        format!("found {actual} elements, expected {expected}")
+    };
+    LisetteDiagnostic::error("Array pattern length mismatch")
+        .with_infer_code("array_pattern_length_mismatch")
+        .with_span_label(&span, label)
+        .with_help("Bind every element in the array, or use `..` to ignore the rest")
+}
+
 pub fn array_literal_length_mismatch(
     expected: u64,
     actual: usize,

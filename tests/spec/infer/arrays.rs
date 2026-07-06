@@ -214,3 +214,62 @@ fn user_generic_param_array_size_in_struct_field_errors() {
     infer("struct Buf<SIZE> { data: Array<int, SIZE> }")
         .assert_infer_code("array_size_not_literal");
 }
+
+#[test]
+fn array_full_length_destructure_is_irrefutable() {
+    infer("fn f(arr: Array<int, 3>) -> int { let [a, b, c] = arr; a + b + c }").assert_no_errors();
+}
+
+#[test]
+fn array_match_full_length_is_exhaustive() {
+    infer("fn f(arr: Array<int, 3>) -> int { match arr { [a, b, c] => a + b + c } }")
+        .assert_no_errors();
+}
+
+#[test]
+fn array_pattern_too_few_elements_errors() {
+    infer("fn f(arr: Array<int, 3>) -> int { let [a, b] = arr; a }")
+        .assert_infer_code("array_pattern_length_mismatch");
+}
+
+#[test]
+fn array_match_literal_element_is_not_exhaustive() {
+    infer("fn f(arr: Array<int, 2>) -> int { match arr { [0, y] => y } }")
+        .assert_infer_code("non_exhaustive");
+}
+
+#[test]
+fn array_rest_pattern_binds_sub_array() {
+    infer("{ let arr: Array<int, 3> = [1, 2, 3]; let [_first, ..rest] = arr; rest }")
+        .assert_last_type(array_type(2, int_type()));
+}
+
+#[test]
+fn nested_array_destructure() {
+    infer("fn f(m: Array<Array<int, 2>, 2>) -> int { let [[a, b], [c, d]] = m; a + b + c + d }")
+        .assert_no_errors();
+}
+
+#[test]
+fn array_alias_destructure_peels_to_array() {
+    infer("type Vec3 = Array<int, 3>\nfn f(v: Vec3) -> int { let [a, b, c] = v; a + b + c }")
+        .assert_no_errors();
+}
+
+#[test]
+fn huge_array_rest_pattern_terminates() {
+    infer("fn f(arr: Array<int, 2000000000>) -> int { let [head, ..rest] = arr; head }")
+        .assert_no_errors();
+}
+
+#[test]
+fn array_rest_arm_makes_full_arm_redundant() {
+    infer("fn f(arr: Array<int, 3>) -> int { match arr { [_, ..] => 1, [a, b, c] => 2 } }")
+        .assert_infer_code("redundant_arm");
+}
+
+#[test]
+fn large_array_literal_arm_is_not_exhaustive() {
+    infer("fn f(arr: Array<int, 1000>) -> int { match arr { [0, ..] => 1 } }")
+        .assert_infer_code("non_exhaustive");
+}

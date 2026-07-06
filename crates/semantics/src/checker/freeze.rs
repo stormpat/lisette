@@ -486,6 +486,16 @@ impl<'a> FreezeFolder<'a> {
                     self.freeze_typed_pattern(p);
                 }
             }
+            TypedPattern::Array {
+                element_type,
+                prefix,
+                ..
+            } => {
+                self.freeze_ty(element_type);
+                for p in prefix {
+                    self.freeze_typed_pattern(p);
+                }
+            }
             TypedPattern::Tuple { elements, .. } => {
                 for e in elements {
                     self.freeze_typed_pattern(e);

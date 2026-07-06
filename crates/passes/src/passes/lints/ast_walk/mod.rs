@@ -46,7 +46,7 @@ use checks::{
     check_redundant_fstring_conversion, check_redundant_guards, check_redundant_operation,
     check_redundant_pattern_matching, check_redundant_rebinding, check_redundant_slice_bounds,
     check_redundant_sprintf, check_regexp_in_loop, check_replaceable_with_zero_fill,
-    check_rest_only_slice_pattern, check_self_assignment, check_self_comparison,
+    check_rest_only_pattern, check_self_assignment, check_self_comparison,
     check_self_named_constructors, check_single_arm_select, check_single_element_loop,
     check_type_limit_comparison, check_uninterpolated_fstring, check_unnecessary_bool,
     check_unnecessary_first_then_check, check_unnecessary_lazy_evaluations,
@@ -177,7 +177,7 @@ static LINT_CHECKS: LazyLock<CheckTable> = LazyLock::new(|| {
         ],
         &[
             (
-                check_rest_only_slice_pattern,
+                check_rest_only_pattern,
                 &[PatternKind::Slice, PatternKind::Or],
             ),
             (check_wildcard_in_or_patterns, &[PatternKind::Or]),

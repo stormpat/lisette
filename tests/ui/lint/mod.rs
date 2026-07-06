@@ -8215,7 +8215,7 @@ fn main() {
 }
 
 #[test]
-fn rest_only_slice_pattern_discard() {
+fn rest_only_pattern_discard() {
     assert_lint_snapshot!(
         r#"
 pub fn test(slice: Slice<int>) {
@@ -8226,12 +8226,24 @@ pub fn test(slice: Slice<int>) {
 }
 
 #[test]
-fn rest_only_slice_pattern_bind() {
+fn rest_only_pattern_bind() {
     assert_lint_snapshot!(
         r#"
 pub fn test(slice: Slice<int>) {
   let [..rest] = slice;
   let _ = rest
+}
+"#
+    );
+}
+
+#[test]
+fn rest_only_pattern_array() {
+    assert_lint_snapshot!(
+        r#"
+pub fn test(arr: Array<int, 3>) {
+  let [..all] = arr;
+  let _ = all
 }
 "#
     );

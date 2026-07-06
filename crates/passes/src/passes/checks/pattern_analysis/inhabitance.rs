@@ -91,6 +91,7 @@ pub fn is_inhabited(ty: &Type, store: &Store, cache: &InhabitanceCache) -> bool 
     let result = match ty {
         Type::Nominal { id, params, .. } => check_constructor_inhabited(id, params, store, cache),
         Type::Forall { body, .. } => is_inhabited(body, store, cache),
+        Type::Array { length, element } => *length == 0 || is_inhabited(element, store, cache),
         _ => true,
     };
 

@@ -12756,6 +12756,28 @@ async fn inlay_hint_match_slice_prefix_and_rest() {
 }
 
 #[tokio::test]
+async fn inlay_hint_nested_array_rest_binds_sub_array() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source =
+        "fn f(m: Array<Array<int, 3>, 1>) -> int { match m { [[first, ..rest]] => first[0] } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    let labels: Vec<String> = inlay_hint_triples(&hints)
+        .into_iter()
+        .map(|(_, _, label)| label)
+        .collect();
+    assert!(
+        labels.contains(&": Array<int, 2>".to_string()),
+        "nested array rest should bind Array<int, 2>, got {labels:?}"
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
 async fn inlay_hint_lambda_return_over_index_body() {
     let mut client = TestClient::new().await;
     client.initialize().await;

@@ -28,6 +28,10 @@ pub fn format_witness(pattern: &NormalizedPattern) -> String {
                 return format!("({})", formatted_args);
             }
 
+            if type_name.starts_with("Array") {
+                return format_array_pattern(pattern, format_witness);
+            }
+
             let display_tag = strip_module_prefix(tag);
 
             if display_tag == INTERFACE_UNKNOWN_TAG {
@@ -78,6 +82,10 @@ pub fn format_pattern(pattern: &NormalizedPattern) -> String {
                 return format!("({})", formatted_args);
             }
 
+            if type_name.starts_with("Array") {
+                return format_array_pattern(pattern, format_pattern);
+            }
+
             let display_tag = strip_module_prefix(tag);
 
             if display_tag == INTERFACE_UNKNOWN_TAG {
@@ -96,6 +104,59 @@ pub fn format_pattern(pattern: &NormalizedPattern) -> String {
             }
         }
     }
+}
+
+fn format_array_pattern(
+    pattern: &NormalizedPattern,
+    format_element: fn(&NormalizedPattern) -> String,
+) -> String {
+    let mut elements = Vec::new();
+    let mut current = pattern;
+    let mut ends_with_rest = false;
+
+    loop {
+        match current {
+            NormalizedPattern::Constructor { tag, .. } if tag == "ArrayNil" => break,
+            NormalizedPattern::Constructor {
+                tag,
+                args,
+                type_name,
+            } if tag == "ArrayCons" && args.len() >= 2 => {
+                elements.push(format_element(&args[0]));
+                if matches!(args[1], NormalizedPattern::Wildcard) {
+                    ends_with_rest = array_tail_length(type_name) > 0;
+                    break;
+                }
+                current = &args[1];
+            }
+            NormalizedPattern::Wildcard => {
+                ends_with_rest = true;
+                break;
+            }
+            _ => {
+                elements.push(format_element(current));
+                break;
+            }
+        }
+    }
+
+    if ends_with_rest {
+        elements.push("..".to_string());
+    }
+
+    format!("[{}]", elements.join(", "))
+}
+
+fn array_tail_length(type_name: &str) -> u64 {
+    type_name
+        .strip_prefix("Array")
+        .map(|rest| {
+            rest.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        })
+        .and_then(|digits| digits.parse::<u64>().ok())
+        .map_or(0, |length| length.saturating_sub(1))
 }
 
 fn format_literal(lit: &Literal) -> String {

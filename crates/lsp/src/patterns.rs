@@ -110,21 +110,40 @@ pub(crate) fn get_pattern_element_type(
             },
             typed,
         ) => {
-            let elem_type = match typed {
-                Some(TypedPattern::Slice { element_type, .. }) => element_type,
-                _ => element_ty,
+            let (elem_type, typed_prefix) = match typed {
+                Some(TypedPattern::Slice {
+                    element_type,
+                    prefix: typed_prefix,
+                    ..
+                })
+                | Some(TypedPattern::Array {
+                    element_type,
+                    prefix: typed_prefix,
+                    ..
+                }) => (element_type, Some(typed_prefix)),
+                _ => (element_ty, None),
             };
 
             prefix
                 .iter()
-                .find_map(|elem| get_pattern_element_type(elem, None, elem_type, offset))
+                .enumerate()
+                .find_map(|(i, elem)| {
+                    let typed_elem = typed_prefix.and_then(|tp| tp.get(i));
+                    get_pattern_element_type(elem, typed_elem, elem_type, offset)
+                })
                 .or_else(|| {
                     if let RestPattern::Bind { span, .. } = rest
                         && offset >= span.byte_offset
                         && offset < span.byte_offset + span.byte_length
                     {
-                        let slice_ty = Type::compound(CompoundKind::Slice, vec![elem_type.clone()]);
-                        Some((slice_ty, *span))
+                        let rest_ty = match typed {
+                            Some(TypedPattern::Array { length, .. }) => Type::Array {
+                                length: length.saturating_sub(prefix.len() as u64),
+                                element: Box::new(elem_type.clone()),
+                            },
+                            _ => Type::compound(CompoundKind::Slice, vec![elem_type.clone()]),
+                        };
+                        Some((rest_ty, *span))
                     } else {
                         None
                     }

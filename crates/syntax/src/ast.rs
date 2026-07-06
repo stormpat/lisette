@@ -453,6 +453,11 @@ pub enum TypedPattern {
         has_rest: bool,
         element_type: Type,
     },
+    Array {
+        prefix: Vec<TypedPattern>,
+        element_type: Type,
+        length: u64,
+    },
     Tuple {
         arity: usize,
         elements: Vec<TypedPattern>,
