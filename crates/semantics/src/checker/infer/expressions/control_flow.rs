@@ -660,7 +660,7 @@ impl InferCtx<'_, '_> {
             // Array yields its element directly (not via `get_type_params`).
             // A `Ref<Array>` peers to "Array" here but must be deref'd first.
             "Array" => match &resolved_iterable_ty {
-                Type::Array { elem, .. } => elem.as_ref().clone(),
+                Type::Array { element, .. } => element.as_ref().clone(),
                 _ => {
                     self.sink.push(diagnostics::infer::not_iterable(
                         &resolved_iterable_ty,

@@ -75,10 +75,10 @@ impl TaskState<'_> {
         }
     }
 
-    pub fn type_array(&mut self, len: u64, element_type: Type) -> Type {
+    pub fn type_array(&mut self, length: u64, element_type: Type) -> Type {
         Type::Array {
-            len,
-            elem: Box::new(element_type),
+            length,
+            element: Box::new(element_type),
         }
     }
 

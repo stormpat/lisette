@@ -194,8 +194,8 @@ impl Planner<'_> {
             }
             (NativeGoType::Array, "new") => {
                 let peeled = ctx.call_ty.map(|t| self.facts.peel_alias(t));
-                if let Some(syntax::types::Type::Array { len, elem }) = &peeled {
-                    Some((Vec::new(), self.array_zero(*len, elem)))
+                if let Some(syntax::types::Type::Array { length, element }) = &peeled {
+                    Some((Vec::new(), self.array_zero(*length, element)))
                 } else {
                     None
                 }

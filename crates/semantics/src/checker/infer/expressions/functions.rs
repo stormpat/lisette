@@ -526,7 +526,7 @@ impl InferCtx<'_, '_> {
         let resolved = if type_args.is_empty() {
             let peeled = store.peel_alias(&expected_ty.resolve_in(&self.env));
             match peeled {
-                Type::Array { len, elem } => Some((elem.as_ref().clone(), len)),
+                Type::Array { length, element } => Some((element.as_ref().clone(), length)),
                 _ => {
                     self.sink
                         .push(diagnostics::infer::array_new_cannot_infer_size(span));

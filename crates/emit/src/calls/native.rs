@@ -344,9 +344,9 @@ impl Planner<'_> {
         // param needs no addressability (unlike `arr[:]`).
         if matches!(ctx.native_type, NativeGoType::Array) && ctx.method == "as_slice" {
             let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
-            if let Type::Array { elem, .. } = &receiver_ty {
+            if let Type::Array { element, .. } = &receiver_ty {
                 let arr_go = self.go_type_string(&receiver_ty);
-                let elem_go = self.go_type_string(elem);
+                let elem_go = self.go_type_string(element);
                 let (setup, receiver, _) = self.stage_native_dot_access_call(ctx);
                 let body = format!(
                     "func(a {arr_go}) []{elem_go} {{ out := make([]{elem_go}, len(a)); for i := range a {{ out[i] = a[i] }}; return out }}({receiver})"
@@ -361,9 +361,9 @@ impl Planner<'_> {
         // would otherwise reject as out of range even inside the guard.
         if matches!(ctx.native_type, NativeGoType::Array) && ctx.method == "get" {
             let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
-            if let Type::Array { elem, .. } = &receiver_ty {
+            if let Type::Array { element, .. } = &receiver_ty {
                 let arr_go = self.go_type_string(&receiver_ty);
-                let elem_go = self.go_type_string(elem);
+                let elem_go = self.go_type_string(element);
                 let pkg = go_name::GO_STDLIB_PKG;
                 self.require_stdlib();
                 let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);

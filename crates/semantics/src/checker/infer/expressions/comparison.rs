@@ -95,8 +95,8 @@ pub fn check_not_comparable(env: &TypeEnv, store: &Store, ty: &Type) -> Option<&
     }
 
     // Arrays are comparable iff their element is (Go's rule).
-    if let Type::Array { elem, .. } = ty
-        && check_not_comparable(env, store, &elem.resolve_in(env)).is_some()
+    if let Type::Array { element, .. } = ty
+        && check_not_comparable(env, store, &element.resolve_in(env)).is_some()
     {
         return Some("an array containing non-comparable elements");
     }
@@ -301,7 +301,7 @@ impl InferCtx<'_, '_> {
             Type::Parameter(name) => {
                 self.parameter_satisfies_bound(name, super::super::unify::BuiltinBound::Comparable)
             }
-            Type::Array { elem, .. } => self.is_comparable_with_param_bounds(elem),
+            Type::Array { element, .. } => self.is_comparable_with_param_bounds(element),
             _ => check_not_comparable(&self.env, self.store, &resolved).is_none(),
         }
     }

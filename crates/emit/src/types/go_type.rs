@@ -76,9 +76,9 @@ impl Planner<'_> {
             Type::Never => GoType::new("struct{}"),
             Type::Error => unreachable!("Type::Error should not reach the emitter"),
             Type::Tuple(elements) => self.emit_tuple_type(elements),
-            Type::Array { len, elem } => {
-                let inner = self.go_type(elem);
-                let mut result = GoType::new(format!("[{}]{}", len, inner.code));
+            Type::Array { length, element } => {
+                let inner = self.go_type(element);
+                let mut result = GoType::new(format!("[{}]{}", length, inner.code));
                 result.merge(&inner);
                 result
             }

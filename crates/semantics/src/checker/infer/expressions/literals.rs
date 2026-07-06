@@ -132,13 +132,13 @@ impl InferCtx<'_, '_> {
 
                 // In an array context a list literal builds a fixed-size array;
                 // the element count must equal the declared length.
-                if let Type::Array { len, elem } = &resolved {
-                    let len = *len;
-                    let elem_expected_ty = elem.as_ref().clone();
-                    if elements.len() as u64 != len {
+                if let Type::Array { length, element } = &resolved {
+                    let expected_length = *length;
+                    let elem_expected_ty = element.as_ref().clone();
+                    if elements.len() as u64 != expected_length {
                         self.sink
                             .push(diagnostics::infer::array_literal_length_mismatch(
-                                len,
+                                expected_length,
                                 elements.len(),
                                 span,
                             ));
@@ -149,7 +149,7 @@ impl InferCtx<'_, '_> {
                             self.with_value_context(|s| s.infer_expression(e, &elem_expected_ty))
                         })
                         .collect();
-                    let array_ty = self.type_array(len, elem_expected_ty);
+                    let array_ty = self.type_array(expected_length, elem_expected_ty);
                     self.unify(expected_ty, &array_ty, &span);
                     return Expression::Literal {
                         literal: Literal::Slice(new_elements),

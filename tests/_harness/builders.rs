@@ -58,10 +58,10 @@ pub fn tuple_type(types: Vec<Type>) -> Type {
     Type::Tuple(types)
 }
 
-pub fn array_type(len: u64, elem: Type) -> Type {
+pub fn array_type(length: u64, element: Type) -> Type {
     Type::Array {
-        len,
-        elem: Box::new(elem),
+        length,
+        element: Box::new(element),
     }
 }
 

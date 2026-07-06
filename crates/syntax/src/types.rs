@@ -260,9 +260,9 @@ pub fn substitute(ty: &Type, map: &HashMap<EcoString, Type>) -> Type {
             }
         }
         Type::Tuple(elements) => Type::Tuple(elements.iter().map(|e| substitute(e, map)).collect()),
-        Type::Array { len, elem } => Type::Array {
-            len: *len,
-            elem: Box::new(substitute(elem, map)),
+        Type::Array { length, element } => Type::Array {
+            length: *length,
+            element: Box::new(substitute(element, map)),
         },
         Type::Compound { kind, args } => Type::Compound {
             kind: *kind,
@@ -416,8 +416,8 @@ pub enum Type {
     /// Fixed-size array `Array<T, N>`, lowered to Go `[N]T`. The length is part
     /// of the type, so different-length arrays never unify.
     Array {
-        len: u64,
-        elem: Box<Type>,
+        length: u64,
+        element: Box<Type>,
     },
 
     /// Poison type returned after an error has been reported.
@@ -465,10 +465,10 @@ impl std::fmt::Debug for Type {
             Type::Parameter(name) => f.debug_tuple("Parameter").field(name).finish(),
             Type::Never => write!(f, "Never"),
             Type::Tuple(elements) => f.debug_tuple("Tuple").field(elements).finish(),
-            Type::Array { len, elem } => f
+            Type::Array { length, element } => f
                 .debug_struct("Array")
-                .field("len", len)
-                .field("elem", elem)
+                .field("length", length)
+                .field("element", element)
                 .finish(),
             Type::Error => write!(f, "Error"),
             Type::ImportNamespace(module_id) => {
@@ -517,14 +517,14 @@ impl PartialEq for Type {
             (Type::Tuple(elems1), Type::Tuple(elems2)) => elems1 == elems2,
             (
                 Type::Array {
-                    len: len1,
-                    elem: elem1,
+                    length: length1,
+                    element: element1,
                 },
                 Type::Array {
-                    len: len2,
-                    elem: elem2,
+                    length: length2,
+                    element: element2,
                 },
-            ) => len1 == len2 && elem1 == elem2,
+            ) => length1 == length2 && element1 == element2,
             (Type::ImportNamespace(m1), Type::ImportNamespace(m2)) => m1 == m2,
             (Type::ReceiverPlaceholder, Type::ReceiverPlaceholder) => true,
             (Type::Simple(k1), Type::Simple(k2)) => k1 == k2,
@@ -669,7 +669,7 @@ impl Type {
                 c
             }
             Type::Tuple(elements) => elements.iter().collect(),
-            Type::Array { elem, .. } => vec![elem],
+            Type::Array { element, .. } => vec![element],
             Type::Forall { body, .. } => vec![body],
             _ => vec![],
         }
@@ -1008,7 +1008,7 @@ impl Type {
 
     pub fn array_len(&self) -> Option<u64> {
         match self {
-            Type::Array { len, .. } => Some(*len),
+            Type::Array { length, .. } => Some(*length),
             _ => None,
         }
     }
@@ -1077,7 +1077,7 @@ impl Type {
                 f.params.iter().any(|p| p.contains_unknown()) || f.return_type.contains_unknown()
             }
             Type::Tuple(elements) => elements.iter().any(|e| e.contains_unknown()),
-            Type::Array { elem, .. } => elem.contains_unknown(),
+            Type::Array { element, .. } => element.contains_unknown(),
             Type::Nominal { params, .. } => params.iter().any(|p| p.contains_unknown()),
             Type::Forall { body, .. } => body.contains_unknown(),
             _ => false,
@@ -1277,7 +1277,7 @@ impl Type {
                 f.params.iter().any(Type::contains_error) || f.return_type.contains_error()
             }
             Type::Tuple(elements) => elements.iter().any(Type::contains_error),
-            Type::Array { elem, .. } => elem.contains_error(),
+            Type::Array { element, .. } => element.contains_error(),
             Type::Forall { body, .. } => body.contains_error(),
             _ => false,
         }
@@ -1293,7 +1293,7 @@ impl Type {
             }
             Type::Forall { body, .. } => body.has_unbound_variables(),
             Type::Tuple(elements) => elements.iter().any(|e| e.has_unbound_variables()),
-            Type::Array { elem, .. } => elem.has_unbound_variables(),
+            Type::Array { element, .. } => element.has_unbound_variables(),
             Type::Compound { args, .. } => args.iter().any(|a| a.has_unbound_variables()),
             Type::Simple(_)
             | Type::Parameter(_)
@@ -1344,9 +1344,9 @@ impl Type {
                     arg.remove_found_type_names(names);
                 }
             }
-            Type::Array { elem, .. } => {
+            Type::Array { element, .. } => {
                 names.remove("Array");
-                elem.remove_found_type_names(names);
+                element.remove_found_type_names(names);
             }
             Type::Simple(kind) => {
                 names.remove(kind.leaf_name());
@@ -1674,9 +1674,9 @@ impl Type {
                     .map(|a| Self::remove_vars_impl(a, vars))
                     .collect(),
             },
-            Type::Array { len, elem } => Type::Array {
-                len: *len,
-                elem: Box::new(Self::remove_vars_impl(elem, vars)),
+            Type::Array { length, element } => Type::Array {
+                length: *length,
+                element: Box::new(Self::remove_vars_impl(element, vars)),
             },
             Type::Simple(_) | Type::Parameter(_) => ty.clone(),
             Type::Never | Type::Error | Type::ImportNamespace(_) | Type::ReceiverPlaceholder => {
@@ -1698,7 +1698,7 @@ impl Type {
             Type::Var { .. } => false,
             Type::Forall { body, .. } => body.contains_type(target),
             Type::Tuple(elements) => elements.iter().any(|e| e.contains_type(target)),
-            Type::Array { elem, .. } => elem.contains_type(target),
+            Type::Array { element, .. } => element.contains_type(target),
             Type::Compound { args, .. } => args.iter().any(|a| a.contains_type(target)),
             Type::Simple(_)
             | Type::Parameter(_)

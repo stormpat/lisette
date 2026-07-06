@@ -82,8 +82,8 @@ impl Type {
                 format!("({})", formatted)
             }
 
-            Type::Array { len, elem } => {
-                format!("Array<{}, {}>", elem.stringify(), len)
+            Type::Array { length, element } => {
+                format!("Array<{}, {}>", element.stringify(), length)
             }
 
             Type::Error => "<error>".to_string(),

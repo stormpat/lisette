@@ -294,8 +294,8 @@ impl TaskState<'_> {
             return Type::Error;
         }
 
-        let elem = self.convert_to_type(store, &params[0], span);
-        if elem.contains_error() {
+        let element = self.convert_to_type(store, &params[0], span);
+        if element.contains_error() {
             return Type::Error;
         }
 
@@ -312,8 +312,8 @@ impl TaskState<'_> {
                 return Type::Error;
             }
             return Type::Array {
-                len: *value,
-                elem: Box::new(elem),
+                length: *value,
+                element: Box::new(element),
             };
         }
 
@@ -330,7 +330,7 @@ impl TaskState<'_> {
         {
             return Type::Nominal {
                 id: Symbol::from_parts("prelude", "Array"),
-                params: vec![elem, Type::Parameter(name.clone())],
+                params: vec![element, Type::Parameter(name.clone())],
                 underlying_ty: None,
             };
         }
@@ -539,8 +539,8 @@ impl TaskState<'_> {
             Some("slices")
         } else if resolved.has_name("Map") {
             Some("maps")
-        } else if let Type::Array { elem, .. } = &resolved {
-            self.map_key_non_comparable_reason(store, elem)
+        } else if let Type::Array { element, .. } = &resolved {
+            self.map_key_non_comparable_reason(store, element)
                 .map(|_| "arrays with non-comparable elements")
         } else {
             None

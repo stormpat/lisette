@@ -723,7 +723,7 @@ fn walk_type(
                 walk_type(module, a, graph, alias_map, from);
             }
         }
-        Type::Array { elem, .. } => walk_type(module, elem, graph, alias_map, from),
+        Type::Array { element, .. } => walk_type(module, element, graph, alias_map, from),
         Type::Simple(_)
         | Type::Var { .. }
         | Type::Parameter(_)

@@ -94,11 +94,11 @@ fn has_zero_seen(
             }
             Ok(())
         }
-        Type::Array { len, elem } => {
-            if *len == 0 {
+        Type::Array { length, element } => {
+            if *length == 0 {
                 Ok(())
             } else {
-                has_zero_seen(store, elem, from_module, visited)
+                has_zero_seen(store, element, from_module, visited)
             }
         }
         Type::Function(_) => Err(NoZero {

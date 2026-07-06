@@ -235,31 +235,31 @@ impl InferCtx<'_, '_> {
 
             (
                 Type::Array {
-                    len: len1,
-                    elem: elem1,
+                    length: length1,
+                    element: element1,
                 },
                 Type::Array {
-                    len: len2,
-                    elem: elem2,
+                    length: length2,
+                    element: element2,
                 },
             ) => {
-                if len1 != len2 {
+                if length1 != length2 {
                     return Err(UnifyError::ArityMismatch);
                 }
-                let elem1 = elem1.as_ref().clone();
-                let elem2 = elem2.as_ref().clone();
-                self.try_unify(&elem1, &elem2, span)
+                let element1 = element1.as_ref().clone();
+                let element2 = element2.as_ref().clone();
+                self.try_unify(&element1, &element2, span)
             }
 
             // Bridge the phantom `prelude.Array` self-type (prelude method sigs
             // only) to the real `Type::Array`: unify the element, ignore the size.
-            (Type::Array { elem, .. }, Nominal { id, params, .. })
-            | (Nominal { id, params, .. }, Type::Array { elem, .. })
+            (Type::Array { element, .. }, Nominal { id, params, .. })
+            | (Nominal { id, params, .. }, Type::Array { element, .. })
                 if id.as_str() == "prelude.Array" =>
             {
-                let elem = elem.as_ref().clone();
+                let element = element.as_ref().clone();
                 match params.first().cloned() {
-                    Some(nominal_elem) => self.try_unify(&elem, &nominal_elem, span),
+                    Some(nominal_elem) => self.try_unify(&element, &nominal_elem, span),
                     None => Ok(()),
                 }
             }

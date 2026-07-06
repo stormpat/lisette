@@ -64,7 +64,9 @@ impl Planner<'_> {
     ) -> (Vec<LoweredStatement>, String) {
         // A list literal builds a slice or a fixed-size array, per its type.
         let (element_lisette_ty, type_prefix, is_array) = match ty {
-            Type::Array { len, elem } => (elem.as_ref().clone(), format!("[{}]", len), true),
+            Type::Array { length, element } => {
+                (element.as_ref().clone(), format!("[{}]", length), true)
+            }
             _ => (
                 ty.get_type_params()
                     .expect("Slice type must have type args")

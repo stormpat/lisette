@@ -323,7 +323,7 @@ impl Planner<'_> {
                     parts.join(", ")
                 )
             }
-            Type::Array { len, elem } => self.array_zero(*len, elem),
+            Type::Array { length, element } => self.array_zero(*length, element),
             _ => format!("{}{{}}", self.go_type_string(ty)),
         }
     }
@@ -399,7 +399,7 @@ impl Planner<'_> {
                 kind: CompoundKind::Slice,
                 ..
             } => true,
-            Type::Array { elem, .. } => self.array_element_go_zero_ok(elem),
+            Type::Array { element, .. } => self.array_element_go_zero_ok(element),
             Type::Tuple(elements) => elements.iter().all(|e| self.array_element_go_zero_ok(e)),
             _ => false,
         }
