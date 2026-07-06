@@ -11,6 +11,7 @@ use semantics::inference::{AnalyzeInput, CompilePhase, SemanticConfig};
 use syntax::desugar;
 use syntax::lex::Lexer;
 use syntax::parse::Parser;
+use syntax::types::{CompoundKind, Type};
 
 use crate::paths::{module_id_to_dir, uri_to_module_file};
 use crate::position::LineIndex;
@@ -18,20 +19,20 @@ use crate::snapshot::AnalysisSnapshot;
 use crate::state::{CachedSnapshot, SharedState};
 
 /// Extract the constructor type name, unwrapping `Ref<T>` and peeling aliases.
-pub(crate) fn type_name(ty: &syntax::types::Type) -> Option<String> {
+pub(crate) fn type_name(ty: &Type) -> Option<String> {
     match ty {
-        syntax::types::Type::Nominal {
+        Type::Nominal {
             underlying_ty: Some(u),
             ..
         } => type_name(u),
-        syntax::types::Type::Nominal { id, .. } => Some(id.to_string()),
-        syntax::types::Type::Compound {
-            kind: syntax::types::CompoundKind::Ref,
+        Type::Nominal { id, .. } => Some(id.to_string()),
+        Type::Compound {
+            kind: CompoundKind::Ref,
             args,
         } => args.first().and_then(type_name),
-        syntax::types::Type::Compound { kind, .. } => Some(format!("prelude.{}", kind.leaf_name())),
-        syntax::types::Type::Simple(kind) => Some(format!("prelude.{}", kind.leaf_name())),
-        syntax::types::Type::Array { .. } => Some("prelude.Array".to_string()),
+        Type::Compound { kind, .. } => Some(format!("prelude.{}", kind.leaf_name())),
+        Type::Simple(kind) => Some(format!("prelude.{}", kind.leaf_name())),
+        Type::Array { .. } => Some("prelude.Array".to_string()),
         _ => None,
     }
 }

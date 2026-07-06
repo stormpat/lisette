@@ -154,8 +154,8 @@ pub(crate) fn detect_dot_context(
         return None;
     };
 
-    // `Array` is a reserved builtin type; `Array.x` is always type-level. Must
-    // run before the member check; a trailing `}` is slurped as a non-empty member.
+    // `Array.x` is always type-level. Runs before the member check, which would
+    // otherwise slurp a trailing `}` as a non-empty member.
     if matches!(expression.as_ref(), Expression::Identifier { value, .. } if value == "Array") {
         return Some(DotContext::TypeLevel("prelude.Array".to_string()));
     }

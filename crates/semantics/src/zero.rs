@@ -146,9 +146,8 @@ fn has_zero_nominal(
         return Ok(());
     }
 
-    // Cycle guard. A type already on the recursion path is a recursive value
-    // type (rejected separately as infinite-size); treat it as zero-having so
-    // the walk terminates instead of overflowing the stack.
+    // Cycle guard. A recursive value type is rejected elsewhere as infinite-size,
+    // so treat it as zero-having here to terminate the walk.
     if !visited.insert(id.to_string()) {
         return Ok(());
     }

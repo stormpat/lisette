@@ -113,8 +113,7 @@ impl TaskState<'_> {
                     return Type::Parameter(type_name.into());
                 }
 
-                // `Array` carries a const-integer size, so it can't use the
-                // generic prelude-resolution path.
+                // `Array` carries a const-integer size, so it needs its own path.
                 if type_name == "Array" {
                     return self.convert_array_annotation(store, params, *annotation_span, span);
                 }
@@ -264,7 +263,6 @@ impl TaskState<'_> {
             Annotation::Constant {
                 span: const_span, ..
             } => {
-                // Integers are valid only as an `Array` length.
                 self.sink
                     .push(diagnostics::infer::integer_in_type_position(*const_span));
                 Type::Error
@@ -288,7 +286,6 @@ impl TaskState<'_> {
                 params.len(),
                 annotation_span,
             ));
-            // Convert any present annotations for error recovery / name usage.
             for param in params {
                 let _ = self.convert_to_type(store, param, span);
             }
@@ -300,7 +297,6 @@ impl TaskState<'_> {
             return Type::Error;
         }
 
-        // A literal size is the actual fixed-size array.
         if let Annotation::Constant {
             value,
             span: size_span,
@@ -319,9 +315,8 @@ impl TaskState<'_> {
         }
 
         // A generic-param size is the phantom self-type for the prelude `Array`
-        // impl, held as the `prelude.Array` nominal. Gated to the prelude: anywhere
-        // else the nominal would leak into user types and crash emit, so user code
-        // keeps the literal-size error.
+        // impl. Gated to the prelude, since elsewhere the nominal would leak into
+        // user types and crash emit, so user code keeps the literal-size error.
         if self.cursor.module_id == PRELUDE_MODULE_ID
             && let Annotation::Constructor {
                 name, params: p, ..

@@ -864,17 +864,15 @@ fn collect_slice_checks(
     };
 
     if array_info.is_none() {
-        if rest.is_present() {
-            if !prefix.is_empty() {
-                collector.checks.push(Check::SliceLenGe {
-                    path: path.clone(),
-                    min_length: prefix.len(),
-                });
-            }
-        } else {
+        if !rest.is_present() {
             collector.checks.push(Check::SliceLenEq {
                 path: path.clone(),
                 length: prefix.len(),
+            });
+        } else if !prefix.is_empty() {
+            collector.checks.push(Check::SliceLenGe {
+                path: path.clone(),
+                min_length: prefix.len(),
             });
         }
     }
@@ -906,7 +904,7 @@ fn collect_slice_checks(
         let segment = match &array_info {
             Some((length, element_type)) => {
                 let sub_length = length.saturating_sub(prefix.len() as u64);
-                let sub_ty = syntax::types::Type::Array {
+                let sub_ty = Type::Array {
                     length: sub_length,
                     element: Box::new(element_type.clone()),
                 };

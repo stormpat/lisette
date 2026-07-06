@@ -322,40 +322,10 @@ impl Planner<'_> {
             }
         }
 
-        // `arr.as_slice()` copies the fixed-size array into a fresh `[]T`. The
-        // array is passed by value so the copy is independent, and an array
-        // param needs no addressability (unlike `arr[:]`).
-        if matches!(ctx.native_type, NativeGoType::Array) && ctx.method == "as_slice" {
-            let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
-            if let Type::Array { element, .. } = &receiver_ty {
-                let arr_go = self.go_type_string(&receiver_ty);
-                let elem_go = self.go_type_string(element);
-                let (setup, receiver, _) = self.stage_native_dot_access_call(ctx);
-                let body = format!(
-                    "func(a {arr_go}) []{elem_go} {{ out := make([]{elem_go}, len(a)); for i := range a {{ out[i] = a[i] }}; return out }}({receiver})"
-                );
-                return (setup, body);
-            }
-        }
-
-        // `arr.get(i)` returns `Option<T>` after a bounds check. No generic Go
-        // helper is possible (the size isn't a const generic), so it's inlined.
-        // Passing the index by value also launders a constant index, which Go
-        // would otherwise reject as out of range even inside the guard.
-        if matches!(ctx.native_type, NativeGoType::Array) && ctx.method == "get" {
-            let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
-            if let Type::Array { element, .. } = &receiver_ty {
-                let arr_go = self.go_type_string(&receiver_ty);
-                let elem_go = self.go_type_string(element);
-                let pkg = go_name::GO_STDLIB_PKG;
-                self.require_stdlib();
-                let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
-                let index = &emitted_args[0];
-                let body = format!(
-                    "func(a {arr_go}, i int) {pkg}.Option[{elem_go}] {{ if i >= 0 && i < len(a) {{ return {pkg}.MakeOptionSome(a[i]) }}; return {pkg}.MakeOptionNone[{elem_go}]() }}({receiver}, {index})"
-                );
-                return (setup, body);
-            }
+        if matches!(ctx.native_type, NativeGoType::Array)
+            && let Some(result) = self.lower_native_array_method(ctx, expression)
+        {
+            return result;
         }
 
         if ctx.method == "clone" {
@@ -399,6 +369,40 @@ impl Planner<'_> {
             setup,
             format!("{}{}({})", fn_name, type_args_string, new_args.join(", ")),
         )
+    }
+
+    fn lower_native_array_method(
+        &mut self,
+        ctx: &NativeCallContext,
+        expression: &Expression,
+    ) -> Option<(Vec<LoweredStatement>, String)> {
+        let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
+        let Type::Array { element, .. } = &receiver_ty else {
+            return None;
+        };
+        let arr_go = self.go_type_string(&receiver_ty);
+        let elem_go = self.go_type_string(element);
+
+        match ctx.method {
+            "as_slice" => {
+                let (setup, receiver, _) = self.stage_native_dot_access_call(ctx);
+                let body = format!(
+                    "func(a {arr_go}) []{elem_go} {{ out := make([]{elem_go}, len(a)); for i := range a {{ out[i] = a[i] }}; return out }}({receiver})"
+                );
+                Some((setup, body))
+            }
+            "get" => {
+                let pkg = go_name::GO_STDLIB_PKG;
+                self.require_stdlib();
+                let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
+                let index = &emitted_args[0];
+                let body = format!(
+                    "func(a {arr_go}, i int) {pkg}.Option[{elem_go}] {{ if i >= 0 && i < len(a) {{ return {pkg}.MakeOptionSome(a[i]) }}; return {pkg}.MakeOptionNone[{elem_go}]() }}({receiver}, {index})"
+                );
+                Some((setup, body))
+            }
+            _ => None,
+        }
     }
 
     /// Negated counterpart for dot-access native method calls. Returns

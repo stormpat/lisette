@@ -312,7 +312,7 @@ impl InferCtx<'_, '_> {
         span: Span,
         expected_ty: &Type,
     ) -> Expression {
-        // `Array.new` has no prelude signature (no const generics); resolve inline.
+        // `Array.new` has no prelude signature (no const generics), so resolve inline.
         if expression.as_dotted_path().as_deref() == Some("Array.new") {
             return self.infer_array_new_call(&expression, args, type_args, span, expected_ty);
         }
@@ -559,7 +559,7 @@ impl InferCtx<'_, '_> {
             None
         };
 
-        // `Array.new` takes no value arguments; still infer any for recovery.
+        // `Array.new` takes no value arguments, but still infer any for recovery.
         if !args.is_empty() {
             self.sink
                 .push(diagnostics::infer::array_new_takes_no_arguments(

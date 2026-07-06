@@ -7,7 +7,7 @@ use syntax::ast::{
     TypedPattern, collect_pattern_bindings,
 };
 use syntax::program::{Definition, DefinitionBody};
-use syntax::types::{Type, substitute, unqualified_name};
+use syntax::types::{CompoundKind, Type, substitute, unqualified_name};
 
 use crate::checker::EnvResolve;
 
@@ -127,7 +127,7 @@ impl InferCtx<'_, '_> {
                 prefix, rest, span, ..
             } => {
                 let resolved_ty = store.peel_alias(&expected_ty.resolve_in(&self.env));
-                if let syntax::types::Type::Array { length, element } = &resolved_ty {
+                if let Type::Array { length, element } = &resolved_ty {
                     let (length, element_ty) = (*length, element.as_ref().clone());
                     self.infer_array_pattern(prefix, rest, span, length, element_ty, kind)
                 } else {
@@ -306,7 +306,7 @@ impl InferCtx<'_, '_> {
     ) -> (Pattern, TypedPattern) {
         let store = self.store;
         let element_ty = match resolved_ty.as_compound() {
-            Some((syntax::types::CompoundKind::Slice, args)) if args.len() == 1 => args[0].clone(),
+            Some((CompoundKind::Slice, args)) if args.len() == 1 => args[0].clone(),
             _ => {
                 let element_ty = self.new_type_var();
                 let slice_ty = self.type_slice(element_ty.clone());

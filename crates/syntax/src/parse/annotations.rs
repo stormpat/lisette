@@ -183,8 +183,8 @@ impl<'source> Parser<'source> {
         }
     }
 
-    /// A value literal where an `Array` size goes. Only an integer is valid;
-    /// the rest are matched here so `parse_size_type_arg` can reject them.
+    /// A value literal where an `Array` size goes. Non-integers are matched too,
+    /// so `parse_size_type_arg` can reject them with one clear error.
     pub(crate) fn at_size_position_value(&self) -> bool {
         matches!(
             self.current_token().kind,
@@ -192,7 +192,7 @@ impl<'source> Parser<'source> {
         )
     }
 
-    /// Parse an `Array` size. Only an integer literal is valid; anything else
+    /// Parse an `Array` size. Only an integer literal is valid, anything else
     /// gets one clear error instead of derailing into a parse cascade.
     pub(crate) fn parse_size_type_arg(&mut self) -> Annotation {
         let start = self.current_token();
@@ -200,7 +200,7 @@ impl<'source> Parser<'source> {
             return self.parse_constant_annotation();
         }
 
-        // A signed number is two tokens; consume both so the `<...>` still closes.
+        // A signed number is two tokens, so consume both to keep `<...>` closing.
         self.next();
         if matches!(start.kind, Minus | Plus)
             && matches!(self.current_token().kind, Integer | Float)

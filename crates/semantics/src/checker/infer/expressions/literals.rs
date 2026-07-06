@@ -125,13 +125,9 @@ impl InferCtx<'_, '_> {
             }
 
             Literal::Slice(elements) => {
-                // Peel a transparent alias so an alias over Array/Slice takes
-                // the array/element branch below instead of falling through to
-                // an unadapted Slice.
+                // Peel so an alias over Array/Slice takes the branch below.
                 let resolved = store.peel_alias(&expected_ty.resolve_in(&self.env));
 
-                // In an array context a list literal builds a fixed-size array;
-                // the element count must equal the declared length.
                 if let Type::Array { length, element } = &resolved {
                     let expected_length = *length;
                     let elem_expected_ty = element.as_ref().clone();

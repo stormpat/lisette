@@ -251,8 +251,8 @@ impl InferCtx<'_, '_> {
                 self.try_unify(&element1, &element2, span)
             }
 
-            // Bridge the phantom `prelude.Array` self-type (prelude method sigs
-            // only) to the real `Type::Array`: unify the element, ignore the size.
+            // Bridge the phantom `prelude.Array` self-type to the real
+            // `Type::Array` by unifying the element and ignoring the size.
             (Type::Array { element, .. }, Nominal { id, params, .. })
             | (Nominal { id, params, .. }, Type::Array { element, .. })
                 if id.as_str() == "prelude.Array" =>
