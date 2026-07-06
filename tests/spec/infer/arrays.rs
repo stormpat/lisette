@@ -66,6 +66,11 @@ fn array_size_must_be_literal() {
 }
 
 #[test]
+fn array_size_above_int_max_is_rejected() {
+    infer("fn f(x: Array<int, 18000000000000000000>) {}").assert_infer_code("array_size_too_large");
+}
+
+#[test]
 fn array_of_slices_is_not_comparable() {
     infer(
         "let xs: Array<Slice<int>, 2> = [[1], [2]]; let ys: Array<Slice<int>, 2> = [[3], [4]]; xs == ys",

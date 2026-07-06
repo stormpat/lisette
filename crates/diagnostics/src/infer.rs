@@ -3265,6 +3265,16 @@ pub fn array_size_not_literal(span: Span) -> LisetteDiagnostic {
         .with_help("Array sizes are part of the type and must be constant, e.g. `Array<int, 3>`")
 }
 
+pub fn array_size_too_large(size: u64, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array size too large")
+        .with_infer_code("array_size_too_large")
+        .with_span_label(&span, "size exceeds the maximum")
+        .with_help(format!(
+            "An array size must fit in Go's `int` type, at most {}, but found {size}",
+            i64::MAX
+        ))
+}
+
 pub fn array_length_mismatch(expected: u64, actual: u64, span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Array length mismatch")
         .with_infer_code("array_length_mismatch")

@@ -300,7 +300,17 @@ impl TaskState<'_> {
         }
 
         // A literal size is the actual fixed-size array.
-        if let Annotation::Constant { value, .. } = &params[1] {
+        if let Annotation::Constant {
+            value,
+            span: size_span,
+            ..
+        } = &params[1]
+        {
+            if *value > i64::MAX as u64 {
+                self.sink
+                    .push(diagnostics::infer::array_size_too_large(*value, *size_span));
+                return Type::Error;
+            }
             return Type::Array {
                 len: *value,
                 elem: Box::new(elem),
