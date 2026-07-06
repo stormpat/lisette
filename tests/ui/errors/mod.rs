@@ -1977,6 +1977,128 @@ fn test() {
 }
 
 #[test]
+fn infer_map_read_no_zero_for_ref_value() {
+    let input = r#"
+fn test() {
+  let m = Map.new<string, Ref<int>>()
+  let _r = m["missing"]
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_map_read_no_zero_for_generic_value() {
+    let input = r#"
+fn pick<K, V>(m: Map<K, V>, k: K) -> V {
+  m[k]
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_map_read_no_zero_through_alias() {
+    let input = r#"
+type Registry = Map<string, Ref<int>>
+
+fn test(regs: Registry) {
+  let _r = regs["x"]
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "map_read_no_zero"),
+        "a bracket read through a map alias must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_map_read_no_zero_for_struct_with_ref_field() {
+    let input = r#"
+struct Holder { pub r: Ref<int> }
+
+fn test(holders: Map<string, Holder>) {
+  let _h = holders["x"]
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "map_read_no_zero"),
+        "a bracket read yielding a struct with a Ref field must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_map_read_no_zero_in_deref_write() {
+    let input = r#"
+fn test() {
+  let mut m = Map.new<string, Ref<int>>()
+  m["k"].* = 5
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "map_read_no_zero"),
+        "writing through a bracket-read entry still reads the entry, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_map_read_no_zero_nested_in_write_target() {
+    let input = r#"
+fn test() {
+  let m = Map.new<string, Ref<int>>()
+  let mut counts = Map.new<int, string>()
+  counts[m["j"].*] = "x"
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "map_read_no_zero"),
+        "a bracket read inside an assignment target index must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_map_bracket_write_of_no_zero_value_allowed() {
+    let input = r#"
+fn test() {
+  let x = 5
+  let mut m = Map.new<string, Ref<int>>()
+  m["k"] = &x
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        result.errors.is_empty(),
+        "a bracket write never reads the entry, so it must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_map_read_with_zero_value_allowed() {
+    let input = r#"
+fn test(ages: Map<string, int>, opts: Map<string, Option<Ref<int>>>, rows: Slice<Ref<int>>) {
+  let _age = ages["missing"]
+  let _opt = opts["missing"]
+  let _row = rows[0]
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        result.errors.is_empty(),
+        "reads of zero-valued map entries and slice indexing must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
 fn infer_struct_zero_fill_function_alias_field() {
     let input = r#"
 type F = fn() -> int
@@ -2232,6 +2354,205 @@ fn infer_variable_not_mutable() {
 fn test() {
   let x = 10;
   x = 20;
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_slice() {
+    let input = r#"
+fn test() {
+  let a = [1, 2, 3]
+  let mut b = a
+  b = b.append(4)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_map() {
+    let input = r#"
+fn test() {
+  let m = Map.from([("a", 1)])
+  let mut m2 = m
+  m2["b"] = 2
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_reassignment() {
+    let input = r#"
+fn test(a: Slice<int>) {
+  let mut b = [0]
+  b = a
+  b = b.append(1)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_struct_field() {
+    let input = r#"
+struct Doc { tags: Slice<string> }
+
+fn test(d: Doc) {
+  let mut t = d.tags
+  t = t.append("x")
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_map_index() {
+    let input = r#"
+fn test(m: Map<string, Slice<int>>) {
+  let mut s = m["k"]
+  s = s.append(1)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_subslice() {
+    let input = r#"
+fn test() {
+  let a = [1, 2, 3]
+  let mut b = a[1..3]
+  b[0] = 9
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_computed_index() {
+    let input = r#"
+fn key() -> string { "k" }
+
+fn test(m: Map<string, Slice<int>>) {
+  let mut s = m[key()]
+  s = s.append(1)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_struct() {
+    let input = r#"
+struct Doc { tags: Slice<string> }
+
+fn test(d1: Doc) {
+  let mut d2 = d1
+  d2.tags[0] = "y"
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_tuple() {
+    let input = r#"
+fn test(t1: (Slice<string>, int)) {
+  let mut t2 = t1
+  t2.0[0] = "y"
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_enum() {
+    let input = r#"
+enum Holder { Tags(Slice<string>), Empty }
+
+fn test(h1: Holder) {
+  let mut h2 = h1
+  h2 = Holder.Empty
+  let _ = h2
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_block_tail() {
+    let input = r#"
+fn test() {
+  let a = [1, 2, 3]
+  let mut b = { a }
+  b[0] = 9
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_constructor_field() {
+    let input = r#"
+struct Box { items: Slice<int> }
+
+fn test() {
+  let a = [1, 2, 3]
+  let mut boxed = Box { items: a }
+  boxed.items[0] = 9
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_generic_param_fed() {
+    let input = r#"
+struct Box<T> { items: Slice<T> }
+
+fn test(b1: Box<Slice<int>>) {
+  let mut b2 = b1
+  b2.items[0][0] = 9
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_clone_does_not_sever() {
+    let input = r#"
+struct Doc { tags: Slice<string> }
+
+fn test(docs: Slice<Doc>) {
+  let mut copy = docs.clone()
+  copy[0].tags[0] = "y"
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_mut_binding_aliases_option() {
+    let input = r#"
+fn test(o1: Option<Slice<int>>) {
+  let mut o2 = o1
+  o2 = None
+  let _ = o2
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_subslice_not_addressable() {
+    let input = r#"
+fn test() {
+  let a = [1, 2, 3]
+  let r = &a[1..3]
+  let _ = r
 }
 "#;
     assert_infer_error_snapshot!(input);
@@ -2522,6 +2843,20 @@ fn main() {
   match x {
     (a, b) => a,
   };
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_instantiation_cycle() {
+    let input = r#"
+fn depth<T>(x: T, n: int) -> int {
+  if n > 0 { depth([x], n - 1) } else { 0 }
+}
+
+fn main() {
+  let _ = depth(1, 3)
 }
 "#;
     assert_infer_error_snapshot!(input);
@@ -5930,6 +6265,29 @@ fn main() {
 }
 
 #[test]
+fn infer_float_division_by_zero() {
+    let input = r#"
+fn main() {
+  let x = 1.0 / 0.0;
+  x
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_float_division_by_adapted_zero() {
+    let input = r#"
+fn main() {
+  let x = 3.5;
+  let y = x / 0;
+  y
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn parse_uppercase_binding_in_function_param() {
     let input = r#"
 fn scale(X: int, Y: int) -> int {
@@ -7107,6 +7465,26 @@ fn test() {
 }
 
 #[test]
+fn infer_integer_literal_overflow_int32() {
+    let input = r#"
+fn test() {
+  let x: int32 = 3000000000;
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_integer_literal_overflow_int64() {
+    let input = r#"
+fn test() {
+  let x: int64 = 10000000000000000000;
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_negative_literal_overflow_int8() {
     let input = r#"
 fn test() {
@@ -7518,6 +7896,62 @@ enum Bar {
 fn test() {
   let a = Bar.Items([1, 2]);
   let b = Bar.Empty;
+  let result = a == b;
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_not_comparable_recursive_enum_suggests_equality() {
+    let input = r#"
+enum List {
+  Nil,
+  Cons(int, List),
+}
+
+fn test() {
+  let a = List.Cons(1, List.Nil);
+  let b = List.Nil;
+  let result = a == b;
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_not_comparable_recursive_enum_with_equality_suggests_equals() {
+    let input = r#"
+#[equality]
+enum List {
+  Nil,
+  Cons(int, List),
+}
+
+fn test() {
+  let a = List.Cons(1, List.Nil);
+  let b = List.Nil;
+  let result = a == b;
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_not_comparable_mutually_recursive_enums() {
+    let input = r#"
+enum A {
+  End,
+  X(B),
+}
+
+enum B {
+  Y(A),
+}
+
+fn test() {
+  let a = A.End;
+  let b = A.X(B.Y(A.End));
   let result = a == b;
 }
 "#;
@@ -8409,6 +8843,28 @@ enum Shape {
 }
 
 #[test]
+fn infer_enum_field_type_conflict_snake_vs_camel() {
+    let input = r#"
+enum Event {
+  Click { foo_bar: int },
+  Hover { fooBar: string },
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_enum_field_type_conflict_trailing_underscore() {
+    let input = r#"
+enum Event {
+  Click { x_: int },
+  Hover { x: string },
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_native_method_value() {
     let input = r#"
 fn apply(f: fn(Slice<int>, VarArgs<int>) -> Slice<int>) {
@@ -9244,6 +9700,517 @@ fn main() {
 }
 
 #[test]
+fn infer_bare_enum_as_value() {
+    let input = r#"
+enum Color { Red, Blue }
+
+fn main() {
+  let c = Color
+  let _ = c
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_type_alias_of_collection_as_value() {
+    let input = r#"
+type Rows = Slice<Slice<int>>
+
+fn main() {
+  let c = Rows
+  let _ = c
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_instance_method_called_on_type_alias() {
+    let input = r#"
+type Rows = Slice<Slice<int>>
+
+fn main() {
+  let n = Rows.length()
+  let _ = n
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_scalar_alias_as_value() {
+    let input = r#"
+type Id = int
+
+fn main() {
+  let c = Id
+  let _ = c
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "a scalar type alias in value position must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_struct_names_stay_owned_by_native_value_pass() {
+    let input = r#"
+struct Coord { x: int, y: int }
+type Alias = Coord
+
+fn main() {
+  let a = Coord
+  let b = Alias
+  let _ = a
+  let _ = b
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "record_struct_value"),
+        "bare struct and struct-alias names must be rejected by the native_value_usage pass, got: {:?}",
+        result.errors
+    );
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "struct names must not double-fire type_used_as_value from infer_identifier, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_multi_hop_struct_alias_stays_struct_diagnostic() {
+    let input = r#"
+struct Coord { x: int, y: int }
+type A = Coord
+type B = A
+
+fn main() {
+  let b = B
+  let _ = b
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "record_struct_value"),
+        "a multi-hop struct alias must get the struct-literal diagnostic, got: {:?}",
+        result.errors
+    );
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "a multi-hop struct alias must not fall through to the generic type diagnostic, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_struct_alias_stays_struct_diagnostic() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "geo",
+        "lib.lis",
+        r#"
+pub struct Point { pub x: int, pub y: int }
+pub type P = Point
+"#,
+    );
+    let source = r#"
+import "geo"
+
+fn main() {
+  let x = geo.P
+  let _ = x
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        has_code(&result, "record_struct_value"),
+        "an imported struct alias must get the struct-literal diagnostic, got: {:?}",
+        result.errors
+    );
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "an imported struct alias must not fall through to the generic type diagnostic, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_tuple_struct_alias_stays_constructor_diagnostic() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "geo",
+        "lib.lis",
+        r#"
+pub struct Pair(int, int)
+pub type P = Pair
+"#,
+    );
+    let source = r#"
+import "geo"
+
+fn main() {
+  let x = geo.P
+  let _ = x
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        has_code(&result, "native_constructor_value"),
+        "an imported tuple-struct alias must get the constructor diagnostic, got: {:?}",
+        result.errors
+    );
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "an imported tuple-struct alias must not fall through to the generic type diagnostic, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_enum_alias_as_value() {
+    let input = r#"
+enum E { A, B }
+type C = E
+
+fn main() {
+  let c = C
+  let _ = c
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "an enum alias in value position must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_clone_called_on_type_alias() {
+    let input = r#"
+type Rows = Slice<Slice<int>>
+
+fn main() {
+  let k = Rows.clone()
+  let _ = k
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert_eq!(
+        result
+            .errors
+            .iter()
+            .filter(|d| d
+                .code_str()
+                .is_some_and(|c| c.contains("type_used_as_value")))
+            .count(),
+        1,
+        "clone on a type alias must raise exactly one type-in-value error, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_is_empty_called_on_type_alias() {
+    let input = r#"
+type Rows = Slice<Slice<int>>
+
+fn main() {
+  let e = Rows.is_empty()
+  let _ = e
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "is_empty on a type alias must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_static_constructor_and_enum_variant_allowed() {
+    let input = r#"
+enum Color { Red, Blue }
+
+fn main() {
+  let xs = Slice.new<int>()
+  let c = Color.Red
+  let _ = xs
+  let _ = c
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        result.errors.is_empty(),
+        "static constructors and enum variant constructors must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_value_receiver_instance_method_allowed() {
+    let input = r#"
+fn main() {
+  let xs = [1, 2, 3]
+  let n = xs.length()
+  let k = xs.clone()
+  let _ = n
+  let _ = k
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        result.errors.is_empty(),
+        "instance methods on value receivers must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_instance_method_value_allowed() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        "geo",
+        "lib.lis",
+        r#"
+pub struct Point { pub x: int, pub y: int }
+
+impl Point {
+  pub fn sum(self) -> int { self.x + self.y }
+}
+"#,
+    );
+
+    let source = r#"
+import "geo"
+
+fn main() {
+  let p = geo.Point { x: 1, y: 2 }
+  let f = geo.Point.sum
+  let _ = f(p)
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+
+    let result = infer_module("main", fs);
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "taking a cross-module instance method as a value must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_instance_method_called_on_cross_module_type() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "geo",
+        "lib.lis",
+        r#"
+pub struct Point { pub x: int, pub y: int }
+impl Point { pub fn sum(self) -> int { self.x + self.y } }
+"#,
+    );
+    let source = r#"
+import "geo"
+
+fn main() {
+  let s = geo.Point.sum()
+  let _ = s
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "an instance method called on a cross-module type name must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_struct_literal_via_alias_allowed() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "shapes",
+        "lib.lis",
+        r#"
+pub struct Foo { pub x: int }
+pub type P = Foo
+"#,
+    );
+    let source = r#"
+import "shapes"
+
+fn main() {
+  let a = shapes.P { x: 1 }
+  let _ = a
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        result.errors.is_empty(),
+        "constructing a struct through a cross-module alias must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_variant_via_alias_allowed() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "palette",
+        "lib.lis",
+        r#"
+pub enum Color { Red, Blue }
+pub type C = Color
+"#,
+    );
+    let source = r#"
+import "palette"
+
+fn main() {
+  let a = palette.C.Red
+  let _ = a
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "constructing an enum variant through a cross-module alias must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_bare_interface_as_value() {
+    let input = r#"
+interface Greeter { fn greet(self) -> string }
+
+fn main() {
+  let x = Greeter
+  let _ = x
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "a bare interface name in value position must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_imported_value_member_method_call_allowed() {
+    let input = r#"
+import "go:time"
+import "go:fmt"
+
+fn main() {
+  fmt.Println(time.Second.String())
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        result.errors.is_empty(),
+        "a method call on an imported value member must stay legal, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_collection_alias_as_value() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "grid",
+        "lib.lis",
+        r#"
+pub type Rows = Slice<Slice<int>>
+"#,
+    );
+    let source = r#"
+import "grid"
+
+fn main() {
+  let x = grid.Rows
+  let _ = x
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "a cross-module collection alias in value position must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_interface_as_value() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "svc",
+        "lib.lis",
+        r#"
+pub interface Greeter { fn greet(self) -> string }
+"#,
+    );
+    let source = r#"
+import "svc"
+
+fn main() {
+  let x = svc.Greeter
+  let _ = x
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        has_code(&result, "type_used_as_value"),
+        "a cross-module interface in value position must be rejected, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn infer_cross_module_const_value_allowed() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file(
+        "conf",
+        "lib.lis",
+        r#"
+pub const LIMIT = 100
+"#,
+    );
+    let source = r#"
+import "conf"
+
+fn main() {
+  let x = conf.LIMIT
+  let _ = x
+}
+"#;
+    fs.add_file("main", "main.lis", source);
+    let result = infer_module("main", fs);
+    assert!(
+        !has_code(&result, "type_used_as_value"),
+        "an imported const value must not be rejected as a type, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
 fn iterate_on_payload_variant() {
     let input = r#"
 #[iterate]
@@ -9473,6 +10440,23 @@ struct Inner {
 #[equality]
 struct Outer {
   inner: Inner,
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn equality_rejects_recursive_cycle_field_without_equality() {
+    let input = r#"
+#[equality]
+enum Tree {
+  Leaf,
+  Node(Pair),
+}
+
+struct Pair {
+  l: Tree,
+  r: Tree,
 }
 "#;
     assert_infer_error_snapshot!(input);
@@ -10393,6 +11377,81 @@ fn test(a: Map<Key, int>, b: Map<Key, int>) -> bool {
 }
 
 #[test]
+fn map_key_annotation_rejects_noncomparable_struct() {
+    let input = r#"
+struct Holder { items: Slice<int> }
+
+fn count(m: Map<Holder, int>) -> int {
+  m.length()
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn map_key_constructor_rejects_noncomparable_struct() {
+    let input = r#"
+struct Holder { items: Slice<int> }
+
+fn test() -> int {
+  let mut m = Map.new<Holder, int>()
+  m[Holder { items: [1] }] = 1
+  m.length()
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn map_key_constructor_rejects_recursive_enum() {
+    let input = r#"
+enum List {
+  Nil,
+  Cons(int, List),
+}
+
+fn test() -> int {
+  let mut m = Map.new<List, int>()
+  m[List.Nil] = 1
+  m.length()
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn map_key_expression_position_rejects_slice_key() {
+    let input = r#"
+fn test() -> int {
+  Map.new<Slice<int>, int>().length()
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn map_key_inferred_rejects_slice_key() {
+    let input = r#"
+fn test() -> int {
+  let mut m = Map.new()
+  m[[1, 2]] = 1
+  m.length()
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn map_key_alias_body_rejects_noncomparable_struct() {
+    let input = r#"
+struct Holder { items: Slice<int> }
+
+type Index = Map<Holder, int>
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn equality_rejects_partial_generic_equals() {
     let input = r#"
 #[equality]
@@ -10817,6 +11876,21 @@ fn test(args: Slice<int>) {
 }
 "#;
     assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn spread_on_unresolved_callee_not_judged_non_variadic() {
+    let input = r#"
+fn test(args: Slice<int>) {
+  nofn(args...)
+}
+"#;
+    let result = crate::_harness::infer::infer(input);
+    assert!(
+        !has_code(&result, "spread_on_non_variadic"),
+        "an unresolved callee's variadic-ness is unknowable, got: {:?}",
+        result.errors
+    );
 }
 
 #[test]

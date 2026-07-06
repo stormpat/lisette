@@ -22,5 +22,7 @@ func main() {
 	xs := [3]int{1, 2, 3}
 	g := Grid{cells: [3]int{4, 5, 6}}
 	same := xs == make_arr()
-	fmt.Println(len(xs), xs[0], same, first(g.cells))
+	_arg_1 := len(xs)
+	_arg_2 := xs[0]
+	fmt.Println(_arg_1, _arg_2, same, first(g.cells))
 }

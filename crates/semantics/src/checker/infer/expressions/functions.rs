@@ -211,6 +211,8 @@ impl InferCtx<'_, '_> {
 
         self.unify(expected_ty, &fn_ty, &span);
 
+        self.facts.add_function_span(span);
+
         Expression::Function {
             doc,
             attributes,
@@ -405,6 +407,7 @@ impl InferCtx<'_, '_> {
             &param_mutability,
             &callee_expression,
         );
+
         self.check_range_to_for_variadic(&new_args, &variadic_elem_ty);
 
         if let Some(idx) = substring_range_idx
@@ -412,6 +415,11 @@ impl InferCtx<'_, '_> {
         {
             self.validate_substring_range_arg(arg);
         }
+
+        let callee_is_unresolved = callee_expression
+            .get_type()
+            .resolve_in(&self.env)
+            .is_error();
 
         let new_spread = (*spread).map(|spread_expr| match variadic_elem_ty {
             Some(elem_ty) => {
@@ -430,8 +438,10 @@ impl InferCtx<'_, '_> {
                 inferred
             }
             None => {
-                self.sink
-                    .push(diagnostics::infer::spread_on_non_variadic(span));
+                if !callee_is_unresolved {
+                    self.sink
+                        .push(diagnostics::infer::spread_on_non_variadic(span));
+                }
                 self.with_value_context(|s| s.infer_expression(spread_expr, &Type::Error))
             }
         });
@@ -1488,7 +1498,7 @@ impl InferCtx<'_, '_> {
             return;
         };
         if let Some(binding_id) = self.scopes.lookup_binding_id(&var_name) {
-            self.facts.mark_mutated(binding_id);
+            self.facts.mark_alias_mutated(binding_id);
         }
         let is_deref = contains_deref(receiver);
         let binding_is_ref = self
@@ -1546,6 +1556,15 @@ impl InferCtx<'_, '_> {
         if !can_carry_mutation_across_fn_boundary(param_ty, &self.env, store) {
             return;
         }
+        if let Some(source) = self.non_severing_clone_source(arg) {
+            self.sink
+                .push(diagnostics::infer::mut_arg_clone_does_not_sever(
+                    &source,
+                    callee_label,
+                    arg.get_span(),
+                ));
+            return;
+        }
         let Some(var_name) = arg.get_var_name() else {
             return;
         };
@@ -1558,7 +1577,7 @@ impl InferCtx<'_, '_> {
                 ));
         }
         if let Some(binding_id) = self.scopes.lookup_binding_id(&var_name) {
-            self.facts.mark_mutated(binding_id);
+            self.facts.mark_alias_mutated(binding_id);
         }
     }
 

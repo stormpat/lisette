@@ -342,6 +342,67 @@ enum Event {
 }
 
 #[test]
+fn nested_generic_instantiation_compares_natively() {
+    let input = r#"
+struct Box<T: Comparable> {
+  value: T,
+}
+
+fn same(a: Box<Box<int>>, b: Box<Box<int>>) -> bool {
+  a == b
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn equality_recursive_enum_derefs_pointer_payload() {
+    let input = r#"
+#[equality]
+enum List {
+  Nil,
+  Cons(int, List),
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn equality_mutually_recursive_enums_deref_pointer_payloads() {
+    let input = r#"
+#[equality]
+enum A {
+  End,
+  X(B),
+}
+
+#[equality]
+enum B {
+  Y(A),
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn equality_indirect_recursive_enum_through_struct() {
+    let input = r#"
+#[equality]
+enum Tree {
+  Leaf,
+  Node(Pair),
+}
+
+#[equality]
+struct Pair {
+  l: Tree,
+  r: Tree,
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn equality_user_equals_over_function_field() {
     let input = r#"
 #[equality]
@@ -1263,7 +1324,7 @@ fn mutable_subslice_cloned() {
     let input = r#"
 fn test(arr: Slice<int>) {
   let view = arr[1..4]
-  let mut owned = arr[1..4]
+  let mut owned = arr[1..4].clone()
   owned[0] = 99
   let _ = view
 }
@@ -1278,7 +1339,7 @@ type Numbers = Slice<int>
 
 fn test() {
   let xs: Numbers = [1, 2, 3]
-  let mut part = xs[0..2]
+  let mut part = xs[0..2].clone()
   part[0] = 99
   let _ = xs
 }
@@ -1831,6 +1892,29 @@ struct User {
 }
 
 #[test]
+fn struct_with_tag_json_omitempty_option() {
+    let input = r#"
+struct User {
+  #[tag("json", omitempty)]
+  email: Option<string>,
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn struct_with_yaml_option_omitempty() {
+    let input = r#"
+#[yaml(omitempty)]
+struct User {
+  name: string,
+  email: Option<string>,
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn struct_with_multiple_raw_tags() {
     let input = r#"
 #[tag("validate")]
@@ -2014,6 +2098,98 @@ fn list_sum(l: List) -> int {
     List.Cons(head, tail) => head + list_sum(tail),
     List.Nil => 0,
   }
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn recursive_enum_indirect_through_struct() {
+    let input = r#"
+enum Tree {
+  Leaf(int),
+  Node(Pair),
+}
+
+struct Pair {
+  l: Tree,
+  r: Tree,
+}
+
+fn sum(t: Tree) -> int {
+  match t {
+    Tree.Leaf(n) => n,
+    Tree.Node(p) => sum(p.l) + sum(p.r),
+  }
+}
+
+fn test() -> Tree {
+  Tree.Node(Pair { l: Tree.Leaf(1), r: Tree.Leaf(2) })
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn recursive_enums_mutual() {
+    let input = r#"
+enum A {
+  End,
+  X(B),
+}
+
+enum B {
+  Y(A),
+}
+
+fn test() -> A {
+  A.X(B.Y(A.End))
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn recursive_enum_indirect_through_mixed_generic_instantiations() {
+    let input = r#"
+enum Tree {
+  Leaf,
+  Node(Outer),
+}
+
+struct Outer {
+  a: Box<int>,
+  b: Box<Tree>,
+}
+
+struct Box<T> {
+  value: T,
+}
+
+fn test() -> Tree {
+  Tree.Node(Outer { a: Box { value: 1 }, b: Box { value: Tree.Leaf } })
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn recursive_enum_indirect_through_alias() {
+    let input = r#"
+enum Tree {
+  Leaf(int),
+  Node(P),
+}
+
+type P = Pair
+
+struct Pair {
+  l: Tree,
+  r: Tree,
+}
+
+fn test() -> Tree {
+  Tree.Node(Pair { l: Tree.Leaf(1), r: Tree.Leaf(2) })
 }
 "#;
     assert_emit_snapshot!(input);
@@ -3782,7 +3958,7 @@ type Cb = fn() -> Unknown;
 }
 
 #[test]
-fn option_in_go_unknown_struct_field_unwraps_to_any() {
+fn option_in_go_unknown_struct_field_stays_tagged() {
     let input = r#"
 import "go:example.com/dyn"
 
@@ -3803,7 +3979,7 @@ pub struct Bag {
 }
 
 #[test]
-fn option_assigned_to_go_unknown_field_unwraps_to_any() {
+fn option_assigned_to_go_unknown_field_stays_tagged() {
     let input = r#"
 import "go:example.com/dyn"
 
@@ -3823,7 +3999,7 @@ pub struct Bag {
 }
 
 #[test]
-fn option_in_go_unknown_call_arg_unwraps_to_any() {
+fn option_in_go_unknown_call_arg_stays_tagged() {
     let input = r#"
 import "go:example.com/dyn"
 
@@ -4287,6 +4463,106 @@ fn main() {
   let a = Box { value: 1 }
   let b = Box { value: 2 }
   let _ = a.less(b)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn clone_nested_slice_deep() {
+    let input = r#"
+fn main() {
+  let a = [[1, 2], [3, 4]]
+  let mut b = a.clone()
+  b[0][0] = 9
+  let _ = a
+  let _ = b
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn clone_map_slice_values_deep() {
+    let input = r#"
+fn main() {
+  let m = Map.from([("k", [1, 2])])
+  let mut m2 = m.clone()
+  m2["k"] = [9]
+  let _ = m
+  let _ = m2
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn clone_slice_of_tuples_deep() {
+    let input = r#"
+fn main() {
+  let a = [(1, [2, 3])]
+  let mut b = a.clone()
+  b[0] = (4, [5])
+  let _ = a
+  let _ = b
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn clone_user_method_dispatched() {
+    let input = r#"
+struct Doc { tags: Slice<string> }
+
+impl Doc {
+  fn clone(self) -> Doc {
+    Doc { tags: self.tags.clone() }
+  }
+}
+
+fn main() {
+  let d1 = Doc { tags: ["x"] }
+  let mut d2 = d1.clone()
+  d2.tags[0] = "y"
+  let _ = d1
+  let _ = d2
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn clone_enumerated_slice() {
+    let input = r#"
+fn main() {
+  let s = [1, 2, 3]
+  let e = s.enumerate()
+  let mut e2 = e.clone()
+  e2 = s.enumerate()
+  let _ = e
+  let _ = e2
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn clone_container_of_user_clone_stays_shallow() {
+    let input = r#"
+struct Doc { tags: Slice<string> }
+
+impl Doc {
+  fn clone(self) -> Doc {
+    Doc { tags: self.tags.clone() }
+  }
+}
+
+fn main() {
+  let docs = [Doc { tags: ["x"] }]
+  let copy = docs.clone()
+  let _ = docs
+  let _ = copy
 }
 "#;
     assert_emit_snapshot!(input);

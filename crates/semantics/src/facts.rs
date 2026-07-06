@@ -45,7 +45,7 @@ pub struct Facts {
     pub unused_type_params: Vec<UnusedTypeParamFact>,
     pub type_params_only_in_bound: Vec<TypeParamOnlyInBoundFact>,
     pub always_failing_try_blocks: Vec<Span>,
-    pub expression_only_fstrings: Vec<Span>,
+    pub expression_only_fstrings: Vec<ExpressionOnlyFstringFact>,
     pub interface_satisfied_methods: HashMap<(String, String), Vec<String>>,
     pub equality_derivations: Vec<String>,
     pub test_functions: Vec<TestFunction>,
@@ -68,6 +68,10 @@ pub struct Facts {
 
     /// Spans of binary expressions the checker rejected, so lints can skip them.
     pub type_error_spans: HashSet<Span>,
+
+    /// Span of every inferred function, so lints can attribute errors to
+    /// the containing function.
+    pub function_spans: Vec<Span>,
 
     /// Resolved type for each generic-bound annotation, keyed by the
     /// annotation's span. Lets emit render bounds from the resolved type
@@ -129,6 +133,7 @@ impl Facts {
             select_exhaustiveness_checks: Vec::new(),
             or_pattern_error_spans: HashSet::default(),
             type_error_spans: HashSet::default(),
+            function_spans: Vec::new(),
             usages: Vec::new(),
             usage_set: HashSet::default(),
             interface_satisfied_methods: HashMap::default(),
@@ -156,6 +161,7 @@ impl Facts {
                 kind,
                 used: false,
                 mutated: false,
+                alias_mutated: false,
                 is_typedef,
                 is_struct_field,
                 is_as_alias,
@@ -174,6 +180,19 @@ impl Facts {
         if let Some(fact) = self.bindings.get_mut(&id) {
             fact.mutated = true;
         }
+    }
+
+    /// The binding is mutated through an alias (address taken, mutable
+    /// capture, mut argument or receiver), so a call can rebind it.
+    pub fn mark_alias_mutated(&mut self, id: BindingId) {
+        if let Some(fact) = self.bindings.get_mut(&id) {
+            fact.mutated = true;
+            fact.alias_mutated = true;
+        }
+    }
+
+    pub fn add_function_span(&mut self, span: Span) {
+        self.function_spans.push(span);
     }
 
     pub fn binding_checkpoint(&self) -> BindingId {
@@ -197,8 +216,9 @@ impl Facts {
         self.always_failing_try_blocks.push(span);
     }
 
-    pub fn add_expression_only_fstring(&mut self, span: Span) {
-        self.expression_only_fstrings.push(span);
+    pub fn add_expression_only_fstring(&mut self, span: Span, needs_parens: bool) {
+        self.expression_only_fstrings
+            .push(ExpressionOnlyFstringFact { span, needs_parens });
     }
 
     pub fn add_usage(&mut self, usage_span: Span, definition_span: Span) {
@@ -275,6 +295,7 @@ impl Facts {
             select_exhaustiveness_checks,
             or_pattern_error_spans,
             type_error_spans,
+            function_spans,
             usages,
             usage_set: _,
             interface_satisfied_methods,
@@ -308,6 +329,7 @@ impl Facts {
             .extend(select_exhaustiveness_checks);
         self.or_pattern_error_spans.extend(or_pattern_error_spans);
         self.type_error_spans.extend(type_error_spans);
+        self.function_spans.extend(function_spans);
 
         self.usages.reserve(usages.len());
         self.usage_set.reserve(usages.len());
@@ -383,6 +405,12 @@ impl LocalFacts {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExpressionOnlyFstringFact {
+    pub span: Span,
+    pub needs_parens: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct BindingFact {
     pub name: String,
@@ -390,6 +418,7 @@ pub struct BindingFact {
     pub kind: BindingKind,
     pub used: bool,
     pub mutated: bool,
+    pub alias_mutated: bool,
     pub is_typedef: bool,
     /// If true, this binding is a shorthand in a struct pattern (e.g., `Point { x }`)
     pub is_struct_field: bool,

@@ -6,7 +6,7 @@ use crate::plan::bodies::{
 };
 #[cfg(debug_assertions)]
 use crate::plan::invariants;
-use crate::plan::values::ValuePlan;
+use crate::plan::values::{ValuePlan, render_unary};
 use crate::render::Renderer;
 use crate::write_line;
 
@@ -258,9 +258,25 @@ impl Renderer {
                 match kind {
                     CompoundKind::Increment => write_line!(output, "{}++", target_str),
                     CompoundKind::Decrement => write_line!(output, "{}--", target_str),
-                    CompoundKind::OpAssign { op_text, rhs } => {
+                    CompoundKind::OpAssign {
+                        op_text,
+                        rhs,
+                        pinned_left,
+                    } => {
                         let rhs_text = self.render_value(output, rhs);
-                        write_line!(output, "{} {}= {}", target_str, op_text, rhs_text);
+                        match pinned_left {
+                            Some(left) => write_line!(
+                                output,
+                                "{} = {} {} {}",
+                                target_str,
+                                left,
+                                op_text,
+                                rhs_text
+                            ),
+                            None => {
+                                write_line!(output, "{} {}= {}", target_str, op_text, rhs_text)
+                            }
+                        }
                     }
                 }
             }
@@ -272,13 +288,6 @@ impl Renderer {
                 self.render_capture_statements(output, target_capture);
                 let value_text = self.render_value(output, value);
                 write_line!(output, "{} = {}", target_str, value_text);
-            }
-            AssignForm::NilClear {
-                target_capture,
-                target_str,
-            } => {
-                self.render_capture_statements(output, target_capture);
-                write_line!(output, "{} = nil", target_str);
             }
             AssignForm::Discard { body } | AssignForm::NeverTyped { body } => {
                 self.render_lowered_block(output, body);
@@ -435,7 +444,7 @@ impl Renderer {
             }
             ValuePlan::Unary { op, inner } => {
                 let inner_text = self.render_value(output, inner);
-                format!("{}{}", op, inner_text)
+                render_unary(op, &inner_text)
             }
         }
     }

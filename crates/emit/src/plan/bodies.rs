@@ -219,11 +219,6 @@ pub(crate) enum AssignForm {
         target_str: String,
         value: ValuePlan,
     },
-    /// `target = nil` — clearing a Go-imported nullable field with `None`.
-    NilClear {
-        target_capture: Vec<LoweredStatement>,
-        target_str: String,
-    },
     /// `_ = expr` discard (drops lowered multi-return values).
     Discard { body: LoweredBlock },
     /// The RHS diverges (never-typed); emitted as a statement.
@@ -233,10 +228,12 @@ pub(crate) enum AssignForm {
 pub(crate) enum CompoundKind {
     Increment,
     Decrement,
-    /// `target op= rhs`. `op_text` is the rendered Go operator.
+    /// `target op= rhs`. An effectful RHS forces the target's prior value
+    /// into `pinned_left`, rendered as `target = pinned_left op rhs`.
     OpAssign {
         op_text: String,
         rhs: ValuePlan,
+        pinned_left: Option<String>,
     },
 }
 
@@ -420,9 +417,7 @@ impl LoweredStatement {
             LoweredStatement::BreakValue(_) => true,
             LoweredStatement::Let(plan) => plan.form.body().ends_with_diverge(),
             LoweredStatement::Assign(plan) => match &plan.form {
-                AssignForm::Compound { .. }
-                | AssignForm::Simple { .. }
-                | AssignForm::NilClear { .. } => false,
+                AssignForm::Compound { .. } | AssignForm::Simple { .. } => false,
                 AssignForm::Discard { body } | AssignForm::NeverTyped { body } => {
                     body.ends_with_diverge()
                 }

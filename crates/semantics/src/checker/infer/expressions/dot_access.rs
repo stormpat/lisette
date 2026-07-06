@@ -341,12 +341,19 @@ impl InferCtx<'_, '_> {
                 .get_definition(qname)
                 .is_some_and(Definition::is_type_definition),
             Expression::DotAccess {
-                expression: inner, ..
-            } => inner
-                .get_type()
-                .shallow_resolve_in(&self.env)
-                .as_import_namespace()
-                .is_some(),
+                expression: inner,
+                member,
+                ..
+            } => {
+                let inner_ty = inner.get_type().shallow_resolve_in(&self.env);
+                let Some(module_id) = inner_ty.as_import_namespace() else {
+                    return false;
+                };
+                let qualified = Symbol::from_parts(module_id, member.as_str());
+                store
+                    .get_definition(&qualified)
+                    .is_some_and(Definition::is_type_definition)
+            }
             _ => false,
         }
     }
@@ -687,6 +694,40 @@ impl InferCtx<'_, '_> {
                         *args.span,
                     ));
             }
+
+            if !self.scopes.is_callee_context()
+                && !self.scopes.is_dot_access_base()
+                && let Some(definition) = store.get_definition(&qualified_name)
+            {
+                let display_name = format!("{}.{}", type_name, args.member_name);
+                match &definition.body {
+                    DefinitionBody::TypeAlias { .. } => {
+                        let diagnostic = match store.deep_struct_kind(definition.ty.unwrap_forall())
+                        {
+                            Some(StructKind::Record) => {
+                                diagnostics::infer::record_struct_value(&display_name, *args.span)
+                            }
+                            Some(StructKind::Tuple) => {
+                                diagnostics::infer::native_constructor_value(
+                                    &display_name,
+                                    *args.span,
+                                )
+                            }
+                            None => {
+                                diagnostics::infer::type_used_as_value(&display_name, *args.span)
+                            }
+                        };
+                        self.sink.push(diagnostic);
+                    }
+                    DefinitionBody::Interface { .. } => {
+                        self.sink.push(diagnostics::infer::type_used_as_value(
+                            &display_name,
+                            *args.span,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
         }
 
         let (module_ty, _) = self.instantiate(&module_ty);
@@ -750,6 +791,13 @@ impl InferCtx<'_, '_> {
             self.as_method_value(args, &mut method_ty, is_exported)
         {
             return Some((expression, value_kind));
+        }
+
+        if self.scopes.is_callee_context() && self.is_type_level_receiver(args.expression) {
+            self.sink.push(diagnostics::infer::type_used_as_value(
+                &args.expression.as_dotted_path().unwrap_or_default(),
+                args.expression.get_span(),
+            ));
         }
 
         let Type::Function(ref mut f) = method_ty else {
@@ -1010,7 +1058,7 @@ impl InferCtx<'_, '_> {
         };
 
         if let Some(binding_id) = self.scopes.lookup_binding_id(&var_name) {
-            self.facts.mark_mutated(binding_id);
+            self.facts.mark_alias_mutated(binding_id);
         }
         let is_deref = contains_deref(receiver_expression);
         let binding_is_ref = self

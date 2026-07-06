@@ -195,10 +195,62 @@ fn test() -> int {
 }
 
 #[test]
+fn unary_double_negation_cannot_lex_as_decrement() {
+    let input = r#"
+fn test(x: int) -> int {
+  - -x
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn unary_logical_not() {
     let input = r#"
 fn test() -> bool {
   !true
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn negated_float_comparison_keeps_not() {
+    let input = r#"
+type Score = float64
+
+fn test(a: float64, b: float64, c: Score, d: Score) -> bool {
+  !(a < b) && !(c <= d)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn negated_generic_comparison_keeps_not() {
+    let input = r#"
+fn test<T: Ordered>(a: T, b: T) -> bool {
+  !(a > b)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn negated_int_comparison_flips() {
+    let input = r#"
+fn test(a: int, b: int, s: string, t: string) -> bool {
+  !(a < b) && !(s < t)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn negated_float_equality_flips() {
+    let input = r#"
+fn test(a: float64, b: float64) -> bool {
+  !(a == b)
 }
 "#;
     assert_emit_snapshot!(input);
@@ -808,6 +860,39 @@ import "go:fmt"
 fn test() {
   let c = 'A';
   fmt.Print(f"{c}")
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn format_string_rune_alias() {
+    let input = r#"
+import "go:fmt"
+
+type Ch = rune
+
+fn test() {
+  let c: Ch = 'A';
+  fmt.Print(f"{c}")
+  fmt.Print(f"char: {c}")
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn format_string_display_rune_newtype_keeps_stringer() {
+    let input = r#"
+import "go:fmt"
+
+#[display]
+struct Grade(rune)
+
+fn test() {
+  let g = Grade('B');
+  fmt.Print(f"{g}")
+  fmt.Print(f"grade: {g}")
 }
 "#;
     assert_emit_snapshot!(input);
@@ -1600,7 +1685,8 @@ impl Counter {
 }
 
 fn test(m: Map<string, Ref<Counter>>) {
-  m["a"].*.increment()
+  let Some(c) = m.get("a") else { return; };
+  c.*.increment()
 }
 "#;
     assert_emit_snapshot!(input);
@@ -2286,7 +2372,7 @@ struct Box {
 fn main() {
   let mut m = Map.new<string, Box>()
   m["a"] = Box { items: [] }
-  let mut entry = m["a"]
+  let mut entry = Box { items: m["a"].items.clone() }
   entry.items = entry.items.append(1)
   m["a"] = entry
 }
@@ -2317,7 +2403,7 @@ fn map_entry_slice_append_tuple_field() {
 fn main() {
   let mut m = Map.new<string, (Slice<int>, int)>()
   m["a"] = ([1], 2)
-  let mut entry = m["a"]
+  let mut entry = (m["a"].0.clone(), m["a"].1)
   entry.0 = entry.0.append(3)
   m["a"] = entry
 }
@@ -2333,7 +2419,7 @@ struct Wrap(Slice<int>, int)
 fn main() {
   let mut m = Map.new<string, Wrap>()
   m["a"] = Wrap([], 0)
-  let mut entry = m["a"]
+  let mut entry = Wrap(m["a"].0.clone(), m["a"].1)
   entry.0 = entry.0.append(2)
   m["a"] = entry
 }
@@ -2366,7 +2452,7 @@ struct Wrap(Inner)
 fn main() {
   let mut m = Map.new<string, Wrap>()
   m["a"] = Wrap(Inner { items: [] })
-  let mut inner = m["a"].0
+  let mut inner = Inner { items: m["a"].0.items.clone() }
   inner.items = inner.items.append(1)
   m["a"] = Wrap(inner)
 }
@@ -2389,7 +2475,7 @@ fn main() {
   let mut m = Map.new<string, Box>()
   m["a"] = Box { items: [] }
   let mut map = get_map(m)
-  let mut entry = map["a"]
+  let mut entry = Box { items: map["a"].items.clone() }
   entry.items = entry.items.append(1)
   map["a"] = entry
 }
@@ -2408,7 +2494,7 @@ fn main() {
   let mut m = Map.new<string, Box>()
   m["a"] = Box { items: [] }
   let r = &m
-  let mut entry = r.*["a"]
+  let mut entry = Box { items: r.*["a"].items.clone() }
   entry.items = entry.items.append(1)
   r.*["a"] = entry
 }
@@ -3347,7 +3433,7 @@ struct Wrap(Pair)
 
 fn main() {
   let mut w = Wrap(Pair([1], 0))
-  let mut p = w.0
+  let mut p = Pair(w.0.0.clone(), w.0.1)
   p.0 = p.0.append(2)
   w = Wrap(p)
   let _ = w
@@ -3404,7 +3490,8 @@ fn main() {
   let mut items = [1]
   let mut m = Map.new<string, Outer>()
   m["a"] = Outer { items: &items }
-  m["a"].items.* = m["a"].items.*.append(2)
+  let Some(o) = m.get("a") else { return; };
+  o.items.* = o.items.*.append(2)
   let _ = items
 }
 "#;
@@ -3420,7 +3507,8 @@ fn main() {
   let mut w = Wrap(1)
   let mut m = Map.new<string, Ref<Wrap>>()
   m["a"] = &w
-  m["a"].* = Wrap(2)
+  let Some(r) = m.get("a") else { return; };
+  r.* = Wrap(2)
   let _ = w
 }
 "#;
@@ -3437,9 +3525,10 @@ fn main() {
   let mut w = Wrap(Inner { x: 0 })
   let mut m = Map.new<string, Ref<Wrap>>()
   m["a"] = &w
-  let mut inner = m["a"].0
+  let Some(r) = m.get("a") else { return; };
+  let mut inner = r.0
   inner.x = 1
-  m["a"].* = Wrap(inner)
+  r.* = Wrap(inner)
   let _ = w
 }
 "#;
@@ -3455,7 +3544,8 @@ fn main() {
   let mut w = Wrap([1])
   let mut m = Map.new<string, Ref<Wrap>>()
   m["a"] = &w
-  m["a"].* = Wrap(m["a"].0.append(2))
+  let Some(r) = m.get("a") else { return; };
+  r.* = Wrap(r.0.append(2))
   let _ = w
 }
 "#;
@@ -3472,9 +3562,10 @@ fn main() {
   let mut w = Wrap(Inner { items: [1] })
   let mut m = Map.new<string, Ref<Wrap>>()
   m["a"] = &w
-  let mut inner = m["a"].0
+  let Some(r) = m.get("a") else { return; };
+  let mut inner = Inner { items: r.0.items.clone() }
   inner.items = inner.items.append(2)
-  m["a"].* = Wrap(inner)
+  r.* = Wrap(inner)
   let _ = w
 }
 "#;
@@ -3490,7 +3581,8 @@ fn main() {
   let mut items = [1]
   let mut m = Map.new<string, Outer>()
   m["a"] = Outer { items: &items }
-  let _ = { m["a"].items.*.append(2) }
+  let Some(o) = m.get("a") else { return; };
+  let _ = { o.items.*.append(2) }
   let _ = items
 }
 "#;
@@ -3508,9 +3600,10 @@ fn main() {
   let mut w = Wrap(Inner { x: 0 })
   let mut m = Map.new<string, Outer>()
   m["a"] = Outer { w: &w }
-  let mut inner = m["a"].w.0
+  let Some(o) = m.get("a") else { return; };
+  let mut inner = o.w.0
   inner.x = 2
-  m["a"].w.* = Wrap(inner)
+  o.w.* = Wrap(inner)
   let _ = w
 }
 "#;
@@ -3528,9 +3621,10 @@ fn main() {
   let mut w = Wrap(Inner { items: [1] })
   let mut m = Map.new<string, Outer>()
   m["a"] = Outer { w: &w }
-  let mut inner = m["a"].w.0
+  let Some(o) = m.get("a") else { return; };
+  let mut inner = Inner { items: o.w.0.items.clone() }
   inner.items = inner.items.append(2)
-  m["a"].w.* = Wrap(inner)
+  o.w.* = Wrap(inner)
   let _ = w
 }
 "#;
@@ -3696,7 +3790,7 @@ fn main() {
   let mut m = Map.new<string, Outer>()
   m["a"] = Outer{ items: [1] }
   let k = key()
-  let mut entry = m[k]
+  let mut entry = Outer { items: m[k].items.clone() }
   entry.items = entry.items.append(2)
   m[k] = entry
 }
@@ -4260,6 +4354,46 @@ fn test(x: int) {
 }
 
 #[test]
+fn fmt_println_still_collapses_explicit_sprintf() {
+    let input = r#"
+import "go:fmt"
+
+fn test(x: int) {
+  fmt.Println(fmt.Sprintf("%d", x))
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn fmt_println_does_not_collapse_concatenated_format_strings() {
+    let input = r#"
+import "go:fmt"
+
+fn test(a: int, b: int) {
+  fmt.Println(f"a={a}" + f" b={b}")
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn fmt_println_does_not_collapse_sprintf_plus_call() {
+    let input = r#"
+import "go:fmt"
+
+fn suffix() -> string {
+  "tail"
+}
+
+fn test() {
+  fmt.Println(fmt.Sprintf("%d", 1) + suffix())
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn newtype_return_from_underlying_variable_casts() {
     let input = r#"
 struct UserId(int)
@@ -4587,6 +4721,194 @@ fn run() -> int {
   let repoint = || -> int { p = &b; 5 }
   p.* = repoint()
   a
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn compound_identifier_target_reads_before_call_rhs() {
+    let input = r#"
+fn run() -> int {
+  let mut x = 1
+  let bump = || -> int { x = 100; 5 }
+  x += bump()
+  x
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn inline_call_pins_when_later_operand_pins() {
+    let input = r#"
+fn run() -> int {
+  let mut x = 1
+  let setx = || -> int { x = 50; 100 }
+  let bump = |v: int| -> int { x += 7; v }
+  let r = [setx(), x, bump(5)]
+  r[0] + r[1] + r[2]
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn alias_free_target_keeps_compound_assign_with_call_rhs() {
+    let input = r#"
+fn pure_add(a: int) -> int { a + 100 }
+
+fn run() -> int {
+  let mut x = 5
+  x += pure_add(1)
+  x
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn alias_free_base_not_pinned_before_call_rhs() {
+    let input = r#"
+fn pure_add(a: int) -> int { a + 100 }
+
+fn run() -> int {
+  let mut ws = [1, 2, 3]
+  ws[0] = pure_add(7)
+  ws[0]
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn alias_free_operand_not_pinned_before_call() {
+    let input = r#"
+fn bump(a: int) -> int { a + 1 }
+
+fn run() -> int {
+  let mut items: Slice<int> = []
+  let mut i = 0
+  let ibump = || -> int { i = 1; 10 }
+  items = items.append(i, ibump())
+  items[0] + items[1]
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn pure_constructor_does_not_force_sibling_pins() {
+    let input = r#"
+struct Wrap(int)
+
+fn run() -> int {
+  let pair = (Wrap(9), Wrap(8))
+  pair.0.0 + pair.1.0
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn pure_constructor_with_mutable_read_pins_when_later_operand_pins() {
+    let input = r#"
+fn run() -> int {
+  let mut x = 1
+  let bump = || -> int { x = 20; 2 }
+  let elems = [Some(x), Some(x + bump()), Some(x)]
+  elems[0].unwrap_or(-1) + elems[1].unwrap_or(-1) + elems[2].unwrap_or(-1)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn setup_bearing_call_pins_when_later_operand_pins() {
+    let input = r#"
+fn foo(a: int, b: int) -> int { a + b }
+
+fn run() -> int {
+  let mut x = 1
+  let setx = || -> int { x = 50; 100 }
+  let bump = |v: int| -> int { x += 7; v }
+  let r = [foo(x, setx()), x, bump(5)]
+  r[0] + r[1] + r[2]
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn constructor_lowered_to_conversion_pins_before_call() {
+    let input = r#"
+struct Box(int)
+
+fn run() -> int {
+  let mut x = 1
+  let bump = |v: int| -> int { x = 50; v }
+  let r = (Box(x), bump(5))
+  r.0.0 + r.1
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn top_level_reference_not_pinned_before_call() {
+    let input = r#"
+const BASE = 10
+
+fn eff(x: Ref<int>) -> int {
+  x.* = 1
+  2
+}
+
+fn run() -> int {
+  let mut i = 0
+  let r = [BASE, eff(&i)]
+  r[0] + r[1]
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn compound_binary_rhs_keeps_grouping_when_left_pinned() {
+    let input = r#"
+fn run() -> int {
+  let mut x = 2
+  let mut y = 3
+  let bump = || -> int { y = 10; 4 }
+  x *= y + bump()
+  x
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn index_assignment_base_frozen_before_call_rhs() {
+    let input = r#"
+fn run() -> int {
+  let mut xs = [1, 2, 3]
+  let swap = || -> int { xs = [7, 8, 9]; 42 }
+  xs[0] = swap()
+  xs[0]
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn range_variable_slice_base_call_evaluated_once() {
+    let input = r#"
+fn make() -> Slice<int> { [1, 2, 3] }
+
+fn run() -> int {
+  let r = 1..
+  let s = make()[r]
+  s.length()
 }
 "#;
     assert_emit_snapshot!(input);

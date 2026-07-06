@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap as HashMap;
 
 use crate::checker::EnvResolve;
+use crate::checker::infer::expressions::comparison::check_never_comparable;
 use syntax::EcoString;
 use syntax::ast::{Annotation, Generic, Span};
 use syntax::program::{Definition, DefinitionBody};
@@ -451,9 +452,6 @@ impl TaskState<'_> {
         (substitute(body, &map), args)
     }
 
-    /// Check that a map key type is comparable.
-    /// Only rejects concrete non-comparable types (Slice, Map, Function).
-    /// Type parameters are allowed here — they may be instantiated with comparable types.
     /// Pre-check impl annotation for undeclared type params (e.g. `impl Container<T>`
     /// without `impl<T>`). Adds them to scope to prevent cascading errors from
     /// `convert_to_type`, and emits a diagnostic with the specific fix.
@@ -520,30 +518,10 @@ impl TaskState<'_> {
             return;
         }
 
-        if let Some(reason) = self.map_key_non_comparable_reason(store, &resolved) {
+        if let Some(reason) = check_never_comparable(&self.env, store, &resolved) {
             self.sink.push(diagnostics::infer::non_comparable_map_key(
                 &resolved, reason, span,
             ));
-        }
-    }
-
-    /// Why a type cannot be a Go map key, or `None` if it can. A Go array is
-    /// comparable iff its element is, so recurse into it; functions, slices, and
-    /// maps are never comparable. Interfaces and type parameters are left alone:
-    /// Go permits them as keys (an interface key panics only at runtime).
-    fn map_key_non_comparable_reason(&self, store: &Store, ty: &Type) -> Option<&'static str> {
-        let resolved = store.deep_resolve_alias(&ty.resolve_in(&self.env));
-        if matches!(&resolved, Type::Function(_)) {
-            Some("functions")
-        } else if resolved.has_name("Slice") {
-            Some("slices")
-        } else if resolved.has_name("Map") {
-            Some("maps")
-        } else if let Type::Array { element, .. } = &resolved {
-            self.map_key_non_comparable_reason(store, element)
-                .map(|_| "arrays with non-comparable elements")
-        } else {
-            None
         }
     }
 }

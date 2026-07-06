@@ -209,7 +209,7 @@ impl InferCtx<'_, '_> {
             if let Some(var_name) = new_expression.get_var_name()
                 && let Some(binding_id) = self.scopes.lookup_binding_id(&var_name)
             {
-                self.facts.mark_mutated(binding_id);
+                self.facts.mark_alias_mutated(binding_id);
             }
         }
 
@@ -258,15 +258,17 @@ impl InferCtx<'_, '_> {
                 self.sink
                     .push(diagnostics::infer::test_function_not_callable(span, &value));
             }
-            if let DefinitionBody::TypeAlias { .. } = &definition.body
-                && !self.scopes.is_callee_context()
-                && !self.scopes.is_dot_access_base()
+            let names_a_type = match &definition.body {
+                DefinitionBody::Enum { .. } | DefinitionBody::Interface { .. } => true,
+                DefinitionBody::TypeAlias { .. } => store
+                    .deep_struct_kind(definition.ty.unwrap_forall())
+                    .is_none(),
+                _ => false,
+            };
+            if names_a_type && !self.scopes.is_callee_context() && !self.scopes.is_dot_access_base()
             {
-                let underlying = definition.ty.unwrap_forall();
-                if self.is_enum_type(store, underlying) {
-                    self.sink
-                        .push(diagnostics::infer::namespace_alias_used_as_value(span));
-                }
+                self.sink
+                    .push(diagnostics::infer::type_used_as_value(&value, span));
             }
         }
 
@@ -361,7 +363,11 @@ impl InferCtx<'_, '_> {
                 if compound_operator.is_some() {
                     self.facts.mark_used(binding_id);
                 }
-                self.facts.mark_mutated(binding_id);
+                if self.scopes.binding_crosses_function_boundary(&var_name) {
+                    self.facts.mark_alias_mutated(binding_id);
+                } else {
+                    self.facts.mark_mutated(binding_id);
+                }
             }
 
             let is_mutable = self.scopes.lookup_mutable(&var_name);
@@ -405,6 +411,16 @@ impl InferCtx<'_, '_> {
             if contains_stored_reference_to(&new_value, &var_name) {
                 self.sink
                     .push(diagnostics::infer::self_reference_in_assignment(span));
+            }
+
+            let value_expr = new_value.unwrap_parens();
+            let value_place = super::aliasing::clone_call_receiver(value_expr)
+                .map(|receiver| receiver.unwrap_parens())
+                .unwrap_or(value_expr);
+            let self_sourced =
+                super::aliasing::place_root_name(value_place).is_some_and(|root| root == var_name);
+            if compound_operator.is_none() && is_simple_target && is_mutable && !self_sourced {
+                self.check_mut_reassignment_alias(&var_name, &new_value);
             }
         }
 

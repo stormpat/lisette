@@ -14,5 +14,5 @@ import lisette "github.com/ivov/lisette/prelude"
 
 type User struct {
 	Name  string                 `json:"name,omitempty"`
-	Email lisette.Option[string] `json:"email,omitempty,omitzero"`
+	Email lisette.Option[string] `json:"email,omitzero"`
 }

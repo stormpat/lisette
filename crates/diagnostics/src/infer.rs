@@ -525,6 +525,65 @@ pub fn self_reference_in_assignment(span: Span) -> LisetteDiagnostic {
         .with_help("Separate the reassignment from reference taking, or use a different variable")
 }
 
+pub fn mut_binding_aliases(
+    binding_name: &str,
+    source: &str,
+    addressable: bool,
+    clone_severs: bool,
+    span: Span,
+) -> LisetteDiagnostic {
+    let target = mutation_target(binding_name, source);
+    let help = match (clone_severs, addressable) {
+        (true, true) => format!(
+            "Mutating `{binding_name}` would implicitly mutate {target}. Either use `{source}.clone()` to make a copy or `&{source}` to take a reference."
+        ),
+        (true, false) => format!(
+            "Mutating `{binding_name}` would implicitly mutate {target}. Use `{source}.clone()` to make a copy."
+        ),
+        (false, true) => format!(
+            "Mutating `{binding_name}` would implicitly mutate {target}. Either use `&{source}` to take a reference or construct a new value to mutate independently."
+        ),
+        (false, false) => format!(
+            "Mutating `{binding_name}` would implicitly mutate {target}. Construct a new value to mutate independently."
+        ),
+    };
+    LisetteDiagnostic::error(format!("Cannot make a mutable binding to `{source}`"))
+        .with_infer_code("mut_binding_aliases")
+        .with_span_label(&span, "would be mutated implicitly")
+        .with_help(help)
+}
+
+pub fn mut_binding_clone_does_not_sever(
+    binding_name: &str,
+    source: &str,
+    addressable: bool,
+    span: Span,
+) -> LisetteDiagnostic {
+    let target = mutation_target(binding_name, source);
+    let help = if addressable {
+        format!(
+            "`{source}.clone()` leaves collections inside struct or enum values shared, so mutating one through `{binding_name}` could still implicitly mutate {target}. Either use `&{source}` to take a reference or construct a new value to mutate independently."
+        )
+    } else {
+        format!(
+            "`{source}.clone()` leaves collections inside struct or enum values shared, so mutating one through `{binding_name}` could still implicitly mutate {target}. Construct a new value to mutate independently."
+        )
+    };
+    LisetteDiagnostic::error(format!("Cannot make a mutable binding to `{source}`"))
+        .with_infer_code("mut_binding_aliases")
+        .with_span_label(&span, "does not make an independent copy")
+        .with_help(help)
+}
+
+/// A same-name source means the new binding shadows the one it aliases.
+fn mutation_target(binding_name: &str, source: &str) -> String {
+    if binding_name == source {
+        format!("the shadowed `{source}`")
+    } else {
+        format!("`{source}`")
+    }
+}
+
 pub fn uppercase_binding(span: Span, name: &str) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Invalid binding name")
         .with_infer_code("uppercase_binding")
@@ -892,6 +951,33 @@ pub fn field_no_zero(
         .with_help(main)
 }
 
+pub fn map_read_no_zero(value_ty: &Type, receiver: &str, span: Span) -> LisetteDiagnostic {
+    let (label, help) = if matches!(value_ty, Type::Parameter(_)) {
+        (
+            format!("`{value_ty}` is not guaranteed to have a zero value"),
+            format!(
+                "Bracket reads can return a zero value when the key is missing, but the type \
+                 parameter `{value_ty}` can be instantiated with a type that has no zero value, \
+                 such as `Ref<T>`, so this bracket read is disallowed. Use \
+                 `{receiver}.get(key)` instead"
+            ),
+        )
+    } else {
+        (
+            format!("`{value_ty}` has no zero value"),
+            format!(
+                "Bracket reads can return a zero value when the key is missing, but \
+                 `{value_ty}` has no zero value, so this bracket read is disallowed. Use \
+                 `{receiver}.get(key)` instead"
+            ),
+        )
+    };
+    LisetteDiagnostic::error("No zero value for missing key")
+        .with_infer_code("map_read_no_zero")
+        .with_span_label(&span, label)
+        .with_help(help)
+}
+
 pub fn unresolved_receiver_type(member: &str, span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Cannot infer receiver type")
         .with_infer_code("unresolved_receiver_type")
@@ -1209,11 +1295,16 @@ pub fn missing_bound_on_param(
         ))
 }
 
-pub fn division_by_zero(span: Span) -> LisetteDiagnostic {
+pub fn division_by_zero(span: Span, ieee: bool) -> LisetteDiagnostic {
+    let help = if ieee {
+        "This operation evaluates to `+Inf`, `-Inf`, or `NaN` at runtime, which is almost never intended"
+    } else {
+        "This operation will panic at runtime"
+    };
     LisetteDiagnostic::error("Division by zero")
         .with_infer_code("division_by_zero")
         .with_span_label(&span, "cannot divide by zero")
-        .with_help("This operation will panic at runtime")
+        .with_help(help)
 }
 
 pub fn incompatible_named_types(underlying_ty: &Type, span: Span) -> LisetteDiagnostic {
@@ -1749,6 +1840,27 @@ pub fn unconstrained_type_param(param_name: &str, span: Span) -> LisetteDiagnost
         .with_help(format!(
             "Use `{}` in a parameter or return type, or provide an explicit type argument: `func<SomeType>(...)`",
             param_name
+        ))
+}
+
+pub fn instantiation_cycle(
+    param_name: &str,
+    type_arg: &Type,
+    target_fn_name: &str,
+    span: Span,
+) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Growing type argument")
+        .with_infer_code("instantiation_cycle")
+        .with_span_label(
+            &span,
+            format!(
+                "`{}` becomes `{}` in this recursive call",
+                param_name, type_arg
+            ),
+        )
+        .with_help(format!(
+            "Each recursive call would need a new version of `{}` at a larger type, so compilation would never finish. Keep type arguments fixed across recursive calls",
+            target_fn_name
         ))
 }
 
@@ -3081,6 +3193,13 @@ pub fn record_struct_value(name: &str, span: Span) -> LisetteDiagnostic {
         ))
 }
 
+pub fn type_used_as_value(name: &str, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Cannot use a type as a value")
+        .with_infer_code("type_used_as_value")
+        .with_span_label(&span, "type names are not runtime values")
+        .with_help(format!("`{name}` refers to a type, not a value"))
+}
+
 pub fn namespace_alias_used_as_value(span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Cannot use a module or enum-type alias as a value")
         .with_infer_code("namespace_alias_used_as_value")
@@ -3153,6 +3272,20 @@ pub fn immutable_argument_to_mut_param(
     LisetteDiagnostic::error("Immutable argument passed to `mut` parameter")
         .with_infer_code("immutable_arg_to_mut_param")
         .with_span_label(&span, "expected mutable, found immutable")
+        .with_help(help)
+}
+
+pub fn mut_arg_clone_does_not_sever(
+    source: &str,
+    callee_label: &str,
+    span: Span,
+) -> LisetteDiagnostic {
+    let help = format!(
+        "`{source}.clone()` leaves collections inside struct or enum values shared, so {callee_label} could still mutate one shared with `{source}`. Construct a new value to pass instead."
+    );
+    LisetteDiagnostic::error("Aliasing argument passed to `mut` parameter")
+        .with_infer_code("mut_arg_clone_does_not_sever")
+        .with_span_label(&span, "does not make an independent copy")
         .with_help(help)
 }
 
