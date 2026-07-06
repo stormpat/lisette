@@ -12,7 +12,8 @@ import "go:hash"
 pub fn New() -> hash.Hash
 
 /// Sum returns the MD5 checksum of the data.
-pub fn Sum(data: Slice<byte>) -> Array<byte, 16>
+#[go(array_return)]
+pub fn Sum(data: Slice<byte>) -> Slice<byte>
 
 /// The blocksize of MD5 in bytes.
 pub const BlockSize = 64

@@ -90,12 +90,16 @@ pub(crate) enum CallbackWrapperKind {
     Wrap,
 }
 
-/// Call-level wrapping (variadic spread).
+/// Call-level wrapping (variadic spread, Go-array return).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct WrapperPlan {
     /// Variadic spread combine: present when the callee accepts a variadic
     /// parameter and the call supplies a trailing spread argument.
     pub(crate) variadic: Option<VariadicSpreadPlan>,
+    /// True when the callee is a Go function whose declared return is a
+    /// slice/array. Renderers still gate on `ctx.keeps_raw_go_array_return()`
+    /// before applying the slice wrap.
+    pub(crate) go_array_return: bool,
 }
 
 /// Variadic spread combine: a trailing spread argument must be combined
@@ -129,6 +133,12 @@ impl CallPlan {
             .variadic
             .as_ref()
             .map(|spread| spread.combine(extra_leading))
+    }
+
+    /// True when the callee is a Go function returning a slice/array; the
+    /// renderer still gates on its expression-context before wrapping.
+    pub(crate) fn has_go_array_return(&self) -> bool {
+        self.wrapper.go_array_return
     }
 }
 
@@ -187,10 +197,25 @@ impl Planner<'_> {
     }
 
     /// Plan call-level wrapping. Detects variadic spread (if a trailing
-    /// spread argument is supplied).
+    /// spread argument is supplied) and the Go-array-return hint (the
+    /// renderer still gates on its expression context before wrapping).
     fn plan_call_wrapper(&self, function: &Expression, spread: Option<&Expression>) -> WrapperPlan {
         let variadic = plan_variadic_spread(function, spread);
-        WrapperPlan { variadic }
+        let mut go_array_return = false;
+        if let Expression::DotAccess {
+            expression: receiver_expression,
+            member,
+            ..
+        } = function.unwrap_parens()
+            && is_go_receiver(receiver_expression)
+            && self.has_go_array_return(receiver_expression, member)
+        {
+            go_array_return = true;
+        }
+        WrapperPlan {
+            variadic,
+            go_array_return,
+        }
     }
 
     /// Lowered shape of a callee. Type-driven, so it fires regardless of

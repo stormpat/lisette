@@ -67,24 +67,18 @@ func (widget) Bounds() int    { return 4 }
 
 var DefaultWidget widget
 
-// AnonParamIface is exported but not representable in Lisette: its method takes
-// a tagged anonymous struct, which gates. A singleton implementing only it must
-// fall back to the default `()` handling rather than be typed by an interface
-// bindgen skips.
-type AnonParamIface interface {
-	Configure(data struct {
-		X int `json:"x"`
-	})
+// ArrayParamIface is exported but not representable in Lisette: its method takes
+// a fixed-size array. A singleton implementing only it must fall back to the
+// default `()` handling rather than be typed by an interface bindgen will skip.
+type ArrayParamIface interface {
+	Configure(data [3]int)
 }
 
-type anonParamMarker struct{}
+type arrayParamMarker struct{}
 
-func (anonParamMarker) Configure(data struct {
-	X int `json:"x"`
-}) {
-}
+func (arrayParamMarker) Configure(data [3]int) {}
 
-var AnonParamSingleton anonParamMarker
+var ArrayParamSingleton arrayParamMarker
 
 // Cyclic exercises the self-referential representability probe: an exported
 // interface whose method returns an unexported concrete type that implements the

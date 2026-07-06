@@ -26,15 +26,19 @@ impl Planner<'_> {
         expression: &Expression,
         ctx: ExpressionContext<'_>,
     ) -> ValuePlan {
-        if let Some(strategy) = self.classify_go_fn_value(expression)
-            && !self.go_fn_matches_lowered_slot(expression, &strategy, ctx)
-        {
+        if let Some(strategy) = self.classify_go_fn_value(expression) {
+            if !self.go_fn_matches_lowered_slot(expression, &strategy, ctx) {
+                let mut setup = Vec::new();
+                let value = if self.go_fn_needs_lowered_tuple_adapter(expression, ctx) {
+                    self.emit_go_fn_lowered_tuple_adapter(&mut setup, expression)
+                } else {
+                    self.emit_go_fn_wrapper(&mut setup, expression, &strategy)
+                };
+                return value_plan_from_statements(setup, value);
+            }
+        } else if self.is_go_array_return_value(expression) {
             let mut setup = Vec::new();
-            let value = if self.go_fn_needs_lowered_tuple_adapter(expression, ctx) {
-                self.emit_go_fn_lowered_tuple_adapter(&mut setup, expression)
-            } else {
-                self.emit_go_fn_wrapper(&mut setup, expression, &strategy)
-            };
+            let value = self.emit_array_return_wrapper(&mut setup, expression);
             return value_plan_from_statements(setup, value);
         }
 
