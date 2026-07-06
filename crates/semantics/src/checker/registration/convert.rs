@@ -510,7 +510,7 @@ impl TaskState<'_> {
             return;
         }
 
-        if let Some(reason) = self.map_key_non_comparable_reason(&resolved) {
+        if let Some(reason) = self.map_key_non_comparable_reason(store, &resolved) {
             self.sink.push(diagnostics::infer::non_comparable_map_key(
                 &resolved, reason, span,
             ));
@@ -521,8 +521,8 @@ impl TaskState<'_> {
     /// comparable iff its element is, so recurse into it; functions, slices, and
     /// maps are never comparable. Interfaces and type parameters are left alone:
     /// Go permits them as keys (an interface key panics only at runtime).
-    fn map_key_non_comparable_reason(&self, ty: &Type) -> Option<&'static str> {
-        let resolved = ty.resolve_in(&self.env);
+    fn map_key_non_comparable_reason(&self, store: &Store, ty: &Type) -> Option<&'static str> {
+        let resolved = store.deep_resolve_alias(&ty.resolve_in(&self.env));
         if matches!(&resolved, Type::Function(_)) {
             Some("functions")
         } else if resolved.has_name("Slice") {
@@ -530,7 +530,7 @@ impl TaskState<'_> {
         } else if resolved.has_name("Map") {
             Some("maps")
         } else if let Type::Array { elem, .. } = &resolved {
-            self.map_key_non_comparable_reason(elem)
+            self.map_key_non_comparable_reason(store, elem)
                 .map(|_| "arrays with non-comparable elements")
         } else {
             None

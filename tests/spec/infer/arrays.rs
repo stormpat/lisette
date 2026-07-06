@@ -161,6 +161,12 @@ fn comparable_array_map_key_indexing() {
 }
 
 #[test]
+fn non_comparable_array_alias_rejected_as_map_key() {
+    infer("type BadKey = Array<Slice<int>, 2>\nfn f(m: Map<BadKey, int>) {}")
+        .assert_infer_code("non_comparable_map_key");
+}
+
+#[test]
 fn array_as_slice_returns_slice_of_element() {
     infer("let xs: Array<int, 3> = [1, 2, 3]; xs.as_slice()")
         .assert_last_type(slice_type(int_type()));
