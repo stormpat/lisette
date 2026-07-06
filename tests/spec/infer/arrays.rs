@@ -74,6 +74,18 @@ fn array_of_slices_is_not_comparable() {
 }
 
 #[test]
+fn bounded_generic_array_equality_is_allowed() {
+    infer("fn eq<T: Comparable>(a: Array<T, 2>, b: Array<T, 2>) -> bool { a == b }")
+        .assert_no_errors();
+}
+
+#[test]
+fn unbounded_generic_array_equality_is_rejected() {
+    infer("fn eq<T>(a: Array<T, 2>, b: Array<T, 2>) -> bool { a == b }")
+        .assert_infer_code("type_mismatch");
+}
+
+#[test]
 fn array_new_with_turbofish() {
     infer("Array.new<int, 5>()").assert_type(array_type(5, int_type()));
 }
