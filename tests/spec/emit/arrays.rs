@@ -286,6 +286,27 @@ fn at(a: Array<int, 3>, i: int) -> Option<int> {
     assert_emit_snapshot!(input);
 }
 
+#[test]
+fn array_get_map_value_receiver_hoists() {
+    let input = r#"
+fn at(m: Map<string, Array<int, 3>>, i: int) -> Option<int> {
+  m["k"].get(i)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+// A `Ref` receiver is staged as `*a`, so the slice reads `(*a)[:]`.
+#[test]
+fn array_get_through_ref_deref() {
+    let input = r#"
+fn at(a: Ref<Array<int, 3>>, i: int) -> Option<int> {
+  a.get(i)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
 // A transparent alias over `Array` must behave like the array at use sites:
 // construction, indexing, and the prelude methods all lower natively, with no
 // comma-ok double-wrap around `.get()`.

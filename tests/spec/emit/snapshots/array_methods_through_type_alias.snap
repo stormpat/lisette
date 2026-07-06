@@ -22,7 +22,10 @@ description: |
 ---
 package main
 
-import lisette "github.com/ivov/lisette/prelude"
+import (
+	lisette "github.com/ivov/lisette/prelude"
+	"slices"
+)
 
 type Addr = [4]byte
 
@@ -31,12 +34,7 @@ func build() Addr {
 }
 
 func at(a Addr, i int) (byte, bool) {
-	v_1 := func(a [4]byte, i int) lisette.Option[byte] {
-		if i >= 0 && i < len(a) {
-			return lisette.MakeOptionSome(a[i])
-		}
-		return lisette.MakeOptionNone[byte]()
-	}(a, i)
+	v_1 := lisette.SliceGet(a[:], i)
 	if v_1.Tag == lisette.OptionSome {
 		return v_1.SomeVal, true
 	}
@@ -44,13 +42,7 @@ func at(a Addr, i int) (byte, bool) {
 }
 
 func to_slice(a Addr) []byte {
-	return func(a [4]byte) []byte {
-		out := make([]byte, len(a))
-		for i := range a {
-			out[i] = a[i]
-		}
-		return out
-	}(a)
+	return slices.Clone(a[:])
 }
 
 func size(a Addr) int {

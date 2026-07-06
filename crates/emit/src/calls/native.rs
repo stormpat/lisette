@@ -8,7 +8,7 @@ use crate::plan::bodies::LoweredStatement;
 use crate::plan::calls::plan_variadic_spread;
 use crate::types::native::NativeGoType;
 use crate::utils::{contains_call, reads_mutable_operand};
-use syntax::ast::Expression;
+use syntax::ast::{Expression, UnaryOperator};
 use syntax::types::{CompoundKind, Type, peel_to_range_type};
 
 #[derive(Clone, Copy)]
@@ -376,32 +376,76 @@ impl Planner<'_> {
         ctx: &NativeCallContext,
         expression: &Expression,
     ) -> Option<(Vec<LoweredStatement>, String)> {
-        let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
-        let Type::Array { element, .. } = &receiver_ty else {
+        if !matches!(
+            self.facts.strip_and_peel(&expression.get_type()),
+            Type::Array { .. }
+        ) {
             return None;
-        };
-        let arr_go = self.go_type_string(&receiver_ty);
-        let elem_go = self.go_type_string(element);
+        }
 
         match ctx.method {
             "as_slice" => {
-                let (setup, receiver, _) = self.stage_native_dot_access_call(ctx);
-                let body = format!(
-                    "func(a {arr_go}) []{elem_go} {{ out := make([]{elem_go}, len(a)); for i := range a {{ out[i] = a[i] }}; return out }}({receiver})"
-                );
-                Some((setup, body))
+                self.require_slices();
+                let (mut setup, receiver, _) = self.stage_native_dot_access_call(ctx);
+                let view = self.sliceable_receiver(expression, receiver, &mut setup);
+                Some((setup, format!("slices.Clone({view})")))
             }
             "get" => {
-                let pkg = go_name::GO_STDLIB_PKG;
                 self.require_stdlib();
-                let (setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
-                let index = &emitted_args[0];
-                let body = format!(
-                    "func(a {arr_go}, i int) {pkg}.Option[{elem_go}] {{ if i >= 0 && i < len(a) {{ return {pkg}.MakeOptionSome(a[i]) }}; return {pkg}.MakeOptionNone[{elem_go}]() }}({receiver}, {index})"
-                );
-                Some((setup, body))
+                let (mut setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
+                let index = emitted_args[0].clone();
+                let view = self.sliceable_receiver(expression, receiver, &mut setup);
+                let pkg = go_name::GO_STDLIB_PKG;
+                Some((setup, format!("{pkg}.SliceGet({view}, {index})")))
             }
             _ => None,
+        }
+    }
+
+    fn sliceable_receiver(
+        &mut self,
+        expression: &Expression,
+        receiver: String,
+        setup: &mut Vec<LoweredStatement>,
+    ) -> String {
+        let base = if self.receiver_is_addressable(expression) {
+            if receiver.starts_with('*') {
+                format!("({receiver})")
+            } else {
+                receiver
+            }
+        } else {
+            self.hoist_tmp_value_statement(setup, "arr", &receiver)
+        };
+        format!("{base}[:]")
+    }
+
+    fn receiver_is_addressable(&self, expression: &Expression) -> bool {
+        if expression.get_type().is_ref() {
+            return true;
+        }
+        match expression.unwrap_parens() {
+            Expression::Identifier { .. } => true,
+            Expression::Unary {
+                operator: UnaryOperator::Deref,
+                ..
+            } => true,
+            Expression::DotAccess {
+                expression: base, ..
+            } => {
+                let origin = base.unwrap_parens();
+                let fresh_value = matches!(origin, Expression::StructCall { .. })
+                    || (matches!(origin, Expression::Call { .. }) && !base.get_type().is_ref());
+                !fresh_value && self.receiver_is_addressable(base)
+            }
+            Expression::IndexedAccess {
+                expression: base, ..
+            } => match self.facts.strip_and_peel(&base.get_type()).get_name() {
+                Some("Map") => false,
+                Some("Slice") => true,
+                _ => self.receiver_is_addressable(base),
+            },
+            _ => false,
         }
     }
 
