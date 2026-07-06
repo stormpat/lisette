@@ -274,14 +274,9 @@ impl<T, E> Partial<T, E> {
 ///   let xs: Array<int, 3> = [1, 2, 3]
 ///   let n = xs.length()
 ///   let s = xs.as_slice()
-type Array<T, SIZE>
+type Array<T>
 
-// NOTE! `SIZE` is a phantom type: methods may use it only as the self-type
-// parameter, never in a param or return. The unify bridge ignores the size, so a
-// size-flowing method (e.g. `map -> Array<U, SIZE>`) leaves SIZE uninferable and
-// every call fails with `Missing type argument`. Supporting it needs real const
-// generics.
-impl<T, SIZE> Array<T, SIZE> {
+impl<T> Array<T> {
   /// Returns the size of the array.
   fn length(self) -> int
 

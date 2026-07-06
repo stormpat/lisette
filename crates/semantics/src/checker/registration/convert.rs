@@ -281,6 +281,15 @@ impl TaskState<'_> {
         annotation_span: Span,
         span: &Span,
     ) -> Type {
+        if params.len() == 1 && self.cursor.module_id == PRELUDE_MODULE_ID {
+            let element = self.convert_to_type(store, &params[0], span);
+            return Type::Nominal {
+                id: Symbol::from_parts("prelude", "Array"),
+                params: vec![element],
+                underlying_ty: None,
+            };
+        }
+
         if params.len() != 2 {
             self.sink.push(diagnostics::infer::array_type_arity(
                 params.len(),
@@ -311,23 +320,6 @@ impl TaskState<'_> {
             return Type::Array {
                 length: *value,
                 element: Box::new(element),
-            };
-        }
-
-        // A generic-param size is the phantom self-type for the prelude `Array`
-        // impl. Gated to the prelude, since elsewhere the nominal would leak into
-        // user types and crash emit, so user code keeps the literal-size error.
-        if self.cursor.module_id == PRELUDE_MODULE_ID
-            && let Annotation::Constructor {
-                name, params: p, ..
-            } = &params[1]
-            && p.is_empty()
-            && self.scopes.lookup_type_param(name).is_some()
-        {
-            return Type::Nominal {
-                id: Symbol::from_parts("prelude", "Array"),
-                params: vec![element, Type::Parameter(name.clone())],
-                underlying_ty: None,
             };
         }
 

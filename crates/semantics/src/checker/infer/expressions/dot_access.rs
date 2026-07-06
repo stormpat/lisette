@@ -745,8 +745,8 @@ impl InferCtx<'_, '_> {
     ) -> Option<(Expression, DotAccessKind)> {
         let store = self.store;
 
-        // Array methods live on the prelude `Array` impl, reached via the
-        // `method_lookup_key` bridge, with the phantom `SIZE` bound away in unify.
+        // Array methods live on the size-erased prelude `Array` impl, reached via
+        // the `method_lookup_key` bridge, with the size ignored in receiver unify.
         let (method_ty, is_exported) = if let Type::Array { .. } = &args.deref_ty {
             (
                 self.get_all_methods(store, &args.deref_ty)
