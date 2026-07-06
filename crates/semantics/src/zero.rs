@@ -94,8 +94,13 @@ fn has_zero_seen(
             }
             Ok(())
         }
-        // An array has a zero iff its element does.
-        Type::Array { elem, .. } => has_zero_seen(store, elem, from_module, visited),
+        Type::Array { len, elem } => {
+            if *len == 0 {
+                Ok(())
+            } else {
+                has_zero_seen(store, elem, from_module, visited)
+            }
+        }
         Type::Function(_) => Err(NoZero {
             chain: vec![],
             reason: NoZeroReason::NoZeroForType,

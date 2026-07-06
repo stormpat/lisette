@@ -115,6 +115,12 @@ fn array_new_ref_element_without_zero_errors() {
 }
 
 #[test]
+fn zero_length_array_of_zeroless_element_is_zeroable() {
+    infer("struct S { a: Array<Ref<int>, 0>, b: int }\nfn f() { let _ = S { b: 1, .. } }")
+        .assert_no_errors();
+}
+
+#[test]
 fn array_for_loop_binds_element_type() {
     // `_y: int = x` only type-checks if the loop variable is inferred as `int`.
     infer("let arr: Array<int, 3> = [1, 2, 3]; for x in arr { let _y: int = x }")
