@@ -86,6 +86,7 @@ pub(crate) fn check_non_addressable_assignment_target(
         } => {
             if base.get_type().resolve_in(env).get_name() == Some("Array") {
                 check_is_non_addressable(base, env)
+                    .or_else(|| check_non_addressable_assignment_target(base, env))
             } else {
                 None
             }

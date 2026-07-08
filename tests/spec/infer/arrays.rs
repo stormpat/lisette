@@ -28,6 +28,17 @@ fn cannot_assign_to_array_element_through_map_base() {
 }
 
 #[test]
+fn cannot_assign_to_array_element_of_function_result() {
+    infer(
+        r#"{
+    fn make() -> Array<int, 3> { [1, 2, 3] }
+    make()[0] = 9
+  }"#,
+    )
+    .assert_infer_code("non_addressable_assignment");
+}
+
+#[test]
 fn can_assign_to_element_of_addressable_array() {
     infer(
         r#"{
