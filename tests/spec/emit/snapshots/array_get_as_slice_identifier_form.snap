@@ -1,0 +1,30 @@
+---
+source: tests/spec/emit/arrays.rs
+description: |
+  
+  fn at(xs: Array<int, 3>, i: int) -> Option<int> {
+    Array.get(xs, i)
+  }
+  
+  fn all(xs: Array<int, 3>) -> Slice<int> {
+    Array.as_slice(xs)
+  }
+---
+package main
+
+import (
+	lisette "github.com/ivov/lisette/prelude"
+	"slices"
+)
+
+func at(xs [3]int, i int) (int, bool) {
+	v_1 := lisette.SliceGet(xs[:], i)
+	if v_1.Tag == lisette.OptionSome {
+		return v_1.SomeVal, true
+	}
+	return 0, false
+}
+
+func all(xs [3]int) []int {
+	return slices.Clone(xs[:])
+}

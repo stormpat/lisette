@@ -2,7 +2,6 @@
 //! literal spreads) and by the `replaceable_with_zero_fill` lint.
 
 use ecow::EcoString;
-use rustc_hash::FxHashSet;
 use syntax::program::DefinitionBody;
 use syntax::types::{CompoundKind, SimpleKind, SubstitutionMap, Symbol, Type, substitute};
 
@@ -36,7 +35,7 @@ pub enum NoZeroReason {
 /// no zero is available; `Ok(())` otherwise.
 #[allow(clippy::result_large_err)]
 pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZero> {
-    has_zero_seen(store, ty, from_module, &mut FxHashSet::default())
+    has_zero_seen(store, ty, from_module, &mut Vec::new())
 }
 
 #[allow(clippy::result_large_err)]
@@ -44,7 +43,7 @@ fn has_zero_seen(
     store: &Store,
     ty: &Type,
     from_module: &str,
-    visited: &mut FxHashSet<String>,
+    visited: &mut Vec<Type>,
 ) -> Result<(), NoZero> {
     match ty {
         Type::Simple(kind) => match kind {
@@ -130,6 +129,8 @@ fn has_zero_seen(
     }
 }
 
+const MAX_ZERO_DEPTH: usize = 256;
+
 #[allow(clippy::result_large_err)]
 fn has_zero_nominal(
     store: &Store,
@@ -137,7 +138,7 @@ fn has_zero_nominal(
     params: &[Type],
     from_module: &str,
     original_ty: &Type,
-    visited: &mut FxHashSet<String>,
+    visited: &mut Vec<Type>,
 ) -> Result<(), NoZero> {
     // Go-imported nominal: every Go field has a Go zero by language definition.
     // Accept the whole nominal without recursing into its fields (Go's own
@@ -146,12 +147,46 @@ fn has_zero_nominal(
         return Ok(());
     }
 
-    // Cycle guard. A recursive value type is rejected elsewhere as infinite-size,
-    // so treat it as zero-having here to terminate the walk.
-    if !visited.insert(id.to_string()) {
+    let size = type_node_count(original_ty);
+    let is_recursion = visited.iter().any(|ancestor| match ancestor {
+        Type::Nominal {
+            id: ancestor_id, ..
+        } => ancestor_id.as_str() == id.as_str() && type_node_count(ancestor) <= size,
+        _ => false,
+    });
+    if is_recursion {
         return Ok(());
     }
+    if visited.len() >= MAX_ZERO_DEPTH {
+        return Err(NoZero {
+            chain: vec![],
+            reason: NoZeroReason::NoZeroForType,
+            leaf_ty: original_ty.clone(),
+        });
+    }
+    visited.push(original_ty.clone());
+    let result = has_zero_nominal_fields(store, id, params, from_module, original_ty, visited);
+    visited.pop();
+    result
+}
 
+fn type_node_count(ty: &Type) -> usize {
+    1 + ty
+        .children()
+        .iter()
+        .map(|c| type_node_count(c))
+        .sum::<usize>()
+}
+
+#[allow(clippy::result_large_err)]
+fn has_zero_nominal_fields(
+    store: &Store,
+    id: &Symbol,
+    params: &[Type],
+    from_module: &str,
+    original_ty: &Type,
+    visited: &mut Vec<Type>,
+) -> Result<(), NoZero> {
     let Some(def) = store.get_definition(id.as_str()) else {
         // Unknown nominal — conservatively reject.
         return Err(NoZero {

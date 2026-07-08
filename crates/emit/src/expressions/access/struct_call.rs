@@ -369,7 +369,7 @@ impl Planner<'_> {
     /// `[N]E{}` zero differs from Lisette's (e.g. `Option<T>`).
     pub(crate) fn array_zero(&mut self, len: u64, elem: &Type) -> String {
         let elem_go = self.go_type_string(elem);
-        if self.array_element_go_zero_ok(elem) {
+        if len == 0 || self.array_element_go_zero_ok(elem) {
             return format!("[{}]{}{{}}", len, elem_go);
         }
         let zero = self.lisette_zero(elem);

@@ -194,6 +194,84 @@ fn count(m: Map<Array<int, 2>, string>) -> int {
     assert_emit_snapshot!(input);
 }
 
+#[test]
+fn generic_array_map_key_renders_comparable_bound() {
+    let input = r#"
+fn count<T>(m: Map<Array<T, 2>, int>) -> int {
+  m.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn alias_over_array_map_key_renders_comparable_bound() {
+    let input = r#"
+type Key<T> = Array<T, 2>
+
+fn f<T>(m: Map<Key<T>, int>) -> int {
+  m.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn struct_key_with_array_field_renders_comparable_bound() {
+    let input = r#"
+struct Key<T> {
+  value: Array<T, 2>,
+}
+
+fn f<T>(m: Map<Key<T>, int>) -> int {
+  m.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn phantom_generic_in_struct_key_stays_unbounded() {
+    let input = r#"
+struct Phantom<T> {
+  n: int,
+}
+
+fn f<T>(m: Map<Phantom<T>, int>) -> int {
+  m.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn nested_array_map_key_propagates_comparable_bound() {
+    let input = r#"
+struct Box<K> {
+  table: Map<K, int>,
+}
+
+fn f<T>(b: Box<Array<T, 2>>) -> int {
+  b.table.length()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_get_as_slice_identifier_form() {
+    let input = r#"
+fn at(xs: Array<int, 3>, i: int) -> Option<int> {
+  Array.get(xs, i)
+}
+
+fn all(xs: Array<int, 3>) -> Slice<int> {
+  Array.as_slice(xs)
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
 // Zero values: primitive elements keep Go's `[N]T{}` zero-fill, but elements
 // whose Lisette zero differs from Go's (e.g. `Option<T>`: None vs `Some(nil)`)
 // must be filled per index.
@@ -261,6 +339,21 @@ fn array_new_option_ref_element_fills_with_none() {
     let input = r#"
 fn flags() -> Array<Option<Ref<bool>>, 2> {
   Array.new<Option<Ref<bool>>, 2>()
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn array_zero_value_zeroless_element_emits_empty_literal() {
+    let input = r#"
+struct S {
+  refs: Array<Ref<int>, 0>,
+  n: int,
+}
+
+fn make() -> S {
+  S { n: 1, .. }
 }
 "#;
     assert_emit_snapshot!(input);

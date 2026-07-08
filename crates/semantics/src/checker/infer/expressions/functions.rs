@@ -546,7 +546,13 @@ impl InferCtx<'_, '_> {
         } else if type_args.len() == 2 {
             let elem = self.convert_to_type(store, &type_args[0], &span);
             match &type_args[1] {
-                Annotation::Constant { value, .. } => Some((elem, *value)),
+                Annotation::Constant {
+                    value,
+                    span: size_span,
+                    ..
+                } => self
+                    .check_array_size_in_bounds(*value, *size_span)
+                    .then_some((elem, *value)),
                 other => {
                     self.sink
                         .push(diagnostics::infer::array_size_not_literal(other.get_span()));
@@ -577,14 +583,15 @@ impl InferCtx<'_, '_> {
 
         let array_ty = match resolved {
             Some((elem, len)) => {
+                let array_ty = self.type_array(len, elem);
                 let from_module = self.cursor.module_id.clone();
-                if let Err(no_zero) = self.has_zero(&elem, &from_module) {
+                if let Err(no_zero) = self.has_zero(&array_ty, &from_module) {
                     self.sink.push(diagnostics::infer::array_new_no_zero(
                         &no_zero.leaf_ty.stringify(),
                         span,
                     ));
                 }
-                self.type_array(len, elem)
+                array_ty
             }
             None => Type::Error,
         };

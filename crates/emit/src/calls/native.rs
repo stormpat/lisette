@@ -251,6 +251,10 @@ pub(super) fn try_inline_native_method(
     Some((render_inline(template, receiver, args), rule.import))
 }
 
+fn is_native_array_method(method: &str) -> bool {
+    matches!(method, "as_slice" | "get")
+}
+
 /// Whether a rule for `(type, method, arity)` defines a negated template.
 pub(super) fn has_inline_negation(native_type: &NativeGoType, method: &str, arity: usize) -> bool {
     lookup_inline_rule(native_type, method, arity)
@@ -376,29 +380,45 @@ impl Planner<'_> {
         ctx: &NativeCallContext,
         expression: &Expression,
     ) -> Option<(Vec<LoweredStatement>, String)> {
-        if !matches!(
-            self.facts.strip_and_peel(&expression.get_type()),
-            Type::Array { .. }
-        ) {
+        if !is_native_array_method(ctx.method)
+            || !matches!(
+                self.facts.strip_and_peel(&expression.get_type()),
+                Type::Array { .. }
+            )
+        {
             return None;
         }
+        let (mut setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
+        let index = emitted_args.first();
+        let body =
+            self.lower_array_method_body(ctx.method, expression, receiver, index, &mut setup);
+        Some((setup, body))
+    }
 
-        match ctx.method {
+    fn lower_array_method_body(
+        &mut self,
+        method: &str,
+        receiver_expr: &Expression,
+        receiver: String,
+        index: Option<&String>,
+        setup: &mut Vec<LoweredStatement>,
+    ) -> String {
+        match method {
             "as_slice" => {
                 self.require_slices();
-                let (mut setup, receiver, _) = self.stage_native_dot_access_call(ctx);
-                let view = self.sliceable_receiver(expression, receiver, &mut setup);
-                Some((setup, format!("slices.Clone({view})")))
+                let view = self.sliceable_receiver(receiver_expr, receiver, setup);
+                format!("slices.Clone({view})")
             }
             "get" => {
                 self.require_stdlib();
-                let (mut setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
-                let index = emitted_args[0].clone();
-                let view = self.sliceable_receiver(expression, receiver, &mut setup);
+                let view = self.sliceable_receiver(receiver_expr, receiver, setup);
                 let pkg = go_name::GO_STDLIB_PKG;
-                Some((setup, format!("{pkg}.SliceGet({view}, {index})")))
+                format!(
+                    "{pkg}.SliceGet({view}, {})",
+                    index.expect("get needs an index")
+                )
             }
-            _ => None,
+            other => unreachable!("not a native array method: {other}"),
         }
     }
 
@@ -557,6 +577,26 @@ impl Planner<'_> {
                     return (setup, body);
                 }
             }
+        }
+
+        if is_native_array_method(ctx.method)
+            && let Some(receiver_expr) = ctx.args.first()
+            && matches!(
+                self.facts.strip_and_peel(&receiver_expr.get_type()),
+                Type::Array { .. }
+            )
+        {
+            let (mut setup, emitted_args) = self.stage_native_identifier_args(ctx);
+            let receiver = emitted_args[0].clone();
+            let index = emitted_args.get(1);
+            let body = self.lower_array_method_body(
+                ctx.method,
+                receiver_expr,
+                receiver,
+                index,
+                &mut setup,
+            );
+            return (setup, body);
         }
 
         let (setup, emitted_args) = self.stage_native_identifier_args(ctx);

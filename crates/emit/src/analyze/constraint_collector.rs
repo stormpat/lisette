@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashSet as HashSet;
 
+use crate::EmitFacts;
 use crate::Planner;
 use crate::names::constraints::{GenericConstraintTable, classify_bound_annotation};
 use crate::names::go_name;
 use syntax::EcoString;
 use syntax::ast::{Annotation, Binding, Expression, Generic, Pattern, Visibility};
 use syntax::program::{DefinitionBody, File, Interface};
-use syntax::types::{CompoundKind, Symbol, Type, unqualified_name};
+use syntax::types::{
+    CompoundKind, Symbol, Type, build_substitution_map, substitute, unqualified_name,
+};
 
 impl Planner<'_> {
     pub(crate) fn collect_generic_constraints(&mut self, files: &[&File]) {
@@ -17,7 +20,7 @@ impl Planner<'_> {
             let mut t = GenericConstraintTable::default();
             self.seed_global_definitions(&mut t);
             self.for_each_definition_type(|key, names, ty| {
-                collect_demands_from_type(ty, key, names, &mut t);
+                collect_demands_from_type(ty, key, names, &mut t, &self.facts);
             });
             self.propagate_constraints(&mut t);
             Arc::new(t)
@@ -275,9 +278,9 @@ impl Planner<'_> {
                 let key = self.facts.qualified_current(name);
                 let names = generic_names(generics);
                 for p in params {
-                    collect_demands_from_type(&p.ty, &key, &names, table);
+                    collect_demands_from_type(&p.ty, &key, &names, table, &self.facts);
                 }
-                collect_demands_from_type(return_type, &key, &names, table);
+                collect_demands_from_type(return_type, &key, &names, table, &self.facts);
                 self.collect_demands_from_expression(body, &key, &names, table);
             }
         }
@@ -371,9 +374,9 @@ impl Planner<'_> {
         table: &mut GenericConstraintTable,
     ) {
         for p in params {
-            collect_demands_from_type(&p.ty, symbol, local_generics, table);
+            collect_demands_from_type(&p.ty, symbol, local_generics, table, &self.facts);
         }
-        collect_demands_from_type(return_type, symbol, local_generics, table);
+        collect_demands_from_type(return_type, symbol, local_generics, table, &self.facts);
         self.collect_demands_from_expression(body, symbol, local_generics, table);
     }
 
@@ -386,10 +389,16 @@ impl Planner<'_> {
     ) {
         // `get_type()` catches `Map.new<T, int>()` inside a non-map context
         // like `.is_empty()` or an if-condition.
-        collect_demands_from_type(&expression.get_type(), symbol, local_generics, table);
+        collect_demands_from_type(
+            &expression.get_type(),
+            symbol,
+            local_generics,
+            table,
+            &self.facts,
+        );
         // Let bindings carry an explicit type that `children()` does not walk.
         if let Expression::Let { binding, .. } = expression {
-            collect_demands_from_type(&binding.ty, symbol, local_generics, table);
+            collect_demands_from_type(&binding.ty, symbol, local_generics, table, &self.facts);
         }
         for child in expression.children() {
             self.collect_demands_from_expression(child, symbol, local_generics, table);
@@ -414,7 +423,7 @@ impl Planner<'_> {
     fn collect_propagation_edges(&self, table: &GenericConstraintTable) -> Vec<PropagationEdge> {
         let mut edges = Vec::new();
         self.for_each_definition_type(|key, names, ty| {
-            scan_propagation(ty, key, names, table, &mut edges);
+            scan_propagation(ty, key, names, table, &mut edges, &self.facts);
         });
         edges
     }
@@ -440,14 +449,14 @@ fn collect_demands_from_type(
     symbol: &str,
     local_generics: &[&str],
     table: &mut GenericConstraintTable,
+    facts: &EmitFacts,
 ) {
     let mut stack: Vec<&Type> = vec![ty];
     while let Some(current) = stack.pop() {
-        if let Some(key_ty) = map_key_of(current)
-            && let Type::Parameter(name) = key_ty
-            && local_generics.contains(&name.as_str())
-        {
-            table.mark_inferred_comparable(symbol, name);
+        if let Some(key_ty) = map_key_of(current) {
+            for name in comparable_key_params(key_ty, local_generics, facts) {
+                table.mark_inferred_comparable(symbol, &name);
+            }
         }
         for child in current.children() {
             stack.push(child);
@@ -462,12 +471,72 @@ fn collect_demands_from_type(
     }
 }
 
+const MAX_KEY_DEPTH: usize = 64;
+
+fn comparable_key_params(key: &Type, local_generics: &[&str], facts: &EmitFacts) -> Vec<EcoString> {
+    let mut out = Vec::new();
+    collect_comparable_key_params(key, local_generics, facts, 0, &mut out);
+    out
+}
+
+fn collect_comparable_key_params(
+    key: &Type,
+    local_generics: &[&str],
+    facts: &EmitFacts,
+    depth: usize,
+    out: &mut Vec<EcoString>,
+) {
+    if depth >= MAX_KEY_DEPTH {
+        return;
+    }
+    match key {
+        Type::Parameter(name) if local_generics.contains(&name.as_str()) => out.push(name.clone()),
+        Type::Array { element, .. } => {
+            collect_comparable_key_params(element, local_generics, facts, depth + 1, out);
+        }
+        Type::Tuple(elements) => {
+            for element in elements {
+                collect_comparable_key_params(element, local_generics, facts, depth + 1, out);
+            }
+        }
+        Type::Nominal {
+            underlying_ty: Some(underlying),
+            ..
+        } => {
+            collect_comparable_key_params(underlying, local_generics, facts, depth + 1, out);
+        }
+        Type::Nominal { id, params, .. } => match facts.definition(id.as_str()).map(|d| &d.body) {
+            Some(DefinitionBody::Struct {
+                generics, fields, ..
+            }) => {
+                let map = build_substitution_map(generics, params);
+                for field in fields {
+                    let field_ty = substitute(&field.ty, &map);
+                    collect_comparable_key_params(&field_ty, local_generics, facts, depth + 1, out);
+                }
+            }
+            Some(DefinitionBody::Enum {
+                generics, variants, ..
+            }) => {
+                let map = build_substitution_map(generics, params);
+                for field in variants.iter().flat_map(|v| &v.fields) {
+                    let field_ty = substitute(&field.ty, &map);
+                    collect_comparable_key_params(&field_ty, local_generics, facts, depth + 1, out);
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+}
+
 fn scan_propagation(
     ty: &Type,
     symbol: &str,
     local_generics: &[&str],
     table: &GenericConstraintTable,
     edges: &mut Vec<PropagationEdge>,
+    facts: &EmitFacts,
 ) {
     let mut stack: Vec<&Type> = vec![ty];
     let mut visited_nominals: HashSet<Symbol> = HashSet::default();
@@ -484,12 +553,10 @@ fn scan_propagation(
                         continue;
                     }
                     let Some(arg) = params.get(i) else { continue };
-                    if let Type::Parameter(name) = arg
-                        && local_generics.contains(&name.as_str())
-                    {
+                    for name in comparable_key_params(arg, local_generics, facts) {
                         edges.push(PropagationEdge {
                             from_symbol: symbol.to_string(),
-                            from_param: name.clone(),
+                            from_param: name,
                         });
                     }
                 }

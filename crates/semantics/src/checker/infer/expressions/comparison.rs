@@ -154,9 +154,18 @@ fn check_not_comparable_impl(
 
     // Arrays are comparable iff their element is (Go's rule).
     if let Type::Array { element, .. } = ty
-        && check_not_comparable(env, store, &element.resolve_in(env)).is_some()
+        && let Some(inner) = check_not_comparable_impl(
+            env,
+            store,
+            &element.resolve_in(env),
+            visiting,
+            definite_only,
+        )
     {
-        return Some("an array containing non-comparable elements");
+        return Some(nested_reason(
+            inner,
+            "an array containing non-comparable elements",
+        ));
     }
 
     None

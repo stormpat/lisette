@@ -312,9 +312,7 @@ impl TaskState<'_> {
             ..
         } = &params[1]
         {
-            if *value > i64::MAX as u64 {
-                self.sink
-                    .push(diagnostics::infer::array_size_too_large(*value, *size_span));
+            if !self.check_array_size_in_bounds(*value, *size_span) {
                 return Type::Error;
             }
             return Type::Array {
@@ -327,6 +325,16 @@ impl TaskState<'_> {
             params[1].get_span(),
         ));
         Type::Error
+    }
+
+    pub(crate) fn check_array_size_in_bounds(&mut self, value: u64, span: Span) -> bool {
+        if value > i64::MAX as u64 {
+            self.sink
+                .push(diagnostics::infer::array_size_too_large(value, span));
+            false
+        } else {
+            true
+        }
     }
 
     pub(super) fn classify_non_type_name(

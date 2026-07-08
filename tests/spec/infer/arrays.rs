@@ -111,6 +111,11 @@ fn array_new_non_literal_size_errors() {
 }
 
 #[test]
+fn array_new_size_above_int_max_is_rejected() {
+    infer("Array.new<int, 18000000000000000000>()").assert_infer_code("array_size_too_large");
+}
+
+#[test]
 fn array_new_wrong_arity_errors() {
     infer("Array.new<int>()").assert_infer_code("array_type_arity");
 }
@@ -135,6 +140,54 @@ fn array_new_ref_element_without_zero_errors() {
 fn zero_length_array_of_zeroless_element_is_zeroable() {
     infer("struct S { a: Array<Ref<int>, 0>, b: int }\nfn f() { let _ = S { b: 1, .. } }")
         .assert_no_errors();
+}
+
+#[test]
+fn array_new_zero_length_zeroless_element_is_ok() {
+    infer("Array.new<Ref<int>, 0>()").assert_no_errors();
+}
+
+#[test]
+fn array_new_checks_distinct_instantiations_of_one_generic() {
+    infer(
+        "struct Box<T> { value: T }\nstruct Pair { a: Box<int>, b: Box<Ref<int>> }\nfn f() { let _ = Array.new<Pair, 2>() }",
+    )
+    .assert_infer_code("array_new_no_zero");
+}
+
+#[test]
+fn array_new_checks_nested_same_generic_tail() {
+    infer("struct Box<T> { value: T }\nfn f() { let _ = Array.new<Box<Box<Ref<int>>>, 1>() }")
+        .assert_infer_code("array_new_no_zero");
+}
+
+#[test]
+fn array_is_reserved_as_import_alias() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file("arr", "arr.lis", "pub fn new() -> int { 0 }\n");
+    fs.add_file(
+        "main",
+        "main.lis",
+        "import Array \"arr\"\nfn f() -> int { Array.new() }\n",
+    );
+    infer_module("main", fs).assert_resolve_code("reserved_import_alias");
+}
+
+#[test]
+fn array_new_distinguishes_same_named_cross_module_types() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file("b", "b.lis", "pub struct Box<T> { pub r: Ref<T> }\n");
+    fs.add_file(
+        "main",
+        "main.lis",
+        "import \"b\"\nstruct Box<T> { inner: b.Box<T> }\nfn f() { let _ = Array.new<Box<int>, 1>() }\n",
+    );
+    infer_module("main", fs).assert_infer_code("array_new_no_zero");
+}
+
+#[test]
+fn array_new_zero_length_zeroless_element_from_annotation_is_ok() {
+    infer("let x: Array<Ref<int>, 0> = Array.new(); x").assert_no_errors();
 }
 
 #[test]
@@ -181,6 +234,28 @@ fn map_value_array_index_is_array() {
 fn comparable_array_map_key_indexing() {
     infer("let m: Map<Array<int, 2>, string> = Map.new(); m[[1, 2]]")
         .assert_last_type(string_type());
+}
+
+#[test]
+fn generic_array_map_key_infers_comparable() {
+    infer("fn f<T>(m: Map<Array<T, 2>, int>) -> int { m.length() }").assert_no_errors();
+}
+
+#[test]
+fn bounded_generic_array_map_key_is_allowed() {
+    infer("fn f<T: Comparable>(m: Map<Array<T, 2>, int>) -> int { m.length() }").assert_no_errors();
+}
+
+#[test]
+fn default_import_named_array_is_reserved() {
+    let mut fs = MockFileSystem::new();
+    fs.add_file("Array", "Array.lis", "pub fn new() -> int { 0 }\n");
+    fs.add_file(
+        "main",
+        "main.lis",
+        "import \"Array\"\nfn f() -> int { Array.new() }\n",
+    );
+    infer_module("main", fs).assert_resolve_code("reserved_import_alias");
 }
 
 #[test]
