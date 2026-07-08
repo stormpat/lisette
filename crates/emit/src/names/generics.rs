@@ -1,7 +1,10 @@
+use std::borrow::Cow;
+
 use rustc_hash::FxHashMap as HashMap;
 
 use crate::Planner;
 use crate::names::constraints::{ConstraintAtom, ParamConstraintSet, classify_builtin_name};
+use crate::names::go_name;
 use syntax::EcoString;
 use syntax::ast::{Annotation, Generic};
 use syntax::types::Type;
@@ -27,17 +30,18 @@ pub(crate) fn resolve_field_type(
 }
 
 impl Planner<'_> {
-    pub(crate) fn generic_go_name<'a>(&'a self, source_name: &'a str) -> &'a str {
-        self.module
-            .generic_rename(source_name)
-            .unwrap_or(source_name)
+    pub(crate) fn generic_go_name<'a>(&'a self, source_name: &'a str) -> Cow<'a, str> {
+        match self.module.generic_rename(source_name) {
+            Some(renamed) => Cow::Borrowed(renamed),
+            None => go_name::escape_type_name(source_name),
+        }
     }
 
     pub(crate) fn receiver_generics_string(&self, generics: &[Generic]) -> String {
         if generics.is_empty() {
             String::new()
         } else {
-            let params: Vec<&str> = generics
+            let params: Vec<Cow<'_, str>> = generics
                 .iter()
                 .map(|g| self.generic_go_name(&g.name))
                 .collect();

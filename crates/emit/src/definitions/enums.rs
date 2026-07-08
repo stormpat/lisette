@@ -138,7 +138,7 @@ impl Planner<'_> {
 
         let receiver = synthesized_receiver_name(name, receiver_generics);
         let other = synthesized_local_name("other", &receiver, receiver_generics);
-        let go_type_name = go_name::escape_keyword(name);
+        let go_type_name = go_name::escape_type_name(name);
         let receiver_type = format!("{go_type_name}{receiver_generics}");
         let go_method = self.equals_method_go_name();
 
@@ -211,7 +211,7 @@ impl Planner<'_> {
 
         let enum_name = layout.enum_name.clone();
         let generics = layout.generics.clone();
-        let go_type_name = go_name::escape_keyword(&enum_name);
+        let go_type_name = go_name::escape_type_name(&enum_name);
         let func_name = format!("Make{}{}", go_type_name, variant.name);
         let tag_constant = variant.tag_constant.clone();
 

@@ -108,7 +108,7 @@ impl Planner<'_> {
         let reserved = self.package_block_names(files);
         let mut colliding: Vec<&EcoString> = generic_names
             .iter()
-            .filter(|name| reserved.contains(name.as_str()))
+            .filter(|name| reserved.contains(go_name::escape_type_name(name).as_ref()))
             .collect();
         if colliding.is_empty() {
             return;
