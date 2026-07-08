@@ -2572,6 +2572,15 @@ pub fn index_out_of_bounds(span: &Span, index_text: &str) -> LisetteDiagnostic {
         .with_help(format!("Indexing at `{index_text}` will panic at runtime"))
 }
 
+pub fn negative_index(span: &Span, index_text: &str) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Negative index")
+        .with_infer_code("negative_index")
+        .with_span_label(span, "index is negative")
+        .with_help(format!(
+            "`{index_text}` is negative, but indices must be zero or greater"
+        ))
+}
+
 pub fn oversized_shift(
     span: &Span,
     type_name: &str,

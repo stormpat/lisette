@@ -12095,6 +12095,28 @@ fn at(xs: Array<int, 3>) -> int {
 }
 
 #[test]
+fn negative_index_on_array() {
+    assert_lint_snapshot!(
+        r#"
+fn at(xs: Array<int, 3>) -> int {
+  xs[-1]
+}
+"#
+    );
+}
+
+#[test]
+fn negative_index_on_slice() {
+    assert_lint_snapshot!(
+        r#"
+fn at(xs: Slice<int>) -> int {
+  xs[-1]
+}
+"#
+    );
+}
+
+#[test]
 fn index_out_of_bounds_empty_slice() {
     assert_lint_snapshot!(
         r#"
