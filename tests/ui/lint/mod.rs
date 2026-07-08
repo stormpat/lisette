@@ -12084,6 +12084,17 @@ fn main() {
 }
 
 #[test]
+fn index_out_of_bounds_fixed_array() {
+    assert_lint_snapshot!(
+        r#"
+fn at(xs: Array<int, 3>) -> int {
+  xs[3]
+}
+"#
+    );
+}
+
+#[test]
 fn index_out_of_bounds_empty_slice() {
     assert_lint_snapshot!(
         r#"

@@ -8920,6 +8920,16 @@ fn main() {
 }
 
 #[test]
+fn infer_native_array_method_value() {
+    let input = r#"
+fn main() {
+  let _ = Array.get
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_private_method_expression() {
     let input = r#"
 struct Box { value: int }

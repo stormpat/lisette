@@ -517,6 +517,10 @@ impl Store {
             Type::Tuple(elements) => {
                 Type::Tuple(elements.iter().map(|e| self.peel_alias_deep(e)).collect())
             }
+            Type::Array { length, element } => Type::Array {
+                length,
+                element: Box::new(self.peel_alias_deep(&element)),
+            },
             Type::Nominal {
                 id,
                 params,

@@ -16,6 +16,29 @@ fn array_index_returns_element() {
 }
 
 #[test]
+fn cannot_assign_to_array_element_through_map_base() {
+    infer(
+        r#"{
+    let mut m: Map<string, Array<int, 3>> = Map.new()
+    m["a"] = Array.new()
+    m["a"][0] = 9
+  }"#,
+    )
+    .assert_infer_code("non_addressable_assignment");
+}
+
+#[test]
+fn can_assign_to_element_of_addressable_array() {
+    infer(
+        r#"{
+    let mut xs: Array<int, 3> = [1, 2, 3]
+    xs[0] = 9
+  }"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
 fn array_length_returns_int() {
     infer("let xs: Array<int, 3> = [1, 2, 3]; xs.length()").assert_last_type(int_type());
 }
@@ -234,6 +257,12 @@ fn map_value_array_index_is_array() {
 fn comparable_array_map_key_indexing() {
     infer("let m: Map<Array<int, 2>, string> = Map.new(); m[[1, 2]]")
         .assert_last_type(string_type());
+}
+
+#[test]
+fn array_deep_alias_cast_peels_element() {
+    infer("type MyInt = int\nfn g(a: Array<int, 2>) {}\nfn f(a: Array<MyInt, 2>) { g(a as Array<int, 2>) }")
+        .assert_no_errors();
 }
 
 #[test]

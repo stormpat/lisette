@@ -1,5 +1,6 @@
 use crate::passes::walk::NodeCtx;
 use syntax::ast::{Expression, Literal};
+use syntax::types::Type;
 
 pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     let Expression::IndexedAccess {
@@ -17,7 +18,20 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
         return;
     }
 
-    if !receiver.get_type().is_slice() {
+    let receiver_ty = ctx.store.peel_alias(&receiver.get_type());
+
+    if let Type::Array { length, .. } = &receiver_ty
+        && let Some(value) = index.as_integer()
+        && value >= *length
+    {
+        ctx.sink.push(diagnostics::infer::index_out_of_bounds(
+            span,
+            &value.to_string(),
+        ));
+        return;
+    }
+
+    if !receiver_ty.is_slice() {
         return;
     }
 

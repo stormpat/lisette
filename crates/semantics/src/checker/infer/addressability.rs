@@ -81,7 +81,15 @@ pub(crate) fn check_non_addressable_assignment_target(
                 check_non_addressable_assignment_target(expression, env)
             }
         }
-        Expression::IndexedAccess { .. } => None,
+        Expression::IndexedAccess {
+            expression: base, ..
+        } => {
+            if base.get_type().resolve_in(env).get_name() == Some("Array") {
+                check_is_non_addressable(base, env)
+            } else {
+                None
+            }
+        }
         Expression::Unary {
             operator: UnaryOperator::Deref,
             ..
