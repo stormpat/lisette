@@ -75,6 +75,13 @@ impl TaskState<'_> {
         }
     }
 
+    pub fn type_array(&mut self, length: u64, element_type: Type) -> Type {
+        Type::Array {
+            length,
+            element: Box::new(element_type),
+        }
+    }
+
     pub fn type_reference(&mut self, inner_type: Type) -> Type {
         Type::Compound {
             kind: CompoundKind::Ref,

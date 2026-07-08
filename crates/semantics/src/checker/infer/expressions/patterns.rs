@@ -7,7 +7,7 @@ use syntax::ast::{
     TypedPattern, collect_pattern_bindings,
 };
 use syntax::program::{Definition, DefinitionBody};
-use syntax::types::{Type, substitute, unqualified_name};
+use syntax::types::{CompoundKind, Type, substitute, unqualified_name};
 
 use crate::checker::EnvResolve;
 
@@ -126,56 +126,13 @@ impl InferCtx<'_, '_> {
             Pattern::Slice {
                 prefix, rest, span, ..
             } => {
-                let resolved_ty = expected_ty.resolve_in(&self.env);
-                let element_ty = match resolved_ty.as_compound() {
-                    Some((syntax::types::CompoundKind::Slice, args)) if args.len() == 1 => {
-                        args[0].clone()
-                    }
-                    _ => {
-                        let element_ty = self.new_type_var();
-                        let slice_ty = self.type_slice(element_ty.clone());
-                        self.unify(&expected_ty, &slice_ty, &span);
-                        element_ty
-                    }
-                };
-
-                let (inferred_prefix, typed_prefix): (Vec<_>, Vec<_>) = prefix
-                    .into_iter()
-                    .map(|p| self.infer_pattern_inner(p, element_ty.clone(), kind, false))
-                    .unzip();
-
-                if let RestPattern::Bind { ref name, ref span } = rest {
-                    let rest_ty = if element_ty.shallow_resolve_in(&self.env).is_error() {
-                        Type::Error
-                    } else {
-                        self.type_slice(element_ty.clone())
-                    };
-                    let is_typedef = self.is_d_lis(store);
-                    let binding_id = self.facts.add_binding(
-                        name.to_string(),
-                        *span,
-                        kind,
-                        is_typedef,
-                        false,
-                        false,
-                    );
-                    let scope = self.scopes.current_mut();
-                    scope.values.insert(name.to_string(), rest_ty);
-                    scope.name_to_binding.insert(name.to_string(), binding_id);
+                let resolved_ty = store.peel_alias(&expected_ty.resolve_in(&self.env));
+                if let Type::Array { length, element } = &resolved_ty {
+                    let (length, element_ty) = (*length, element.as_ref().clone());
+                    self.infer_array_pattern(prefix, rest, span, length, element_ty, kind)
+                } else {
+                    self.infer_slice_pattern(prefix, rest, span, resolved_ty, expected_ty, kind)
                 }
-
-                let pattern = Pattern::Slice {
-                    prefix: inferred_prefix,
-                    rest: rest.clone(),
-                    element_ty: element_ty.clone(),
-                    span,
-                };
-                let typed = TypedPattern::Slice {
-                    prefix: typed_prefix,
-                    has_rest: rest.is_present(),
-                    element_type: element_ty,
-                };
-                (pattern, typed)
             }
 
             Pattern::Or { patterns, span } => {
@@ -273,6 +230,123 @@ impl InferCtx<'_, '_> {
                 .get_or_insert_with(HashSet::default)
                 .insert(name);
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn infer_array_pattern(
+        &mut self,
+        prefix: Vec<Pattern>,
+        rest: RestPattern,
+        span: Span,
+        length: u64,
+        element_ty: Type,
+        kind: BindingKind,
+    ) -> (Pattern, TypedPattern) {
+        let store = self.store;
+        let (inferred_prefix, typed_prefix): (Vec<_>, Vec<_>) = prefix
+            .into_iter()
+            .map(|p| self.infer_pattern_inner(p, element_ty.clone(), kind, false))
+            .unzip();
+
+        let prefix_count = inferred_prefix.len() as u64;
+        let arity_ok = if rest.is_present() {
+            prefix_count <= length
+        } else {
+            prefix_count == length
+        };
+        if !arity_ok {
+            self.sink
+                .push(diagnostics::infer::array_pattern_length_mismatch(
+                    length,
+                    inferred_prefix.len(),
+                    rest.is_present(),
+                    span,
+                ));
+        }
+
+        if let RestPattern::Bind { ref name, ref span } = rest {
+            let remaining = length.saturating_sub(inferred_prefix.len() as u64);
+            let rest_ty = if element_ty.shallow_resolve_in(&self.env).is_error() {
+                Type::Error
+            } else {
+                self.type_array(remaining, element_ty.clone())
+            };
+            let is_typedef = self.is_d_lis(store);
+            let binding_id =
+                self.facts
+                    .add_binding(name.to_string(), *span, kind, is_typedef, false, false);
+            let scope = self.scopes.current_mut();
+            scope.values.insert(name.to_string(), rest_ty);
+            scope.name_to_binding.insert(name.to_string(), binding_id);
+        }
+
+        let pattern = Pattern::Slice {
+            prefix: inferred_prefix,
+            rest: rest.clone(),
+            element_ty: element_ty.clone(),
+            span,
+        };
+        let typed = TypedPattern::Array {
+            prefix: typed_prefix,
+            element_type: element_ty,
+            length,
+        };
+        (pattern, typed)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn infer_slice_pattern(
+        &mut self,
+        prefix: Vec<Pattern>,
+        rest: RestPattern,
+        span: Span,
+        resolved_ty: Type,
+        expected_ty: Type,
+        kind: BindingKind,
+    ) -> (Pattern, TypedPattern) {
+        let store = self.store;
+        let element_ty = match resolved_ty.as_compound() {
+            Some((CompoundKind::Slice, args)) if args.len() == 1 => args[0].clone(),
+            _ => {
+                let element_ty = self.new_type_var();
+                let slice_ty = self.type_slice(element_ty.clone());
+                self.unify(&expected_ty, &slice_ty, &span);
+                element_ty
+            }
+        };
+
+        let (inferred_prefix, typed_prefix): (Vec<_>, Vec<_>) = prefix
+            .into_iter()
+            .map(|p| self.infer_pattern_inner(p, element_ty.clone(), kind, false))
+            .unzip();
+
+        if let RestPattern::Bind { ref name, ref span } = rest {
+            let rest_ty = if element_ty.shallow_resolve_in(&self.env).is_error() {
+                Type::Error
+            } else {
+                self.type_slice(element_ty.clone())
+            };
+            let is_typedef = self.is_d_lis(store);
+            let binding_id =
+                self.facts
+                    .add_binding(name.to_string(), *span, kind, is_typedef, false, false);
+            let scope = self.scopes.current_mut();
+            scope.values.insert(name.to_string(), rest_ty);
+            scope.name_to_binding.insert(name.to_string(), binding_id);
+        }
+
+        let pattern = Pattern::Slice {
+            prefix: inferred_prefix,
+            rest: rest.clone(),
+            element_ty: element_ty.clone(),
+            span,
+        };
+        let typed = TypedPattern::Slice {
+            prefix: typed_prefix,
+            has_rest: rest.is_present(),
+            element_type: element_ty,
+        };
+        (pattern, typed)
     }
 
     #[allow(clippy::too_many_arguments)]

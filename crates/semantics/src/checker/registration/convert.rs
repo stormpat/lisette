@@ -5,9 +5,10 @@ use crate::checker::infer::expressions::comparison::check_never_comparable;
 use syntax::EcoString;
 use syntax::ast::{Annotation, Generic, Span};
 use syntax::program::{Definition, DefinitionBody};
-use syntax::types::{SubstitutionMap, Type, substitute, unqualified_name};
+use syntax::types::{SubstitutionMap, Symbol, Type, substitute, unqualified_name};
 
 use crate::checker::TaskState;
+use crate::prelude::PRELUDE_MODULE_ID;
 use crate::store::Store;
 
 impl TaskState<'_> {
@@ -110,6 +111,11 @@ impl TaskState<'_> {
                         ));
                     }
                     return Type::Parameter(type_name.into());
+                }
+
+                // `Array` carries a const-integer size, so it needs its own path.
+                if type_name == "Array" {
+                    return self.convert_array_annotation(store, params, *annotation_span, span);
                 }
 
                 let Some((qualified_name, ty)) =
@@ -222,7 +228,7 @@ impl TaskState<'_> {
                 // id already matches (function aliases are pre-wrapped by populate_type_alias).
                 let body_differs = match &resolved_ty {
                     Type::Nominal { id, .. } => id.as_str() != qualified_name.as_str(),
-                    Type::Simple(_) | Type::Compound { .. } => true,
+                    Type::Simple(_) | Type::Compound { .. } | Type::Array { .. } => true,
                     _ => false,
                 };
                 if body_differs
@@ -265,6 +271,69 @@ impl TaskState<'_> {
             Annotation::Opaque { .. } => {
                 unreachable!("Annotation::Opaque should not be converted to a type")
             }
+        }
+    }
+
+    fn convert_array_annotation(
+        &mut self,
+        store: &Store,
+        params: &[Annotation],
+        annotation_span: Span,
+        span: &Span,
+    ) -> Type {
+        if params.len() == 1 && self.cursor.module_id == PRELUDE_MODULE_ID {
+            let element = self.convert_to_type(store, &params[0], span);
+            return Type::Nominal {
+                id: Symbol::from_parts("prelude", "Array"),
+                params: vec![element],
+                underlying_ty: None,
+            };
+        }
+
+        if params.len() != 2 {
+            self.sink.push(diagnostics::infer::array_type_arity(
+                params.len(),
+                annotation_span,
+            ));
+            for param in params {
+                let _ = self.convert_to_type(store, param, span);
+            }
+            return Type::Error;
+        }
+
+        let element = self.convert_to_type(store, &params[0], span);
+        if element.contains_error() {
+            return Type::Error;
+        }
+
+        if let Annotation::Constant {
+            value,
+            span: size_span,
+            ..
+        } = &params[1]
+        {
+            if !self.check_array_size_in_bounds(*value, *size_span) {
+                return Type::Error;
+            }
+            return Type::Array {
+                length: *value,
+                element: Box::new(element),
+            };
+        }
+
+        self.sink.push(diagnostics::infer::array_size_not_literal(
+            params[1].get_span(),
+        ));
+        Type::Error
+    }
+
+    pub(crate) fn check_array_size_in_bounds(&mut self, value: u64, span: Span) -> bool {
+        if value > i64::MAX as u64 {
+            self.sink
+                .push(diagnostics::infer::array_size_too_large(value, span));
+            false
+        } else {
+            true
         }
     }
 

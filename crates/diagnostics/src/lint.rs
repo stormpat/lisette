@@ -1047,9 +1047,9 @@ pub fn expression_only_fstring(span: &Span) -> LisetteDiagnostic {
         .with_help("Use the expression directly. Wrapping it in an f-string adds no value")
 }
 
-pub fn rest_only_slice_pattern(span: &Span, help: impl Into<String>) -> LisetteDiagnostic {
+pub fn rest_only_pattern(span: &Span, help: impl Into<String>) -> LisetteDiagnostic {
     LisetteDiagnostic::info("Ineffective pattern")
-        .with_lint_code("rest_only_slice_pattern")
+        .with_lint_code("rest_only_pattern")
         .with_span_label(span, "always matches")
         .with_help(help)
 }

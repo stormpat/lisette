@@ -389,6 +389,13 @@ pub fn normalize_typed_pattern(
             element_type,
         } => normalize_slice(prefix, *has_rest, element_type, unions, ctx),
 
+        TypedPattern::Array {
+            prefix,
+            element_type,
+            length,
+            ..
+        } => normalize_array(prefix, element_type, *length, unions, ctx),
+
         TypedPattern::Tuple { arity, elements } => normalize_tuple(elements, *arity, unions, ctx),
 
         TypedPattern::Or { .. } => {
@@ -505,6 +512,62 @@ fn normalize_tuple(
         type_name: type_name.clone(),
         tag: type_name,
         args: patterns,
+    }
+}
+
+fn normalize_array(
+    prefix: &[TypedPattern],
+    element_type: &Type,
+    length: u64,
+    unions: &mut UnionTable,
+    ctx: &NormalizationContext,
+) -> NormalizedPattern {
+    let type_name = make_type_key(
+        &format!("Array{length}"),
+        std::slice::from_ref(element_type),
+    );
+
+    if length == 0 {
+        if unions.get(&type_name).is_none() {
+            unions.insert(
+                type_name.clone(),
+                vec![Constructor {
+                    tag_id: "ArrayNil".to_string(),
+                    arity: 0,
+                }],
+            );
+        }
+        return NormalizedPattern::Constructor {
+            type_name,
+            tag: "ArrayNil".to_string(),
+            args: vec![],
+        };
+    }
+
+    if unions.get(&type_name).is_none() {
+        let constructors = if is_inhabited(element_type, ctx.store, ctx.cache) {
+            vec![Constructor {
+                tag_id: "ArrayCons".to_string(),
+                arity: 2,
+            }]
+        } else {
+            vec![]
+        };
+        unions.insert(type_name.clone(), constructors);
+    }
+
+    let Some((first, rest)) = prefix.split_first() else {
+        return Wildcard;
+    };
+
+    let element_ctx = ctx.at_position(Some(element_type.clone()));
+    let head = normalize_typed_pattern(first, unions, &element_ctx);
+    let tail = normalize_array(rest, element_type, length - 1, unions, ctx);
+
+    NormalizedPattern::Constructor {
+        type_name,
+        tag: "ArrayCons".to_string(),
+        args: vec![head, tail],
     }
 }
 

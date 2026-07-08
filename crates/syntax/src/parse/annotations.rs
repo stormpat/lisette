@@ -85,8 +85,13 @@ impl<'source> Parser<'source> {
         if self.advance_if(LeftAngleBracket) {
             let mut type_params = vec![];
 
-            while self.can_start_annotation() {
-                type_params.push(self.parse_annotation());
+            // A type-arg is a type or an integer size (the `N` in `Array<T, N>`).
+            while self.can_start_annotation() || self.at_size_position_value() {
+                if self.can_start_annotation() {
+                    type_params.push(self.parse_annotation());
+                } else {
+                    type_params.push(self.parse_size_type_arg());
+                }
                 match self.current_token().kind {
                     RightAngleBracket | ShiftRight => break,
                     Comma => self.next(),
@@ -176,6 +181,38 @@ impl<'source> Parser<'source> {
             params: type_params,
             span: self.span_from_tokens(start),
         }
+    }
+
+    /// A value literal where an `Array` size goes. Non-integers are matched too,
+    /// so `parse_size_type_arg` can reject them with one clear error.
+    pub(crate) fn at_size_position_value(&self) -> bool {
+        matches!(
+            self.current_token().kind,
+            Integer | Float | String | RawString | Char | Boolean | Imaginary | Minus | Plus
+        )
+    }
+
+    /// Parse an `Array` size. Only an integer literal is valid, anything else
+    /// gets one clear error instead of derailing into a parse cascade.
+    pub(crate) fn parse_size_type_arg(&mut self) -> Annotation {
+        let start = self.current_token();
+        if start.kind == Integer {
+            return self.parse_constant_annotation();
+        }
+
+        // A signed number is two tokens, so consume both to keep `<...>` closing.
+        self.next();
+        if matches!(start.kind, Minus | Plus)
+            && matches!(self.current_token().kind, Integer | Float)
+        {
+            self.next();
+        }
+        self.track_error_at(
+            self.span_from_tokens(start),
+            "Array size must be an integer literal",
+            "Array sizes are whole numbers, e.g. `Array<string, 3>`",
+        );
+        Annotation::Unknown
     }
 
     fn parse_function_annotation(&mut self) -> Annotation {

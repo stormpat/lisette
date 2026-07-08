@@ -19,6 +19,10 @@ pub(crate) enum PathSegment {
     Index(usize),
     /// `[offset:]`.
     SliceFrom(usize),
+    ArraySliceFrom {
+        offset: usize,
+        go_type: String,
+    },
     /// `(*expression)` — auto-pointer deref for recursive enum fields.
     Deref,
     /// `GoType(expression)` — newtype cast to underlying Go type.
@@ -56,6 +60,9 @@ impl AccessPath {
                 PathSegment::Field(name) => result = format!("{}.{}", result, name),
                 PathSegment::Index(index) => result = format!("{}[{}]", result, index),
                 PathSegment::SliceFrom(offset) => result = format!("{}[{}:]", result, offset),
+                PathSegment::ArraySliceFrom { offset, go_type } => {
+                    result = format!("{}({}[{}:])", go_type, result, offset)
+                }
                 PathSegment::Deref => {
                     if i == last {
                         result = format!("*{}", result);
@@ -847,22 +854,34 @@ fn collect_slice_checks(
     typed: Option<&TypedPattern>,
     collector: &mut PatternCollector,
 ) {
-    if rest.is_present() {
-        if !prefix.is_empty() {
+    let array_info = match typed {
+        Some(TypedPattern::Array {
+            length,
+            element_type,
+            ..
+        }) => Some((*length, element_type.clone())),
+        _ => None,
+    };
+
+    if array_info.is_none() {
+        if !rest.is_present() {
+            collector.checks.push(Check::SliceLenEq {
+                path: path.clone(),
+                length: prefix.len(),
+            });
+        } else if !prefix.is_empty() {
             collector.checks.push(Check::SliceLenGe {
                 path: path.clone(),
                 min_length: prefix.len(),
             });
         }
-    } else {
-        collector.checks.push(Check::SliceLenEq {
-            path: path.clone(),
-            length: prefix.len(),
-        });
     }
 
     let typed_prefix: Vec<Option<&TypedPattern>> = match typed {
         Some(TypedPattern::Slice {
+            prefix: tp_prefix, ..
+        })
+        | Some(TypedPattern::Array {
             prefix: tp_prefix, ..
         }) => tp_prefix.iter().map(Some).collect(),
         _ => vec![None; prefix.len()],
@@ -882,10 +901,24 @@ fn collect_slice_checks(
 
     if let RestPattern::Bind { name, .. } = rest {
         let go_name = planner.go_name_for_rest_binding(rest);
+        let segment = match &array_info {
+            Some((length, element_type)) => {
+                let sub_length = length.saturating_sub(prefix.len() as u64);
+                let sub_ty = Type::Array {
+                    length: sub_length,
+                    element: Box::new(element_type.clone()),
+                };
+                PathSegment::ArraySliceFrom {
+                    offset: prefix.len(),
+                    go_type: planner.go_type_string(&sub_ty),
+                }
+            }
+            None => PathSegment::SliceFrom(prefix.len()),
+        };
         collector.bindings.push(PatternBinding {
             lisette_name: name.to_string(),
             go_name,
-            path: path.push(PathSegment::SliceFrom(prefix.len())),
+            path: path.push(segment),
         });
     }
 }

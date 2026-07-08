@@ -1,0 +1,13 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn ints() -> Array<int, 3> {\n  Array.new<int, 3>()\n}\n\nfn bools() -> Array<bool, 2> {\n  Array.new<bool, 2>()\n}\n"
+---
+package main
+
+func ints() [3]int {
+	return [3]int{}
+}
+
+func bools() [2]bool {
+	return [2]bool{}
+}

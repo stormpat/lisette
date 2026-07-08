@@ -1,3 +1,4 @@
+mod arrays;
 mod concurrency;
 mod control_flow;
 mod expressions;

@@ -744,27 +744,41 @@ impl InferCtx<'_, '_> {
         args: &DotAccessResolutionArgs,
     ) -> Option<(Expression, DotAccessKind)> {
         let store = self.store;
-        if !matches!(
-            args.deref_ty,
-            Type::Nominal { .. } | Type::Parameter(_) | Type::Compound { .. } | Type::Simple(_)
-        ) {
-            return None;
-        }
 
-        let method_ty = self
-            .get_all_methods(store, &args.deref_ty)
-            .get(args.member_name)
-            .cloned()?;
+        // Array methods live on the size-erased prelude `Array` impl, reached via
+        // the `method_lookup_key` bridge, with the size ignored in receiver unify.
+        let (method_ty, is_exported) = if let Type::Array { .. } = &args.deref_ty {
+            (
+                self.get_all_methods(store, &args.deref_ty)
+                    .get(args.member_name)
+                    .cloned()?,
+                true,
+            )
+        } else {
+            if !matches!(
+                args.deref_ty,
+                Type::Nominal { .. } | Type::Parameter(_) | Type::Compound { .. } | Type::Simple(_)
+            ) {
+                return None;
+            }
 
-        if self.is_type_level_receiver(args.expression)
-            && self.method_is_promoted(&args.deref_ty, args.member_name)
-        {
-            return self.as_promoted_method_expression(args, &method_ty);
-        }
+            let method_ty = self
+                .get_all_methods(store, &args.deref_ty)
+                .get(args.member_name)
+                .cloned()?;
 
-        self.check_instance_method_access(&args.deref_ty, &method_ty, args);
+            if self.is_type_level_receiver(args.expression)
+                && self.method_is_promoted(&args.deref_ty, args.member_name)
+            {
+                return self.as_promoted_method_expression(args, &method_ty);
+            }
 
-        let is_exported = self.is_dot_access_exported(&args.deref_ty, args.member_name);
+            self.check_instance_method_access(&args.deref_ty, &method_ty, args);
+
+            let is_exported = self.is_dot_access_exported(&args.deref_ty, args.member_name);
+            (method_ty, is_exported)
+        };
+
         let kind = DotAccessKind::InstanceMethod { is_exported };
 
         let (mut method_ty, _) = self.instantiate(&method_ty);

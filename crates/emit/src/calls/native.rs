@@ -8,7 +8,7 @@ use crate::plan::bodies::LoweredStatement;
 use crate::plan::calls::plan_variadic_spread;
 use crate::types::native::NativeGoType;
 use crate::utils::{contains_call, reads_mutable_operand};
-use syntax::ast::Expression;
+use syntax::ast::{Expression, UnaryOperator};
 use syntax::types::{CompoundKind, Type, peel_to_range_type};
 
 #[derive(Clone, Copy)]
@@ -43,6 +43,7 @@ static INLINE_METHODS: &[InlineRule] = &[
             N::Sender,
             N::Receiver,
             N::String,
+            N::Array,
         ],
         method: "length",
         arity: 0,
@@ -250,6 +251,10 @@ pub(super) fn try_inline_native_method(
     Some((render_inline(template, receiver, args), rule.import))
 }
 
+fn is_native_array_method(method: &str) -> bool {
+    matches!(method, "as_slice" | "get")
+}
+
 /// Whether a rule for `(type, method, arity)` defines a negated template.
 pub(super) fn has_inline_negation(native_type: &NativeGoType, method: &str, arity: usize) -> bool {
     lookup_inline_rule(native_type, method, arity)
@@ -321,6 +326,12 @@ impl Planner<'_> {
             }
         }
 
+        if matches!(ctx.native_type, NativeGoType::Array)
+            && let Some(result) = self.lower_native_array_method(ctx, expression)
+        {
+            return result;
+        }
+
         if ctx.method == "clone" {
             let receiver_ty = self.facts.strip_and_peel(&expression.get_type());
             if is_cloneable_container(&receiver_ty) {
@@ -362,6 +373,100 @@ impl Planner<'_> {
             setup,
             format!("{}{}({})", fn_name, type_args_string, new_args.join(", ")),
         )
+    }
+
+    fn lower_native_array_method(
+        &mut self,
+        ctx: &NativeCallContext,
+        expression: &Expression,
+    ) -> Option<(Vec<LoweredStatement>, String)> {
+        if !is_native_array_method(ctx.method)
+            || !matches!(
+                self.facts.strip_and_peel(&expression.get_type()),
+                Type::Array { .. }
+            )
+        {
+            return None;
+        }
+        let (mut setup, receiver, emitted_args) = self.stage_native_dot_access_call(ctx);
+        let index = emitted_args.first();
+        let body =
+            self.lower_array_method_body(ctx.method, expression, receiver, index, &mut setup);
+        Some((setup, body))
+    }
+
+    fn lower_array_method_body(
+        &mut self,
+        method: &str,
+        receiver_expr: &Expression,
+        receiver: String,
+        index: Option<&String>,
+        setup: &mut Vec<LoweredStatement>,
+    ) -> String {
+        match method {
+            "as_slice" => {
+                self.require_slices();
+                let view = self.sliceable_receiver(receiver_expr, receiver, setup);
+                format!("slices.Clone({view})")
+            }
+            "get" => {
+                self.require_stdlib();
+                let view = self.sliceable_receiver(receiver_expr, receiver, setup);
+                let pkg = go_name::GO_STDLIB_PKG;
+                format!(
+                    "{pkg}.SliceGet({view}, {})",
+                    index.expect("get needs an index")
+                )
+            }
+            other => unreachable!("not a native array method: {other}"),
+        }
+    }
+
+    fn sliceable_receiver(
+        &mut self,
+        expression: &Expression,
+        receiver: String,
+        setup: &mut Vec<LoweredStatement>,
+    ) -> String {
+        let base = if self.receiver_is_addressable(expression) {
+            if receiver.starts_with('*') {
+                format!("({receiver})")
+            } else {
+                receiver
+            }
+        } else {
+            self.hoist_tmp_value_statement(setup, "arr", &receiver)
+        };
+        format!("{base}[:]")
+    }
+
+    fn receiver_is_addressable(&self, expression: &Expression) -> bool {
+        if expression.get_type().is_ref() {
+            return true;
+        }
+        match expression.unwrap_parens() {
+            Expression::Identifier { .. } => true,
+            Expression::Unary {
+                operator: UnaryOperator::Deref,
+                ..
+            } => true,
+            Expression::DotAccess {
+                expression: base, ..
+            } => {
+                let origin = base.unwrap_parens();
+                let fresh_value = matches!(origin, Expression::StructCall { .. })
+                    || (matches!(origin, Expression::Call { .. }) && !base.get_type().is_ref());
+                !fresh_value && self.receiver_is_addressable(base)
+            }
+            Expression::IndexedAccess {
+                expression: base, ..
+            } => match self.facts.strip_and_peel(&base.get_type()).get_name() {
+                Some("Map") => false,
+                Some("Slice") => true,
+                _ => self.receiver_is_addressable(base),
+            },
+            _ => false,
+        }
     }
 
     /// Negated counterpart for dot-access native method calls. Returns
@@ -472,6 +577,26 @@ impl Planner<'_> {
                     return (setup, body);
                 }
             }
+        }
+
+        if is_native_array_method(ctx.method)
+            && let Some(receiver_expr) = ctx.args.first()
+            && matches!(
+                self.facts.strip_and_peel(&receiver_expr.get_type()),
+                Type::Array { .. }
+            )
+        {
+            let (mut setup, emitted_args) = self.stage_native_identifier_args(ctx);
+            let receiver = emitted_args[0].clone();
+            let index = emitted_args.get(1);
+            let body = self.lower_array_method_body(
+                ctx.method,
+                receiver_expr,
+                receiver,
+                index,
+                &mut setup,
+            );
+            return (setup, body);
         }
 
         let (setup, emitted_args) = self.stage_native_identifier_args(ctx);

@@ -4399,6 +4399,20 @@ fn map_with_function_key_rejected() {
     .assert_infer_code("non_comparable_map_key");
 }
 
+// A Go array is comparable iff its element is, so an array of a non-comparable
+// element (here a slice) is rejected as a map key, recursing into the element.
+#[test]
+fn map_with_array_of_non_comparable_element_key_rejected() {
+    infer(
+        r#"
+    fn main() {
+      let mut m: Map<Array<Slice<int>, 2>, string> = {};
+    }
+        "#,
+    )
+    .assert_infer_code("non_comparable_map_key");
+}
+
 #[test]
 fn map_with_string_key_allowed() {
     infer(
@@ -4488,6 +4502,22 @@ fn recursive_struct_without_ref_rejected() {
     fn main() {
       let b = BadRecursive { value: 1, next: None };
     }
+        "#,
+    )
+    .assert_infer_code("recursive_type");
+}
+
+#[test]
+fn recursive_struct_through_array_rejected() {
+    // A fixed-size array stores its element inline, so it is direct containment
+    // (like a tuple) — recursion through it is infinite-size, not indirection.
+    infer(
+        r#"
+    struct Node {
+      kids: Array<Node, 2>,
+    }
+
+    fn main() {}
         "#,
     )
     .assert_infer_code("recursive_type");

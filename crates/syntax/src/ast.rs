@@ -462,6 +462,11 @@ pub enum TypedPattern {
         has_rest: bool,
         element_type: Type,
     },
+    Array {
+        prefix: Vec<TypedPattern>,
+        element_type: Type,
+        length: u64,
+    },
     Tuple {
         arity: usize,
         elements: Vec<TypedPattern>,
@@ -652,6 +657,8 @@ pub enum Annotation {
     Opaque {
         span: Span,
     },
+    /// An integer literal in type-argument position, e.g. the `3` in
+    /// `Array<int, 3>`. Valid only as an `Array` size, rejected elsewhere.
     Constant {
         value: u64,
         text: Option<String>,

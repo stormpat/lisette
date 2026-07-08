@@ -152,6 +152,22 @@ fn check_not_comparable_impl(
         }
     }
 
+    // Arrays are comparable iff their element is (Go's rule).
+    if let Type::Array { element, .. } = ty
+        && let Some(inner) = check_not_comparable_impl(
+            env,
+            store,
+            &element.resolve_in(env),
+            visiting,
+            definite_only,
+        )
+    {
+        return Some(nested_reason(
+            inner,
+            "an array containing non-comparable elements",
+        ));
+    }
+
     None
 }
 
@@ -441,6 +457,17 @@ pub(crate) fn param_is_comparable(scopes: &Scopes, env: &TypeEnv, param_name: &s
 }
 
 impl InferCtx<'_, '_> {
+    fn is_comparable_with_param_bounds(&self, ty: &Type) -> bool {
+        let resolved = ty.resolve_in(&self.env);
+        match &resolved {
+            Type::Parameter(name) => {
+                self.parameter_satisfies_bound(name, super::super::unify::BuiltinBound::Comparable)
+            }
+            Type::Array { element, .. } => self.is_comparable_with_param_bounds(element),
+            _ => check_not_comparable(&self.env, self.store, &resolved).is_none(),
+        }
+    }
+
     pub(super) fn ensure_comparable(
         &mut self,
         ty: &Type,
@@ -452,9 +479,7 @@ impl InferCtx<'_, '_> {
         if resolved.is_error() {
             return true;
         }
-        if let Type::Parameter(name) = &resolved
-            && self.parameter_satisfies_bound(name, super::super::unify::BuiltinBound::Comparable)
-        {
+        if self.is_comparable_with_param_bounds(&resolved) {
             return true;
         }
         let Some(reason) = check_not_comparable(&self.env, store, &resolved) else {

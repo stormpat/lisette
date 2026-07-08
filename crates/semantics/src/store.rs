@@ -517,6 +517,10 @@ impl Store {
             Type::Tuple(elements) => {
                 Type::Tuple(elements.iter().map(|e| self.peel_alias_deep(e)).collect())
             }
+            Type::Array { length, element } => Type::Array {
+                length,
+                element: Box::new(self.peel_alias_deep(&element)),
+            },
             Type::Nominal {
                 id,
                 params,
@@ -623,6 +627,7 @@ impl Store {
                 Type::Nominal { id, .. } => Some(id.as_str().to_string()),
                 Type::Simple(kind) => Some(format!("prelude.{}", kind.leaf_name())),
                 Type::Compound { kind, .. } => Some(format!("prelude.{}", kind.leaf_name())),
+                Type::Array { .. } => Some("prelude.Array".to_string()),
                 _ => None,
             };
             // Follow only when the alias body names a different type. For
@@ -679,6 +684,8 @@ fn method_lookup_key(ty: &Type) -> Option<Symbol> {
         Type::Nominal { id, .. } => Some(id.clone()),
         Type::Compound { kind, .. } => Some(Symbol::from_parts("prelude", kind.leaf_name())),
         Type::Simple(kind) => Some(Symbol::from_parts("prelude", kind.leaf_name())),
+        // Array methods live on the prelude `Array` impl.
+        Type::Array { .. } => Some(Symbol::from_parts("prelude", "Array")),
         _ => None,
     }
 }

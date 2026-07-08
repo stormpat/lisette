@@ -564,6 +564,11 @@ impl TaskState<'_> {
             Type::Tuple(elements) => elements
                 .iter()
                 .any(|e| self.type_contains_target_without_ref(store, target_id, e, visited)),
+            // A fixed-size array stores its element inline (Go `[N]T`), so it is
+            // direct containment like a tuple, not an indirection like `Slice`.
+            Type::Array { element, .. } => {
+                self.type_contains_target_without_ref(store, target_id, element, visited)
+            }
             _ => false,
         }
     }

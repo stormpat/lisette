@@ -49,8 +49,12 @@ fn visit_expression(
         | Expression::Interface {
             name, name_span, ..
         } => {
+            // Prelude-defined types (Slice, Map, …) plus inline builtins like
+            // `Array` that have no prelude definition but are still reserved.
             let qualified = format!("prelude.{}", name);
-            if prelude_module.definitions.contains_key(qualified.as_str()) {
+            if prelude_module.definitions.contains_key(qualified.as_str())
+                || syntax::program::NativeTypeKind::from_name(name).is_some()
+            {
                 sink.push(diagnostics::infer::prelude_type_shadowed(name, *name_span));
             }
         }

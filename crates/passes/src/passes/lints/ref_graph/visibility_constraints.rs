@@ -117,6 +117,14 @@ impl LeakCtx<'_> {
                     self.check(a, None);
                 }
             }
+            Type::Array { element, .. } => {
+                // The element is the first arg of `Array<T, N>`.
+                let elem_ann = annotation.and_then(|a| match a {
+                    Annotation::Constructor { params, .. } => params.first(),
+                    _ => None,
+                });
+                self.check(element, elem_ann);
+            }
             Type::Simple(_)
             | Type::Var { .. }
             | Type::Parameter(_)

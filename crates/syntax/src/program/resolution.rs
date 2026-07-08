@@ -53,6 +53,7 @@ pub enum NativeTypeKind {
     Sender,
     Receiver,
     String,
+    Array,
 }
 
 impl NativeTypeKind {
@@ -81,6 +82,7 @@ impl NativeTypeKind {
             "Sender" => Some(Self::Sender),
             "Receiver" => Some(Self::Receiver),
             "string" => Some(Self::String),
+            "Array" => Some(Self::Array),
             _ => None,
         }
     }

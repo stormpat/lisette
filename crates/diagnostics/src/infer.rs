@@ -1533,7 +1533,7 @@ pub fn not_iterable(ty: &Type, span: Span) -> LisetteDiagnostic {
     LisetteDiagnostic::error("Not iterable")
         .with_infer_code("not_iterable")
         .with_span_label(&span, format!("`{}` is not iterable", ty))
-        .with_help("Use `Slice`, `Map`, `Range`, `Channel`, or `string`")
+        .with_help("Use `Slice`, `Array`, `Map`, `Range`, `Channel`, or `string`")
 }
 
 pub fn tuple_literal_required_in_loop(span: Span) -> LisetteDiagnostic {
@@ -2572,6 +2572,15 @@ pub fn index_out_of_bounds(span: &Span, index_text: &str) -> LisetteDiagnostic {
         .with_help(format!("Indexing at `{index_text}` will panic at runtime"))
 }
 
+pub fn negative_index(span: &Span, index_text: &str) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Negative index")
+        .with_infer_code("negative_index")
+        .with_span_label(span, "index is negative")
+        .with_help(format!(
+            "`{index_text}` is negative, but indices must be zero or greater"
+        ))
+}
+
 pub fn oversized_shift(
     span: &Span,
     type_name: &str,
@@ -3041,11 +3050,11 @@ pub fn test_impl_on_production_type(type_name: &str, span: Span) -> LisetteDiagn
 }
 
 pub fn prelude_type_shadowed(name: &str, span: Span) -> LisetteDiagnostic {
-    LisetteDiagnostic::error("Cannot shadow prelude type")
+    LisetteDiagnostic::error("Cannot shadow built-in type")
         .with_infer_code("prelude_type_shadowed")
-        .with_span_label(&span, format!("`{}` is a prelude type", name))
+        .with_span_label(&span, format!("`{}` is a built-in type", name))
         .with_help(format!(
-            "Choose a different name — `{}` is defined in the prelude and cannot be redefined",
+            "Choose a different name. `{}` is built in and cannot be redefined",
             name
         ))
 }
@@ -3369,6 +3378,100 @@ pub fn variadic_type_not_allowed(span: Span) -> LisetteDiagnostic {
             "`VarArgs<T>` is only valid as a function's final parameter",
         )
         .with_help("Use `Slice<T>` to hold a collection of values")
+}
+
+pub fn array_type_arity(actual: usize, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("`Array` takes exactly two type arguments")
+        .with_infer_code("array_type_arity")
+        .with_span_label(
+            &span,
+            format!("expected `Array<T, N>`, found {actual} argument(s)"),
+        )
+        .with_help("Write `Array<ElementType, Length>`, e.g. `Array<int, 3>`")
+}
+
+pub fn array_size_not_literal(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array size must be an integer literal")
+        .with_infer_code("array_size_not_literal")
+        .with_span_label(&span, "expected an integer literal here")
+        .with_help("Array sizes are part of the type and must be constant, e.g. `Array<int, 3>`")
+}
+
+pub fn array_size_too_large(size: u64, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array size too large")
+        .with_infer_code("array_size_too_large")
+        .with_span_label(&span, "size exceeds the maximum")
+        .with_help(format!(
+            "An array size must fit in Go's `int` type, at most {}, but found {size}",
+            i64::MAX
+        ))
+}
+
+pub fn array_length_mismatch(expected: u64, actual: u64, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array length mismatch")
+        .with_infer_code("array_length_mismatch")
+        .with_span_label(
+            &span,
+            format!("expected an array of length {expected}, found length {actual}"),
+        )
+        .with_help("Fixed-size arrays of different lengths are distinct types")
+}
+
+pub fn array_pattern_length_mismatch(
+    expected: u64,
+    actual: usize,
+    has_rest: bool,
+    span: Span,
+) -> LisetteDiagnostic {
+    let label = if has_rest {
+        format!("found {actual} elements, expected at most {expected}")
+    } else {
+        format!("found {actual} elements, expected {expected}")
+    };
+    LisetteDiagnostic::error("Array pattern length mismatch")
+        .with_infer_code("array_pattern_length_mismatch")
+        .with_span_label(&span, label)
+        .with_help("Bind every element in the array, or use `..` to ignore the rest")
+}
+
+pub fn array_literal_length_mismatch(
+    expected: u64,
+    actual: usize,
+    span: Span,
+) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Array literal has the wrong number of elements")
+        .with_infer_code("array_literal_length_mismatch")
+        .with_span_label(
+            &span,
+            format!("expected {expected} element(s), found {actual}"),
+        )
+        .with_help("An `Array<T, N>` literal must list exactly `N` elements")
+}
+
+pub fn array_new_cannot_infer_size(span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("Cannot infer the array element type and length")
+        .with_infer_code("array_new_cannot_infer_size")
+        .with_span_label(&span, "`Array.new` needs an element type and a length here")
+        .with_help("Write the type arguments, e.g. `Array.new<int, 3>()`, or annotate the binding")
+}
+
+pub fn array_new_no_zero(element: &dyn std::fmt::Display, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error(format!("`{element}` has no zero value"))
+        .with_infer_code("array_new_no_zero")
+        .with_span_label(
+            &span,
+            format!("`Array.new` zero-fills every element, but `{element}` has none"),
+        )
+        .with_help(
+            "Build the array from a list literal instead, e.g. `let xs: Array<int, 3> = [1, 2, 3]`",
+        )
+}
+
+pub fn array_new_takes_no_arguments(actual: usize, span: Span) -> LisetteDiagnostic {
+    LisetteDiagnostic::error("`Array.new` takes no value arguments")
+        .with_infer_code("array_new_takes_no_arguments")
+        .with_span_label(&span, format!("found {actual} argument(s)"))
+        .with_help("The element type and length are type arguments: `Array.new<int, 3>()`")
 }
 
 pub fn spread_on_non_variadic(span: Span) -> LisetteDiagnostic {

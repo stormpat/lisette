@@ -19,7 +19,8 @@ use scopes::Scopes;
 use syntax::ast::Visibility as AstVisibility;
 use syntax::ast::{Annotation, Expression, Generic, ImportAlias, Span, StructFieldDefinition};
 use syntax::program::{
-    Definition, DefinitionBody, File, FileImport, MethodSignatures, Module, go_import_default_name,
+    Definition, DefinitionBody, File, FileImport, MethodSignatures, Module, NativeTypeKind,
+    go_import_default_name,
 };
 use syntax::types::{SubstitutionMap, Symbol, Type, substitute};
 
@@ -588,6 +589,8 @@ impl<'s> TaskState<'s> {
             Type::Nominal { id, .. } => id.as_eco().clone(),
             Type::Compound { kind, .. } => format!("prelude.{}", kind.leaf_name()).into(),
             Type::Simple(kind) => format!("prelude.{}", kind.leaf_name()).into(),
+            // Array methods live on the prelude `Array` impl.
+            Type::Array { .. } => "prelude.Array".into(),
             _ => return Rc::new(MethodSignatures::default()),
         };
 
@@ -765,19 +768,24 @@ impl<'s> TaskState<'s> {
                 continue;
             }
 
-            if let Some(ImportAlias::Named(alias, alias_span)) = &import.alias
-                && is_reserved_import_alias(alias)
-            {
-                self.sink.push(diagnostics::infer::reserved_import_alias(
-                    alias,
-                    *alias_span,
-                ));
-                continue;
-            }
-
             let Some(effective) = import.effective_alias(&store.go_package_names) else {
                 continue;
             };
+
+            let (reserved, span) = match &import.alias {
+                Some(ImportAlias::Named(alias, alias_span)) => {
+                    (is_reserved_import_alias(alias), *alias_span)
+                }
+                _ => (
+                    NativeTypeKind::from_name(&effective).is_some(),
+                    import.name_span,
+                ),
+            };
+            if reserved {
+                self.sink
+                    .push(diagnostics::infer::reserved_import_alias(&effective, span));
+                continue;
+            }
 
             if let Some(existing_path) = seen_aliases.get(&effective)
                 && existing_path != &import.name
@@ -913,6 +921,9 @@ impl<'s> TaskState<'s> {
 /// Reserved names include Go keywords, Go predeclared identifiers, Go builtins,
 /// Go type constraint names, and Lisette prelude symbols.
 fn is_reserved_import_alias(name: &str) -> bool {
+    if NativeTypeKind::from_name(name).is_some() {
+        return true;
+    }
     matches!(
         name,
         // Go keywords

@@ -62,19 +62,31 @@ impl Planner<'_> {
         elements: &[Expression],
         ty: &Type,
     ) -> (Vec<LoweredStatement>, String) {
-        let element_lisette_ty = ty
-            .get_type_params()
-            .expect("Slice type must have type args")
-            .first()
-            .expect("Slice type must have element type")
-            .clone();
+        // A list literal builds a slice or a fixed-size array, per its type.
+        let (element_lisette_ty, type_prefix, is_array) = match ty {
+            Type::Array { length, element } => {
+                (element.as_ref().clone(), format!("[{}]", length), true)
+            }
+            _ => (
+                ty.get_type_params()
+                    .expect("Slice type must have type args")
+                    .first()
+                    .expect("Slice type must have element type")
+                    .clone(),
+                "[]".to_string(),
+                false,
+            ),
+        };
         let element_ty = self.go_type_string(&element_lisette_ty);
 
         if elements.is_empty() {
+            if is_array {
+                return (Vec::new(), format!("{}{}{{}}", type_prefix, element_ty));
+            }
             // Parens around the slice type disambiguate the conversion when
             // the element type itself ends in `)` (e.g. `func(int)`); Go
             // otherwise parses `[]func(int)(nil)` as a call expression.
-            return (Vec::new(), format!("([]{})(nil)", element_ty));
+            return (Vec::new(), format!("({}{})(nil)", type_prefix, element_ty));
         }
 
         let mut setup: Vec<LoweredStatement> = Vec::new();
@@ -105,9 +117,9 @@ impl Planner<'_> {
                 .map(|e| format!("\t{}", e))
                 .collect::<Vec<_>>()
                 .join(",\n");
-            format!("[]{}{{\n{},\n}}", element_ty, indented)
+            format!("{}{}{{\n{},\n}}", type_prefix, element_ty, indented)
         } else {
-            format!("[]{}{{ {} }}", element_ty, elements.join(", "))
+            format!("{}{}{{ {} }}", type_prefix, element_ty, elements.join(", "))
         };
         (setup, value)
     }

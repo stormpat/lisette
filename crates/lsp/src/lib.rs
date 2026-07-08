@@ -421,6 +421,9 @@ impl LanguageServer for Backend {
             syntax::ast::Expression::Identifier { value, .. } => {
                 lookup_definition_span(value, file, &snapshot)
                     .or_else(|| resolve_import_span(value, file, &snapshot.result.go_package_names))
+                    // A dotted callee like `Array.new` doesn't resolve whole, so
+                    // fall back to the type word at the cursor (`Array` -> its decl).
+                    .or_else(|| resolve_word_at_offset(&file.source, offset, file, &snapshot))
             }
 
             syntax::ast::Expression::Match { arms, .. } => {
@@ -1359,7 +1362,7 @@ impl LanguageServer for Backend {
         const PRELUDE_TYPES: &[&str] = &[
             "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32",
             "uint64", "float32", "float64", "string", "bool", "rune", "byte", "Option", "Result",
-            "Slice", "Map", "Channel",
+            "Slice", "Map", "Channel", "Array",
         ];
         for ty in PRELUDE_TYPES {
             items.push(CompletionItem {

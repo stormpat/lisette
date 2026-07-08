@@ -192,6 +192,14 @@ impl Planner<'_> {
                     self.resolve_element_type(ctx.function, ctx.resolved_type_args, ctx.call_ty);
                 Some((Vec::new(), format!("[]{}{{}}", element)))
             }
+            (NativeGoType::Array, "new") => {
+                let peeled = ctx.call_ty.map(|t| self.facts.peel_alias(t));
+                if let Some(Type::Array { length, element }) = &peeled {
+                    Some((Vec::new(), self.array_zero(*length, element)))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

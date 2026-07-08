@@ -9,6 +9,22 @@ fn test() { let result = [1, 2, 3][index]; }
 }
 
 #[test]
+fn array_type_annotation() {
+    let input = r#"
+fn test(xs: Array<int, 3>) -> int { xs[0] }
+"#;
+    assert_parse_snapshot!(input);
+}
+
+#[test]
+fn array_new_turbofish_args() {
+    let input = r#"
+fn test() { let _xs = Array.new<int, 3>(); }
+"#;
+    assert_parse_snapshot!(input);
+}
+
+#[test]
 fn binary_addition() {
     let input = r#"
 fn test() { let result = 10 + 5; }

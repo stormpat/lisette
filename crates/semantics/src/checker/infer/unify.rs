@@ -137,14 +137,14 @@ impl InferCtx<'_, '_> {
 
             // Alias follow-through: `type MyFoo = Foo` stores a Nominal
             // alias with Foo as `underlying_ty`. When the other side is a
-            // Simple/Compound, follow the alias to the underlying type.
+            // Simple/Compound/Array, follow the alias to the underlying type.
             (
                 Nominal {
                     id,
                     underlying_ty: Some(underlying),
                     ..
                 },
-                other @ (Type::Simple(_) | Type::Compound { .. }),
+                other @ (Type::Simple(_) | Type::Compound { .. } | Type::Array { .. }),
             ) => {
                 if matches!(other, Type::Simple(_)) && store.is_nominal_defined_type(id.as_str()) {
                     Err(UnifyError::TypeMismatch)
@@ -155,7 +155,7 @@ impl InferCtx<'_, '_> {
             }
 
             (
-                other @ (Type::Simple(_) | Type::Compound { .. }),
+                other @ (Type::Simple(_) | Type::Compound { .. } | Type::Array { .. }),
                 Nominal {
                     id,
                     underlying_ty: Some(underlying),
@@ -231,6 +231,37 @@ impl InferCtx<'_, '_> {
                 let elems1 = elems1.clone();
                 let elems2 = elems2.clone();
                 self.unify_pairs(elems1.iter().zip(elems2.iter()), span)
+            }
+
+            (
+                Type::Array {
+                    length: length1,
+                    element: element1,
+                },
+                Type::Array {
+                    length: length2,
+                    element: element2,
+                },
+            ) => {
+                if length1 != length2 {
+                    return Err(UnifyError::ArityMismatch);
+                }
+                let element1 = element1.as_ref().clone();
+                let element2 = element2.as_ref().clone();
+                self.try_unify(&element1, &element2, span)
+            }
+
+            // Bridge the size-erased `prelude.Array` method-host self-type to the
+            // real `Type::Array` by unifying the element and ignoring the size.
+            (Type::Array { element, .. }, Nominal { id, params, .. })
+            | (Nominal { id, params, .. }, Type::Array { element, .. })
+                if id.as_str() == "prelude.Array" =>
+            {
+                let element = element.as_ref().clone();
+                match params.first().cloned() {
+                    Some(nominal_elem) => self.try_unify(&element, &nominal_elem, span),
+                    None => Ok(()),
+                }
             }
 
             (
@@ -715,6 +746,16 @@ impl InferCtx<'_, '_> {
                 .with_span_label(span, "infinite type detected here"),
 
             UnifyError::ArityMismatch => {
+                if let (Some(expected_len), Some(actual_len)) =
+                    (expected.array_len(), actual.array_len())
+                {
+                    return diagnostics::infer::array_length_mismatch(
+                        expected_len,
+                        actual_len,
+                        *span,
+                    );
+                }
+
                 if let (Some(expected_arity), Some(actual_arity)) =
                     (expected.tuple_arity(), actual.tuple_arity())
                 {

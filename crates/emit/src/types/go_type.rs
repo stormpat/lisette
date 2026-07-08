@@ -76,6 +76,12 @@ impl Planner<'_> {
             Type::Never => GoType::new("struct{}"),
             Type::Error => unreachable!("Type::Error should not reach the emitter"),
             Type::Tuple(elements) => self.emit_tuple_type(elements),
+            Type::Array { length, element } => {
+                let inner = self.go_type(element);
+                let mut result = GoType::new(format!("[{}]{}", length, inner.code));
+                result.merge(&inner);
+                result
+            }
             Type::ImportNamespace(_) => {
                 unreachable!("Type::ImportNamespace should not reach the emitter's go_type")
             }
@@ -399,6 +405,10 @@ impl Planner<'_> {
             "bool" => "false".to_string(),
             "string" => "\"\"".to_string(),
             "struct{}" => "struct{}{}".to_string(),
+            // `[N]E` (digit after `[`) zeroes to `[N]E{}`.
+            s if s.starts_with('[') && s.as_bytes().get(1).is_some_and(u8::is_ascii_digit) => {
+                format!("{}{{}}", s)
+            }
             s if s.starts_with("[]")
                 || s.starts_with("map[")
                 || s.starts_with("chan ")

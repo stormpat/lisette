@@ -1,0 +1,9 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn make() -> Array<int, 5> {\n  Array.new<int, 5>()\n}\n"
+---
+package main
+
+func make_() [5]int {
+	return [5]int{}
+}

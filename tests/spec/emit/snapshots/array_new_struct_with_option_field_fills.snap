@@ -1,0 +1,25 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nstruct Horse {\n  speed: int,\n  fast: Option<int>,\n}\n\nfn herd() -> Array<Horse, 2> {\n  Array.new<Horse, 2>()\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+type Horse struct {
+	speed int
+	fast  lisette.Option[int]
+}
+
+func herd() [2]Horse {
+	return func() [2]Horse {
+		var arr [2]Horse
+		for i := range arr {
+			arr[i] = Horse{
+				speed: 0,
+				fast:  lisette.MakeOptionNone[int](),
+			}
+		}
+		return arr
+	}()
+}

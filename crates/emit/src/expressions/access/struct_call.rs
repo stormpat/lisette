@@ -317,6 +317,7 @@ impl Planner<'_> {
                     parts.join(", ")
                 )
             }
+            Type::Array { length, element } => self.array_zero(*length, element),
             _ => format!("{}{{}}", self.go_type_string(ty)),
         }
     }
@@ -362,6 +363,34 @@ impl Planner<'_> {
             return self.lisette_zero(underlying);
         }
         format!("{}{{}}", self.go_type_string(ty))
+    }
+
+    /// Array zero value, filling per index with `lisette_zero` when Go's own
+    /// `[N]E{}` zero differs from Lisette's (e.g. `Option<T>`).
+    pub(crate) fn array_zero(&mut self, len: u64, elem: &Type) -> String {
+        let elem_go = self.go_type_string(elem);
+        if len == 0 || self.array_element_go_zero_ok(elem) {
+            return format!("[{}]{}{{}}", len, elem_go);
+        }
+        let zero = self.lisette_zero(elem);
+        // Go has no syntax to repeat a value across all N slots, so fill each index.
+        format!(
+            "func() [{len}]{elem_go} {{ var arr [{len}]{elem_go}; for i := range arr {{ arr[i] = {zero} }}; return arr }}()"
+        )
+    }
+
+    /// True when Go's `[N]ty{}` already matches Lisette's zero.
+    fn array_element_go_zero_ok(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Simple(_) => true,
+            Type::Compound {
+                kind: CompoundKind::Slice,
+                ..
+            } => true,
+            Type::Array { element, .. } => self.array_element_go_zero_ok(element),
+            Type::Tuple(elements) => elements.iter().all(|e| self.array_element_go_zero_ok(e)),
+            _ => false,
+        }
     }
 
     /// Address a struct-call field stored behind a compiler-inserted pointer

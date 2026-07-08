@@ -40,6 +40,7 @@ fn type_key(ty: &Type) -> String {
             let elem_keys: Vec<String> = elements.iter().map(type_key).collect();
             format!("({})", elem_keys.join(", "))
         }
+        Type::Array { length, element } => format!("[{}]{}", length, type_key(element)),
         Type::Function(_) => "fn".to_string(),
         Type::Var { .. } | Type::Parameter(_) | Type::Error => "param".to_string(),
         Type::Forall { body, .. } => type_key(body),
@@ -90,6 +91,7 @@ pub fn is_inhabited(ty: &Type, store: &Store, cache: &InhabitanceCache) -> bool 
     let result = match ty {
         Type::Nominal { id, params, .. } => check_constructor_inhabited(id, params, store, cache),
         Type::Forall { body, .. } => is_inhabited(body, store, cache),
+        Type::Array { length, element } => *length == 0 || is_inhabited(element, store, cache),
         _ => true,
     };
 

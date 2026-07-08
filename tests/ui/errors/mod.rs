@@ -5108,6 +5108,51 @@ fn test() {
 }
 
 #[test]
+fn infer_array_size_too_large() {
+    let input = r#"
+fn f(x: Array<int, 18000000000000000000>) {}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_array_pattern_length_mismatch() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> int {
+  let [a, b] = arr
+  a
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_array_match_non_exhaustive_witness() {
+    let input = r#"
+fn f(arr: Array<int, 3>) -> int {
+  match arr {
+    [0, ..] => 1
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_array_match_non_exhaustive_full_witness_no_trailing_rest() {
+    let input = r#"
+fn f(arr: Array<bool, 2>) -> int {
+  match arr {
+    [true, true] => 3,
+    [true, false] => 2,
+    [false, true] => 1,
+  }
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_irrefutable_while_let() {
     let input = r#"
 fn test() {
@@ -8271,6 +8316,27 @@ fn main() {}
     assert_multimodule_infer_error_snapshot!(result, source);
 }
 
+// A user impl on the built-in `Array` (literal size) must be rejected like a
+// foreign type, not ICE on the bare `Type::Array` receiver.
+#[test]
+fn infer_impl_on_builtin_array() {
+    let mut fs = MockFileSystem::new();
+
+    let source = r#"
+impl<T> Array<T, 3> {
+  fn first(self) -> int {
+    0
+  }
+}
+
+fn main() {}
+"#;
+    fs.add_file("main", "main.lis", source);
+
+    let result = infer_module("main", fs);
+    assert_multimodule_infer_error_snapshot!(result, source);
+}
+
 #[test]
 fn infer_non_pub_interface_with_pub_implementations() {
     let mut fs = MockFileSystem::new();
@@ -8809,6 +8875,16 @@ struct Box { items: Slice<int> }
 fn main() {
   let b = Box { items: [1, 2] }
   fmt.Printf("count=%d\n", b.items.length)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_native_array_method_value() {
+    let input = r#"
+fn main() {
+  let _ = Array.get
 }
 "#;
     assert_infer_error_snapshot!(input);

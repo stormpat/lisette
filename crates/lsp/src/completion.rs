@@ -153,6 +153,12 @@ pub(crate) fn detect_dot_context(
     else {
         return None;
     };
+
+    // `Array.x` is always type-level. Runs before the member check, which would
+    // otherwise slurp a trailing `}` as a non-empty member.
+    if matches!(expression.as_ref(), Expression::Identifier { value, .. } if value == "Array") {
+        return Some(DotContext::TypeLevel("prelude.Array".to_string()));
+    }
     if !member.is_empty() {
         if !matches!(
             get_root_expression(expression),
@@ -400,6 +406,16 @@ pub(crate) fn get_type_completions(
     snapshot: &AnalysisSnapshot,
     current_module: &str,
 ) -> Vec<CompletionItem> {
+    // `Array.new` is an inline builtin constructor, not a prelude definition.
+    if type_id == "prelude.Array" {
+        return vec![CompletionItem {
+            label: "new".to_string(),
+            kind: Some(CompletionItemKind::METHOD),
+            detail: Some("fn() -> Array<T, N>".to_string()),
+            ..Default::default()
+        }];
+    }
+
     let target = alias_target(type_id, snapshot);
     let method_id = target.as_deref().unwrap_or(type_id);
 

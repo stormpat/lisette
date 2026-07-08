@@ -8294,7 +8294,7 @@ fn main() {
 }
 
 #[test]
-fn rest_only_slice_pattern_discard() {
+fn rest_only_pattern_discard() {
     assert_lint_snapshot!(
         r#"
 pub fn test(slice: Slice<int>) {
@@ -8305,12 +8305,24 @@ pub fn test(slice: Slice<int>) {
 }
 
 #[test]
-fn rest_only_slice_pattern_bind() {
+fn rest_only_pattern_bind() {
     assert_lint_snapshot!(
         r#"
 pub fn test(slice: Slice<int>) {
   let [..rest] = slice;
   let _ = rest
+}
+"#
+    );
+}
+
+#[test]
+fn rest_only_pattern_array() {
+    assert_lint_snapshot!(
+        r#"
+pub fn test(arr: Array<int, 3>) {
+  let [..all] = arr;
+  let _ = all
 }
 "#
     );
@@ -12066,6 +12078,39 @@ fn index_out_of_bounds_single_element() {
         r#"
 fn main() {
   let _ = [42][1]
+}
+"#
+    );
+}
+
+#[test]
+fn index_out_of_bounds_fixed_array() {
+    assert_lint_snapshot!(
+        r#"
+fn at(xs: Array<int, 3>) -> int {
+  xs[3]
+}
+"#
+    );
+}
+
+#[test]
+fn negative_index_on_array() {
+    assert_lint_snapshot!(
+        r#"
+fn at(xs: Array<int, 3>) -> int {
+  xs[-1]
+}
+"#
+    );
+}
+
+#[test]
+fn negative_index_on_slice() {
+    assert_lint_snapshot!(
+        r#"
+fn at(xs: Slice<int>) -> int {
+  xs[-1]
 }
 "#
     );

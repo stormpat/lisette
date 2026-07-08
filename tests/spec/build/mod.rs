@@ -2615,6 +2615,7 @@ fn shadowing_prelude_types_is_forbidden() {
         ("Ref", "pub struct Ref { pub name: string }"),
         ("Map", "pub struct Map { pub items: Slice<int> }"),
         ("Slice", "pub struct Slice { pub data: string }"),
+        ("Array", "pub enum Array { A, B }"),
         ("Option", "pub enum Option { Some(int), None }"),
         ("Result", "pub enum Result { Ok(int), Err(string) }"),
     ] {
@@ -8396,4 +8397,38 @@ fn build_does_not_emit_test_functions() {
         !outputs.iter().any(|f| f.to_go().contains("testing")),
         "build output must not reference testing"
     );
+}
+
+#[test]
+fn fixed_size_array_lowers() {
+    let mut fs = MockFileSystem::new();
+
+    fs.add_file(
+        ENTRY_MODULE_ID,
+        "main.lis",
+        r#"
+import "go:fmt"
+
+struct Grid {
+  cells: Array<int, 3>,
+}
+
+fn first(xs: Array<int, 3>) -> int {
+  xs[0]
+}
+
+fn make_arr() -> Array<int, 3> {
+  [10, 20, 30]
+}
+
+fn main() {
+  let xs: Array<int, 3> = [1, 2, 3]
+  let g = Grid { cells: [4, 5, 6] }
+  let same = xs == make_arr()
+  fmt.Println(xs.length(), xs[0], same, first(g.cells))
+}
+"#,
+    );
+
+    assert_build_snapshot!(fs, "github.com/user/myproject");
 }

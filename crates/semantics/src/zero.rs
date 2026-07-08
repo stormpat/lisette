@@ -35,6 +35,16 @@ pub enum NoZeroReason {
 /// no zero is available; `Ok(())` otherwise.
 #[allow(clippy::result_large_err)]
 pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZero> {
+    has_zero_seen(store, ty, from_module, &mut Vec::new())
+}
+
+#[allow(clippy::result_large_err)]
+fn has_zero_seen(
+    store: &Store,
+    ty: &Type,
+    from_module: &str,
+    visited: &mut Vec<Type>,
+) -> Result<(), NoZero> {
     match ty {
         Type::Simple(kind) => match kind {
             SimpleKind::Bool
@@ -74,7 +84,7 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
         },
         Type::Tuple(elements) => {
             for (i, e) in elements.iter().enumerate() {
-                if let Err(mut nz) = has_zero(store, e, from_module) {
+                if let Err(mut nz) = has_zero_seen(store, e, from_module, visited) {
                     let mut chain = vec![EcoString::from(i.to_string())];
                     chain.append(&mut nz.chain);
                     nz.chain = chain;
@@ -82,6 +92,13 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
                 }
             }
             Ok(())
+        }
+        Type::Array { length, element } => {
+            if *length == 0 {
+                Ok(())
+            } else {
+                has_zero_seen(store, element, from_module, visited)
+            }
         }
         Type::Function(_) => Err(NoZero {
             chain: vec![],
@@ -93,9 +110,9 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
                 // Option<T>'s zero is None regardless of T. Stop recursion.
                 return Ok(());
             }
-            has_zero_nominal(store, id, params, from_module, ty)
+            has_zero_nominal(store, id, params, from_module, ty, visited)
         }
-        Type::Forall { body, .. } => has_zero(store, body, from_module),
+        Type::Forall { body, .. } => has_zero_seen(store, body, from_module, visited),
         Type::Var { .. } | Type::Parameter(_) | Type::ReceiverPlaceholder => {
             // Conservative: unresolved/abstract types have no known zero.
             Err(NoZero {
@@ -112,6 +129,8 @@ pub fn has_zero(store: &Store, ty: &Type, from_module: &str) -> Result<(), NoZer
     }
 }
 
+const MAX_ZERO_DEPTH: usize = 256;
+
 #[allow(clippy::result_large_err)]
 fn has_zero_nominal(
     store: &Store,
@@ -119,6 +138,7 @@ fn has_zero_nominal(
     params: &[Type],
     from_module: &str,
     original_ty: &Type,
+    visited: &mut Vec<Type>,
 ) -> Result<(), NoZero> {
     // Go-imported nominal: every Go field has a Go zero by language definition.
     // Accept the whole nominal without recursing into its fields (Go's own
@@ -127,6 +147,46 @@ fn has_zero_nominal(
         return Ok(());
     }
 
+    let size = type_node_count(original_ty);
+    let is_recursion = visited.iter().any(|ancestor| match ancestor {
+        Type::Nominal {
+            id: ancestor_id, ..
+        } => ancestor_id.as_str() == id.as_str() && type_node_count(ancestor) <= size,
+        _ => false,
+    });
+    if is_recursion {
+        return Ok(());
+    }
+    if visited.len() >= MAX_ZERO_DEPTH {
+        return Err(NoZero {
+            chain: vec![],
+            reason: NoZeroReason::NoZeroForType,
+            leaf_ty: original_ty.clone(),
+        });
+    }
+    visited.push(original_ty.clone());
+    let result = has_zero_nominal_fields(store, id, params, from_module, original_ty, visited);
+    visited.pop();
+    result
+}
+
+fn type_node_count(ty: &Type) -> usize {
+    1 + ty
+        .children()
+        .iter()
+        .map(|c| type_node_count(c))
+        .sum::<usize>()
+}
+
+#[allow(clippy::result_large_err)]
+fn has_zero_nominal_fields(
+    store: &Store,
+    id: &Symbol,
+    params: &[Type],
+    from_module: &str,
+    original_ty: &Type,
+    visited: &mut Vec<Type>,
+) -> Result<(), NoZero> {
     let Some(def) = store.get_definition(id.as_str()) else {
         // Unknown nominal — conservatively reject.
         return Err(NoZero {
@@ -162,7 +222,7 @@ fn has_zero_nominal(
                 } else {
                     substitute(&f.ty, &map)
                 };
-                if let Err(mut nz) = has_zero(store, &resolved, from_module) {
+                if let Err(mut nz) = has_zero_seen(store, &resolved, from_module, visited) {
                     let mut chain = vec![f.name.clone()];
                     chain.append(&mut nz.chain);
                     nz.chain = chain;
@@ -191,7 +251,7 @@ fn has_zero_nominal(
             } else {
                 substitute(&underlying, &map)
             };
-            has_zero(store, &resolved, from_module)
+            has_zero_seen(store, &resolved, from_module, visited)
         }
         // Enums and other definitions have no zero unless we add a designated
         // default-variant mechanism later.

@@ -41,7 +41,7 @@ pub enum Lint {
     UnnecessaryReference,
     UnusedTypeParameter,
     TypeParamOnlyInBound,
-    RestOnlySlicePattern,
+    RestOnlyPattern,
     NonPascalCaseType,
     NonPascalCaseTypeParameter,
     NonPascalCaseEnumVariant,

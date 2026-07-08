@@ -143,6 +143,17 @@ impl TaskState<'_> {
             self.scopes.pop();
             return;
         };
+        // `Array` is a prelude built-in with no qualified name, so reject a user
+        // impl on it here, before `get_qualified_name` below would panic.
+        if matches!(receiver_ty, Type::Array { .. }) {
+            self.sink.push(diagnostics::infer::impl_on_foreign_type(
+                type_name,
+                crate::prelude::PRELUDE_MODULE_ID,
+                *span,
+            ));
+            self.scopes.pop();
+            return;
+        }
         let receiver_qualified_name = receiver_ty.get_qualified_name();
         let module_id = self.cursor.module_id.clone();
         let is_d_lis = self.is_d_lis(&*store);

@@ -105,7 +105,14 @@ fn check_one(
 
     let is_native = matches!(
         type_part,
-        "Slice" | "EnumeratedSlice" | "Map" | "Channel" | "Sender" | "Receiver" | "string"
+        "Slice"
+            | "EnumeratedSlice"
+            | "Map"
+            | "Channel"
+            | "Sender"
+            | "Receiver"
+            | "string"
+            | "Array"
     );
 
     if is_native {

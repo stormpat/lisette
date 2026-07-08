@@ -173,6 +173,7 @@ impl InferCtx<'_, '_> {
             }
             Type::Parameter(_) => {}
             Type::Tuple(_) => {}
+            Type::Array { .. } => {}
             Type::Never | Type::Error => {}
             Type::ImportNamespace(_) => {}
             Type::ReceiverPlaceholder => {}
@@ -655,6 +656,19 @@ impl InferCtx<'_, '_> {
                     iterable_ty_args[0].clone()
                 }
             }
+
+            // Array yields its element directly (not via `get_type_params`).
+            // A `Ref<Array>` peers to "Array" here but must be deref'd first.
+            "Array" => match &resolved_iterable_ty {
+                Type::Array { element, .. } => element.as_ref().clone(),
+                _ => {
+                    self.sink.push(diagnostics::infer::not_iterable(
+                        &resolved_iterable_ty,
+                        new_iterable.get_span(),
+                    ));
+                    Type::Error
+                }
+            },
             "Map" if iterable_ty_args.len() >= 2 => Type::Tuple(vec![
                 iterable_ty_args[0].clone(),
                 iterable_ty_args[1].clone(),

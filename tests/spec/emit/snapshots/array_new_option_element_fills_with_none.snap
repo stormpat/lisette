@@ -1,0 +1,17 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn opts() -> Array<Option<int>, 2> {\n  Array.new<Option<int>, 2>()\n}\n"
+---
+package main
+
+import lisette "github.com/ivov/lisette/prelude"
+
+func opts() [2]lisette.Option[int] {
+	return func() [2]lisette.Option[int] {
+		var arr [2]lisette.Option[int]
+		for i := range arr {
+			arr[i] = lisette.MakeOptionNone[int]()
+		}
+		return arr
+	}()
+}

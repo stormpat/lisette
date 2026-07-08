@@ -321,6 +321,7 @@ async fn completion_includes_prelude_types() {
     assert!(labels.iter().any(|l| l == "bool"));
     assert!(labels.iter().any(|l| l == "Option"));
     assert!(labels.iter().any(|l| l == "Result"));
+    assert!(labels.iter().any(|l| l == "Array"));
 
     client.shutdown().await;
 }
@@ -1811,6 +1812,76 @@ fn main() {
     assert!(
         labels.iter().any(|l| l == "is_empty"),
         "should include 'is_empty' from prelude Slice, got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_dot_on_array_variable() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let xs: Array<int, 3> = [1, 2, 3]
+  xs.length()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 2, 5).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "length"),
+        "array value dot should offer 'length', got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_array_type_dot_offers_new() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn main() {
+  let _ = Array.
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 1, 16).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "new"),
+        "Array type dot should offer 'new', got: {labels:?}"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn completion_dot_on_ref_to_array() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+
+    let source = "\
+fn use_ref(r: Ref<Array<int, 3>>) {
+  r.length()
+}";
+    client.open(TEST_URI, source).await;
+
+    let response = client.completion(TEST_URI, 1, 4).await;
+    assert!(response.is_some());
+
+    let labels = completion_labels(&response.unwrap());
+    assert!(
+        labels.iter().any(|l| l == "length"),
+        "ref-to-array dot should offer 'length', got: {labels:?}"
     );
 
     client.shutdown().await;
@@ -12680,6 +12751,28 @@ async fn inlay_hint_match_slice_prefix_and_rest() {
             (0, 65, ": int".to_string()),
             (0, 73, ": Slice<int>".to_string())
         ]
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test]
+async fn inlay_hint_nested_array_rest_binds_sub_array() {
+    let mut client = TestClient::new().await;
+    client.initialize().await;
+    let source =
+        "fn f(m: Array<Array<int, 3>, 1>) -> int { match m { [[first, ..rest]] => first[0] } }";
+    client.open(TEST_URI, source).await;
+    let hints = client
+        .inlay_hint(TEST_URI, (0, 0), doc_end(source))
+        .await
+        .unwrap();
+    let labels: Vec<String> = inlay_hint_triples(&hints)
+        .into_iter()
+        .map(|(_, _, label)| label)
+        .collect();
+    assert!(
+        labels.contains(&": Array<int, 2>".to_string()),
+        "nested array rest should bind Array<int, 2>, got {labels:?}"
     );
     client.shutdown().await;
 }

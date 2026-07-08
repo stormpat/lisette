@@ -233,7 +233,9 @@ impl Planner<'_> {
             // helpers whose Go signatures keep the tagged return — no
             // lowering at the call site.
             let receiver_ty = receiver.get_type();
-            if NativeGoType::from_type(&receiver_ty).is_some()
+            // Peel so an alias over a native type stays native, else its methods
+            // get a second tagged-return wrap at the call site.
+            if NativeGoType::from_type(&self.facts.strip_and_peel(&receiver_ty)).is_some()
                 || receiver_is_prelude_type(&receiver_ty)
             {
                 return None;

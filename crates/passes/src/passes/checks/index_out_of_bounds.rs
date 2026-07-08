@@ -1,5 +1,6 @@
 use crate::passes::walk::NodeCtx;
-use syntax::ast::{Expression, Literal};
+use syntax::ast::{Expression, Literal, UnaryOperator};
+use syntax::types::Type;
 
 pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
     let Expression::IndexedAccess {
@@ -17,7 +18,30 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
         return;
     }
 
-    if !receiver.get_type().is_slice() {
+    let receiver_ty = ctx.store.peel_alias(&receiver.get_type());
+
+    if let Some(negative) = negative_index_literal(index)
+        && (matches!(receiver_ty, Type::Array { .. }) || receiver_ty.is_slice())
+    {
+        ctx.sink.push(diagnostics::infer::negative_index(
+            span,
+            &negative.to_string(),
+        ));
+        return;
+    }
+
+    if let Type::Array { length, .. } = &receiver_ty
+        && let Some(value) = index.as_integer()
+        && value >= *length
+    {
+        ctx.sink.push(diagnostics::infer::index_out_of_bounds(
+            span,
+            &value.to_string(),
+        ));
+        return;
+    }
+
+    if !receiver_ty.is_slice() {
         return;
     }
 
@@ -55,6 +79,19 @@ pub(crate) fn check(expression: &Expression, ctx: &NodeCtx) {
             &format!("{receiver_text}.length()"),
         ));
     }
+}
+
+fn negative_index_literal(index: &Expression) -> Option<i128> {
+    let Expression::Unary {
+        operator: UnaryOperator::Negative,
+        expression,
+        ..
+    } = index.unwrap_parens()
+    else {
+        return None;
+    };
+    let value = expression.as_integer()?;
+    (value > 0).then_some(-(value as i128))
 }
 
 fn expressions_equivalent(a: &Expression, b: &Expression) -> bool {

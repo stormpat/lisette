@@ -112,7 +112,10 @@ fn is_singleton_typed(pattern: &TypedPattern) -> bool {
                 && pattern_fields.iter().all(|(_, p)| is_singleton_typed(p))
         }
         TypedPattern::Tuple { elements, .. } => elements.iter().all(is_singleton_typed),
-        TypedPattern::Wildcard | TypedPattern::Slice { .. } | TypedPattern::Or { .. } => false,
+        TypedPattern::Wildcard
+        | TypedPattern::Slice { .. }
+        | TypedPattern::Array { .. }
+        | TypedPattern::Or { .. } => false,
     }
 }
 

@@ -125,6 +125,10 @@ impl InferCtx<'_, '_> {
 
         let (expected_index_ty, expected_collection_ty) = match type_name {
             "Slice" => (self.type_int(), self.type_slice(element_ty.clone())),
+            "Array" => {
+                let len = resolved_collection_ty.array_len().unwrap_or(0);
+                (self.type_int(), self.type_array(len, element_ty.clone()))
+            }
             "Map" => {
                 let Some(type_params) = resolved_collection_ty.get_type_params() else {
                     self.unify(expected_ty, &Type::Error, &span);

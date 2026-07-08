@@ -9,4 +9,4 @@ source: tests/ui/lint/mod.rs
    ·         ╰── always matches
  4 │ }
    ╰────
-  help: Use `let _` instead · code: [lint.rest_only_slice_pattern]
+  help: Use `let _` instead · code: [lint.rest_only_pattern]

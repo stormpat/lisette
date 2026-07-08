@@ -1,0 +1,13 @@
+---
+source: tests/spec/emit/arrays.rs
+description: "\nfn sum(a: Array<int, 3>) -> int {\n  let mut total = 0\n  for x in a {\n    total = total + x\n  }\n  total\n}\n"
+---
+package main
+
+func sum(a [3]int) int {
+	total := 0
+	for _, x := range a {
+		total += x
+	}
+	return total
+}

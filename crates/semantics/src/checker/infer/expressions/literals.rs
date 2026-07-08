@@ -125,9 +125,37 @@ impl InferCtx<'_, '_> {
             }
 
             Literal::Slice(elements) => {
+                // Peel so an alias over Array/Slice takes the branch below.
+                let resolved = store.peel_alias(&expected_ty.resolve_in(&self.env));
+
+                if let Type::Array { length, element } = &resolved {
+                    let expected_length = *length;
+                    let elem_expected_ty = element.as_ref().clone();
+                    if elements.len() as u64 != expected_length {
+                        self.sink
+                            .push(diagnostics::infer::array_literal_length_mismatch(
+                                expected_length,
+                                elements.len(),
+                                span,
+                            ));
+                    }
+                    let new_elements: Vec<Expression> = elements
+                        .into_iter()
+                        .map(|e| {
+                            self.with_value_context(|s| s.infer_expression(e, &elem_expected_ty))
+                        })
+                        .collect();
+                    let array_ty = self.type_array(expected_length, elem_expected_ty);
+                    self.unify(expected_ty, &array_ty, &span);
+                    return Expression::Literal {
+                        literal: Literal::Slice(new_elements),
+                        ty: array_ty,
+                        span,
+                    };
+                }
+
                 // If expected type is Slice<T>, propagate T to element inference
                 // so literals can adapt (e.g., `let x: Slice<int8> = [1, 2, 3]` works)
-                let resolved = expected_ty.resolve_in(&self.env);
                 let element_expected_ty = if resolved.get_name() == Some("Slice") {
                     resolved
                         .inner()
