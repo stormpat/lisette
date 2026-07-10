@@ -7091,6 +7091,94 @@ fn main() {
 }
 
 #[test]
+fn promoted_field_read_not_unused() {
+    assert_no_lint_warnings!(
+        r#"
+struct Size {
+  width: int,
+  height: int,
+}
+
+struct Widget {
+  embed Size,
+}
+
+fn main() {
+  let w = Widget { Size: Size { width: 1, height: 2 } };
+  let _ = w.width + w.height
+}
+"#
+    );
+}
+
+#[test]
+fn promoted_field_read_through_ref_embed_not_unused() {
+    assert_no_lint_warnings!(
+        r#"
+struct Size {
+  width: int,
+  height: int,
+}
+
+struct Widget {
+  embed Ref<Size>,
+}
+
+fn main() {
+  let s = Size { width: 1, height: 2 };
+  let w = Widget { Size: &s };
+  let _ = w.width + w.height
+}
+"#
+    );
+}
+
+#[test]
+fn promoted_field_read_through_multi_level_embed_not_unused() {
+    assert_no_lint_warnings!(
+        r#"
+struct Inner {
+  value: int,
+}
+
+struct Middle {
+  embed Inner,
+}
+
+struct Outer {
+  embed Middle,
+}
+
+fn main() {
+  let o = Outer { Middle: Middle { Inner: Inner { value: 1 } } };
+  let _ = o.value
+}
+"#
+    );
+}
+
+#[test]
+fn genuinely_unread_embedded_field_still_warns() {
+    assert_lint_snapshot!(
+        r#"
+struct Size {
+  width: int,
+  height: int,
+}
+
+struct Widget {
+  embed Size,
+}
+
+fn main() {
+  let w = Widget { Size: Size { width: 1, height: 2 } };
+  let _ = w.width
+}
+"#
+    );
+}
+
+#[test]
 fn struct_field_used_in_pattern() {
     assert_no_lint_warnings!(
         r#"
