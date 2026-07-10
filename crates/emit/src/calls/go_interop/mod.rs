@@ -93,60 +93,19 @@ impl Planner<'_> {
         Some(statements)
     }
 
-    fn has_go_hint(&self, receiver_expression: &Expression, member: &str, hint: &str) -> bool {
-        let Some(qualified_name) = go_qualified_name(receiver_expression, member) else {
-            return false;
-        };
-
-        self.facts
-            .definition(qualified_name.as_str())
-            .map(|definition| definition.go_hints().iter().any(|s| s == hint))
-            .unwrap_or(false)
-    }
-
-    pub(crate) fn has_go_array_return(
-        &self,
-        receiver_expression: &Expression,
-        member: &str,
-    ) -> bool {
-        self.has_go_hint(receiver_expression, member, "array_return")
-    }
-
     pub(crate) fn emit_go_call_discarded(
         &mut self,
         setup: &mut Vec<LoweredStatement>,
         call_expression: &Expression,
     ) -> Option<String> {
-        let Expression::Call {
-            expression: callee, ..
-        } = call_expression
-        else {
-            return None;
-        };
-
         let plan = self.plan_call(call_expression)?;
-
-        let has_array_return = if let Expression::DotAccess {
-            expression: receiver_expression,
-            member,
-            ..
-        } = callee.unwrap_parens()
-            && is_go_receiver(receiver_expression)
-        {
-            self.has_go_array_return(receiver_expression, member)
-        } else {
-            false
-        };
-
-        if plan.resolved.abi.result.is_passthrough() && !has_array_return {
+        if plan.resolved.abi.result.is_passthrough() {
             return None;
         }
 
-        let mut ctx = ExpressionContext::value();
-        if has_array_return {
-            ctx = ctx.with_raw_go_array_return();
-        }
-        let (call_setup, call_str) = self.lower_call(call_expression, None, ctx).into_parts();
+        let (call_setup, call_str) = self
+            .lower_call(call_expression, None, ExpressionContext::value())
+            .into_parts();
         setup.extend(call_setup);
 
         Some(call_str)

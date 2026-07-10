@@ -13,8 +13,9 @@ pub(crate) struct CallPlan<'a> {
     pub(crate) resolved: ResolvedCallee<'a>,
     pub(crate) arguments: Vec<ArgumentPlan>,
     pub(crate) result_transition: AbiTransition,
-    /// Call-level wrapping (variadic spread, array-return wrapper).
-    pub(crate) wrapper: WrapperPlan,
+    /// Variadic spread combine: present when the callee accepts a variadic
+    /// parameter and the call supplies a trailing spread argument.
+    pub(crate) variadic: Option<VariadicSpreadPlan>,
 }
 
 /// Canonical identity, signatures, and physical ABI for one callable.
@@ -75,18 +76,6 @@ pub(crate) enum ArgumentPlan {
     TaggedGoLowering,
 }
 
-/// Call-level wrapping (variadic spread, Go-array return).
-#[derive(Debug, Clone, Default)]
-pub(crate) struct WrapperPlan {
-    /// Variadic spread combine: present when the callee accepts a variadic
-    /// parameter and the call supplies a trailing spread argument.
-    pub(crate) variadic: Option<VariadicSpreadPlan>,
-    /// True when the callee is a Go function whose declared return is a
-    /// slice/array. Renderers still gate on `ctx.keeps_raw_go_array_return()`
-    /// before applying the slice wrap.
-    pub(crate) go_array_return: bool,
-}
-
 /// Variadic spread combine: a trailing spread argument must be combined
 /// with fixed args via the variadic boundary helper.
 #[derive(Debug, Clone)]
@@ -114,16 +103,9 @@ impl CallPlan<'_> {
     /// Derive a `VariadicCombine` from this plan, given the caller's
     /// `extra_leading` argument count (UFCS adds 1 for the implicit receiver).
     pub(crate) fn variadic_combine(&self, extra_leading: usize) -> Option<VariadicCombine> {
-        self.wrapper
-            .variadic
+        self.variadic
             .as_ref()
             .map(|spread| spread.combine(extra_leading))
-    }
-
-    /// True when the callee is a Go function returning a slice/array; the
-    /// renderer still gates on its expression-context before wrapping.
-    pub(crate) fn has_go_array_return(&self) -> bool {
-        self.wrapper.go_array_return
     }
 }
 
@@ -144,7 +126,7 @@ impl<'a> Planner<'a> {
         };
 
         let function = callee.unwrap_parens();
-        let wrapper = self.plan_call_wrapper(function, (**spread).as_ref());
+        let variadic = plan_variadic_spread(function, (**spread).as_ref());
 
         let go_return = self.resolve_go_call_abi(expression);
 
@@ -205,7 +187,7 @@ impl<'a> Planner<'a> {
             resolved,
             arguments,
             result_transition,
-            wrapper,
+            variadic,
         })
     }
 
@@ -406,28 +388,6 @@ impl<'a> Planner<'a> {
                 }
             }),
             _ => None,
-        }
-    }
-
-    /// Plan call-level wrapping. Detects variadic spread (if a trailing
-    /// spread argument is supplied) and the Go-array-return hint (the
-    /// renderer still gates on its expression context before wrapping).
-    fn plan_call_wrapper(&self, function: &Expression, spread: Option<&Expression>) -> WrapperPlan {
-        let variadic = plan_variadic_spread(function, spread);
-        let mut go_array_return = false;
-        if let Expression::DotAccess {
-            expression: receiver_expression,
-            member,
-            ..
-        } = function.unwrap_parens()
-            && is_go_receiver(receiver_expression)
-            && self.has_go_array_return(receiver_expression, member)
-        {
-            go_array_return = true;
-        }
-        WrapperPlan {
-            variadic,
-            go_array_return,
         }
     }
 

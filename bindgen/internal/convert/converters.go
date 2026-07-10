@@ -224,7 +224,6 @@ func (c *Converter) applyReturnType(result *ConvertResult, sig *types.Signature,
 		result.SkipNote = returnType.SkipReason
 	}
 	result.CommaOk = returnType.CommaOk
-	result.ArrayReturn = returnType.ArrayReturn
 	c.applySentinelInt(result, lookupName)
 	return returnType
 }
@@ -674,17 +673,6 @@ func (c *Converter) convertType(result *ConvertResult, exp extract.SymbolExport)
 		result.LisetteType = basicToLisette(u)
 
 	default:
-		// `type UUID [16]byte` keeps its slice-shaped newtype body; this is
-		// the one position where an array lowers to a slice rather than skipping.
-		if arr := unwrapArray(underlying); arr != nil {
-			t := arraySliceTypeResult(arr, make(map[types.Type]bool), c)
-			if t.SkipReason != nil {
-				result.SkipReason = withOpaqueType(t.SkipReason)
-				return
-			}
-			result.LisetteType = t.LisetteType
-			return
-		}
 		t := ToLisette(underlying, c)
 		if t.SkipReason != nil {
 			result.SkipReason = withOpaqueType(t.SkipReason)
@@ -1105,12 +1093,12 @@ func formatConstantValue(val constant.Value) string {
 	}
 }
 
-// `S ~[]E` and `M ~map[K]V` shapes go into substitutions (caller rewrites `S`
-// to `Slice<E>` or `M` to `Map<K, V>`) rather than into specs. Recognized
-// bounds register their imports on conv. `recipe` is Go's full type-parameter
-// list in declaration order, each entry as a Lisette type (collapsed entries as
-// their shape, kept entries as the bare name), so emit can rebuild Go's type
-// arguments when inference cannot.
+// `S ~[]E`, `M ~map[K]V`, and `A ~[N]E` shapes go into substitutions (caller
+// rewrites `S` to `Slice<E>`, `M` to `Map<K, V>`, or `A` to `Array<E, N>`)
+// rather than into specs. Recognized bounds register their imports on conv.
+// `recipe` is Go's full type-parameter list in declaration order, each entry as
+// a Lisette type (collapsed entries as their shape, kept entries as the bare
+// name), so emit can rebuild Go's type arguments when inference cannot.
 func collectTypeParams(
 	typeParams *types.TypeParamList,
 	emitOpaque bool,
@@ -1124,21 +1112,12 @@ func collectTypeParams(
 		name := tp.Obj().Name()
 		constraint := tp.Constraint()
 
-		if elemName, ok := recognizeSliceShape(constraint); ok {
+		if shape, ok := collapsedShape(constraint); ok {
 			if substitutions == nil {
 				substitutions = make(map[string]string)
 			}
-			substitutions[name] = sliceOf(elemName)
-			recipe = append(recipe, sliceOf(elemName))
-			continue
-		}
-
-		if keyName, valName, ok := recognizeMapShape(constraint); ok {
-			if substitutions == nil {
-				substitutions = make(map[string]string)
-			}
-			substitutions[name] = mapOf(keyName, valName)
-			recipe = append(recipe, mapOf(keyName, valName))
+			substitutions[name] = shape
+			recipe = append(recipe, shape)
 			continue
 		}
 
@@ -1914,11 +1893,10 @@ func (c *Converter) extractInterfaceMethods(_interface *types.Interface, typeNam
 		}
 
 		methods = append(methods, InterfaceMethod{
-			Name:        method.Name(),
-			Params:      params,
-			ReturnType:  returnType.LisetteType,
-			CommaOk:     returnType.CommaOk,
-			ArrayReturn: returnType.ArrayReturn,
+			Name:       method.Name(),
+			Params:     params,
+			ReturnType: returnType.LisetteType,
+			CommaOk:    returnType.CommaOk,
 		})
 	}
 

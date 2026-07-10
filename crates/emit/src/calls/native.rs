@@ -9,6 +9,7 @@ use crate::plan::values::{CaptureBoundary, EvaluationEffect, ValuePlan};
 use crate::types::native::NativeGoType;
 use crate::utils::reads_mutable_operand;
 use syntax::ast::{Expression, UnaryOperator};
+use syntax::program::DotAccessKind;
 use syntax::types::{CompoundKind, Type, peel_to_range_type};
 
 pub(super) struct NativeCallResult {
@@ -502,8 +503,16 @@ impl Planner<'_> {
                 ..
             } => true,
             Expression::DotAccess {
-                expression: base, ..
+                expression: base,
+                dot_access_kind,
+                ..
             } => {
+                if matches!(
+                    dot_access_kind,
+                    Some(DotAccessKind::TupleStructField { is_newtype: true })
+                ) {
+                    return false;
+                }
                 let origin = base.unwrap_parens();
                 let fresh_value = matches!(origin, Expression::StructCall { .. })
                     || (matches!(origin, Expression::Call { .. }) && !base.get_type().is_ref());

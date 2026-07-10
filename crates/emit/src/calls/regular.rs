@@ -222,29 +222,19 @@ impl<'a> Planner<'a> {
 
         setup.extend(args_setup);
 
-        let has_array_return = call_plan.has_go_array_return();
-        let value = match self.wrap_go_array_return(
-            &mut setup,
-            has_array_return,
-            &call_str,
-            expression_ctx,
-        ) {
-            Some(wrapped) => wrapped,
-            None => call_str,
-        };
         let effect = self
             .regular_call_effect(function, args_effect)
             .combine(callee_effect);
         if self.callee_lowers_to_type_construction(function) {
             ValuePlan::computed(
                 setup,
-                GoExpression::opaque_with_deferred_evaluation(value, true),
+                GoExpression::opaque_with_deferred_evaluation(call_str, true),
                 effect,
             )
         } else {
             ValuePlan::plain_call(
                 setup,
-                GoExpression::opaque_with_deferred_evaluation(value, true),
+                GoExpression::opaque_with_deferred_evaluation(call_str, true),
                 effect,
             )
         }
@@ -300,22 +290,6 @@ impl<'a> Planner<'a> {
         let mut mapping = rustc_hash::FxHashMap::default();
         extract_type_mapping(&body, &callee.instantiated, &mut mapping);
         self.reconstruct_collapsed_type_args(recipe, &mapping)
-    }
-
-    /// Hoist a Go array-return call into a temp and reslice as `[]T`. Skipped
-    /// for discarded calls.
-    fn wrap_go_array_return(
-        &mut self,
-        setup: &mut Vec<LoweredStatement>,
-        has_array_return: bool,
-        call_str: &str,
-        ctx: ExpressionContext<'_>,
-    ) -> Option<String> {
-        if !has_array_return || ctx.keeps_raw_go_array_return() {
-            return None;
-        }
-        let temp = self.hoist_tmp_value_statement(setup, "arr", call_str);
-        Some(format!("{}[:]", temp))
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -39,8 +39,7 @@ type Callback func()
 // Processor processes data.
 type Processor func(data []byte) []byte
 
-// Alias-to-array — return position must lower to Slice + #[go(array_return)]
-// after peeling the alias.
+// Alias-to-array peels to the array type.
 type Digest = [32]byte
 
 func ComputeDigest() Digest {

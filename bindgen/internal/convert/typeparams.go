@@ -200,6 +200,21 @@ func singleTildeTerm(constraint types.Type) (types.Type, bool) {
 	return term.Type(), true
 }
 
+// Composed Lisette type for a collapsible constraint (`S ~[]E`, `A ~[N]E`,
+// `M ~map[K]V`), so callers can rewrite the type parameter to its shape.
+func collapsedShape(constraint types.Type) (string, bool) {
+	if elemName, ok := recognizeSliceShape(constraint); ok {
+		return sliceOf(elemName), true
+	}
+	if elemName, length, ok := recognizeArrayShape(constraint); ok {
+		return arrayOf(elemName, length), true
+	}
+	if keyName, valName, ok := recognizeMapShape(constraint); ok {
+		return mapOf(keyName, valName), true
+	}
+	return "", false
+}
+
 // Detects `S ~[]E` over a *types.TypeParam. Returns the inner E's name so
 // callers can rewrite `S` to `Slice<E>`.
 func recognizeSliceShape(constraint types.Type) (sliceElemTypeParamName string, ok bool) {
@@ -216,6 +231,24 @@ func recognizeSliceShape(constraint types.Type) (sliceElemTypeParamName string, 
 		return "", false
 	}
 	return tp.Obj().Name(), true
+}
+
+// Detects `A ~[N]E` over a *types.TypeParam element. Returns the inner E's name
+// and the array length so callers can rewrite `A` to `Array<E, N>`.
+func recognizeArrayShape(constraint types.Type) (elemName string, length int64, ok bool) {
+	inner, ok := singleTildeTerm(constraint)
+	if !ok {
+		return "", 0, false
+	}
+	array, isArray := inner.(*types.Array)
+	if !isArray {
+		return "", 0, false
+	}
+	tp, isTp := array.Elem().(*types.TypeParam)
+	if !isTp {
+		return "", 0, false
+	}
+	return tp.Obj().Name(), array.Len(), true
 }
 
 // Detects `M ~map[K]V` over *types.TypeParam key and value. Returns the inner

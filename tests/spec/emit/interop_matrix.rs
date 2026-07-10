@@ -367,35 +367,6 @@ fn main() {
 }
 
 #[test]
-fn interop_array_return_direct_call() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn main() {
-  let data = "hello" as Slice<uint8>
-  let hash = sha256.Sum256(data)
-  let _ = hash
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_let_call() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn main() {
-  let f = sha256.Sum256
-  let data = "hello" as Slice<uint8>
-  let hash = f(data)
-  let _ = hash
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
 fn interop_tuple_direct_call() {
     let input = r#"
 import "go:path"
@@ -521,100 +492,6 @@ fn main() {
     Some(v) => { let _ = v },
     None => {},
   }
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_explicit_return() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn get() -> fn(Slice<uint8>) -> Slice<uint8> {
-  return sha256.Sum256
-}
-
-fn main() {
-  let f = get()
-  let data: Slice<uint8> = []
-  let out = f(data)
-  let _ = out
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_parenthesized_call() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn main() {
-  let data: Slice<uint8> = []
-  let out = (sha256.Sum256)(data)
-  let out2 = out.append(1)
-  let _ = out2
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_if_assignment() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn main() {
-  let f: fn(Slice<uint8>) -> Slice<uint8> = if true {
-    sha256.Sum256
-  } else {
-    sha256.Sum224
-  }
-  let data: Slice<uint8> = []
-  let out = f(data)
-  let _ = out
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_if_tail() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn get(cond: bool) -> fn(Slice<uint8>) -> Slice<uint8> {
-  if cond {
-    sha256.Sum256
-  } else {
-    sha256.Sum224
-  }
-}
-
-fn main() {
-  let f = get(true)
-  let data: Slice<uint8> = []
-  let out = f(data)
-  let _ = out
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_call_arg() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn apply(f: fn(Slice<uint8>) -> Slice<uint8>, data: Slice<uint8>) -> Slice<uint8> {
-  f(data)
-}
-
-fn main() {
-  let data: Slice<uint8> = []
-  let out = apply(sha256.Sum256, data)
-  let _ = out
 }
 "#;
     assert_emit_snapshot!(input);
@@ -867,34 +744,6 @@ fn load() -> Result<(string, int), error> {
 pub fn Load() -> Result<(string, int), error>
 "#;
     assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/multi", typedef)]);
-}
-
-#[test]
-fn interop_array_return_defer() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn main() {
-  let data: Slice<uint8> = [1, 2, 3]
-  defer sha256.Sum256(data)
-  let _ = 0
-}
-"#;
-    assert_emit_snapshot!(input);
-}
-
-#[test]
-fn interop_array_return_statement_position() {
-    let input = r#"
-import "go:crypto/sha256"
-
-fn main() {
-  let data: Slice<uint8> = [1, 2, 3]
-  sha256.Sum256(data)
-  let _ = 0
-}
-"#;
-    assert_emit_snapshot!(input);
 }
 
 #[test]
@@ -1563,6 +1412,56 @@ pub struct Bucket {
 }
 
 #[test]
+fn interop_struct_field_read_array_option_pointer_index() {
+    let input = r#"
+import "go:example.com/aws"
+
+fn main() {
+  let b = aws.Bucket { .. }
+  let slots = b.Slots
+  match slots[0] {
+    Some(v) => { let _ = v },
+    None => {},
+  }
+}
+"#;
+    let typedef = r#"
+pub struct Node {
+  pub Value: int,
+}
+
+pub struct Bucket {
+  pub Slots: Array<Option<Ref<Node>>, 2>,
+}
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/aws", typedef)]);
+}
+
+#[test]
+fn interop_struct_field_assign_array_option_pointer() {
+    let input = r#"
+import "go:example.com/aws"
+
+fn main() {
+  let n = aws.Node { .. }
+  let mut b = aws.Bucket { .. }
+  b.Slots = [Some(&n), None]
+  let _ = b
+}
+"#;
+    let typedef = r#"
+pub struct Node {
+  pub Value: int,
+}
+
+pub struct Bucket {
+  pub Slots: Array<Option<Ref<Node>>, 2>,
+}
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/aws", typedef)]);
+}
+
+#[test]
 fn interop_struct_field_read_map_option_string_index() {
     let input = r#"
 import "go:example.com/aws"
@@ -1958,4 +1857,67 @@ fn main() {
 pub fn Pick<E, R>(s: Slice<E>) -> R
 "#;
     assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/pick", typedef)]);
+}
+
+#[test]
+fn interop_collapsed_array_constraint_call_omits_turbofish() {
+    let input = r#"
+import "go:example.com/arr"
+import "go:fmt"
+
+fn main() {
+  let out = arr.Echo4([1, 2, 3, 4])
+  fmt.Println(out.length())
+}
+"#;
+    let typedef = r#"
+#[go(collapsed_type_params, "Array<E, 4>, E")]
+pub fn Echo4<E>(x: Array<E, 4>) -> Array<E, 4>
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/arr", typedef)]);
+}
+
+#[test]
+fn interop_collapsed_array_constraint_reconstructs_when_uninferrable() {
+    let input = r#"
+import "go:example.com/arr"
+
+fn main() {
+  let out = arr.Make4<int>()
+  let _ = out
+}
+"#;
+    let typedef = r#"
+#[go(collapsed_type_params, "Array<E, 4>, E")]
+pub fn Make4<E>() -> Array<E, 4>
+"#;
+    assert_emit_snapshot_with_go_typedefs!(input, &[("go:example.com/arr", typedef)]);
+}
+
+#[test]
+fn interop_array_return() {
+    let input = r#"
+import "go:crypto/sha256"
+
+fn main() {
+  let data = "hi" as Slice<byte>
+  let hash = sha256.Sum256(data)
+  let _ = hash
+}
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn interop_array_return_as_slice() {
+    let input = r#"
+import "go:crypto/sha256"
+
+fn main() {
+  let data = "hi" as Slice<byte>
+  let bytes = sha256.Sum256(data).as_slice()
+  let _ = bytes
+}
+"#;
+    assert_emit_snapshot!(input);
 }

@@ -54,11 +54,6 @@ impl Planner<'_> {
                 );
             }
         }
-        if self.is_go_array_return_value(expression) {
-            let mut setup = Vec::new();
-            let value = self.emit_array_return_wrapper(&mut setup, expression);
-            return ValuePlan::computed(setup, GoExpression::opaque(value), EvaluationEffect::Pure);
-        }
 
         self.plan_operand(expression, ctx)
     }
