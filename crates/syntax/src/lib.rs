@@ -19,6 +19,7 @@ use ast::Expression;
 pub struct AstBuildResult {
     pub ast: Vec<Expression>,
     pub errors: Vec<ParseError>,
+    pub file_comment: Option<String>,
 }
 
 impl AstBuildResult {
@@ -54,6 +55,7 @@ pub fn build_ast(source: &str, file_id: u32) -> AstBuildResult {
                 )
                 .with_parse_code("file_too_large"),
             ],
+            file_comment: None,
         };
     }
 
@@ -62,6 +64,7 @@ pub fn build_ast(source: &str, file_id: u32) -> AstBuildResult {
         return AstBuildResult {
             ast: vec![],
             errors: parse_result.errors,
+            file_comment: None,
         };
     }
 
@@ -69,6 +72,7 @@ pub fn build_ast(source: &str, file_id: u32) -> AstBuildResult {
         return AstBuildResult {
             ast: parse_result.ast,
             errors: vec![],
+            file_comment: parse_result.file_comment,
         };
     }
 
@@ -76,5 +80,6 @@ pub fn build_ast(source: &str, file_id: u32) -> AstBuildResult {
     AstBuildResult {
         ast: desugar_result.ast,
         errors: desugar_result.errors,
+        file_comment: parse_result.file_comment,
     }
 }
