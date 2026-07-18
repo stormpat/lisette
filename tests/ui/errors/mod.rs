@@ -2356,6 +2356,57 @@ fn test(holders: Map<string, Holder>) {
 }
 
 #[test]
+fn infer_no_make_constructor_map() {
+    let input = r#"
+fn test() {
+  let m = Map.make<string, int>(8)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_no_make_constructor_channel() {
+    let input = r#"
+fn test() {
+  let c = Channel.make<int>(5)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_ref_slice_reserve() {
+    let input = r#"
+fn test(r: Ref<Slice<int>>) {
+  let _ = r.reserve(10)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_negative_size_literal_make() {
+    let input = r#"
+fn test() {
+  let a = Slice.make<byte>(-1)
+  let _ = a
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
+fn infer_slice_make_no_zero() {
+    let input = r#"
+fn test() {
+  let refs = Slice.make<Ref<int>>(4)
+}
+"#;
+    assert_infer_error_snapshot!(input);
+}
+
+#[test]
 fn infer_map_read_no_zero_in_deref_write() {
     let input = r#"
 fn test() {
@@ -9509,7 +9560,7 @@ fn main() {
 }
 
 #[test]
-fn infer_ref_slice_append() {
+fn infer_ref_slice_growth() {
     let input = r#"
 fn main() {
   let mut s = [1, 2, 3]

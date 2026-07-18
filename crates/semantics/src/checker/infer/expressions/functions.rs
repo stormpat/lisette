@@ -1,7 +1,9 @@
 use crate::checker::EnvResolve;
 use ecow::EcoString;
 use syntax::ast::BindingKind;
-use syntax::ast::{Annotation, Binding, Expression, Pattern, Span, StructKind};
+use syntax::ast::{
+    Annotation, Binding, Expression, Literal, Pattern, Span, StructKind, UnaryOperator,
+};
 use syntax::program::{CallKind, Definition, DefinitionBody, NativeTypeKind};
 use syntax::types::{
     Bound, CompoundKind, SubstitutionMap, Symbol, Type, peel_to_range_type, substitute,
@@ -306,9 +308,35 @@ impl InferCtx<'_, '_> {
         span: Span,
         expected_ty: &Type,
     ) -> Expression {
+        let callee_path = expression.unwrap_parens().as_dotted_path();
+
         // `Array.new` has no prelude signature (no const generics), so resolve inline.
-        if expression.as_dotted_path().as_deref() == Some("Array.new") {
+        if callee_path.as_deref() == Some("Array.new") {
             return self.infer_array_new_call(&expression, args, type_args, span, expected_ty);
+        }
+
+        if let Some(diagnostic) = match callee_path.as_deref() {
+            Some("Map.make") => Some(diagnostics::infer::map_no_make_constructor(span)),
+            Some("Channel.make") => Some(diagnostics::infer::channel_no_make_constructor(span)),
+            _ => None,
+        } {
+            self.sink.push(diagnostic);
+            let new_args: Vec<Expression> = args
+                .into_iter()
+                .map(|arg| self.with_value_context(|s| s.infer_expression(arg, &Type::Error)))
+                .collect();
+            let new_spread = spread
+                .map(|s| self.with_value_context(|state| state.infer_expression(s, &Type::Error)));
+            return Expression::Call {
+                expression,
+                args: new_args,
+                spread: Box::new(new_spread),
+                raw_type_args: type_args,
+                resolved_type_args: Vec::new(),
+                ty: Type::Error,
+                span,
+                call_kind: None,
+            };
         }
 
         let store = self.store;
@@ -524,6 +552,24 @@ impl InferCtx<'_, '_> {
             self.check_redundant_assert_type(&return_ty, &new_args, span);
         }
 
+        if callee_path.as_deref() == Some("Slice.make") {
+            let module_id = self.cursor.module_id.clone();
+            self.facts
+                .slice_make_checks
+                .push(crate::facts::SliceMakeCheck {
+                    ty: call_ty.clone(),
+                    span,
+                    module_id,
+                });
+        }
+
+        self.check_negative_size_literal(
+            call_kind,
+            &callee_expression,
+            callee_path.as_deref(),
+            &new_args,
+        );
+
         Expression::Call {
             expression: callee_expression.into(),
             args: new_args,
@@ -533,6 +579,49 @@ impl InferCtx<'_, '_> {
             ty: call_ty,
             span,
             call_kind: Some(call_kind),
+        }
+    }
+
+    fn check_negative_size_literal(
+        &mut self,
+        call_kind: CallKind,
+        callee_expression: &Expression,
+        callee_path: Option<&str>,
+        args: &[Expression],
+    ) {
+        let sized = match call_kind {
+            CallKind::NativeConstructor(NativeTypeKind::Slice)
+                if callee_path == Some("Slice.make") =>
+            {
+                args.first().map(|arg| ("length", arg))
+            }
+            CallKind::NativeConstructor(NativeTypeKind::Channel)
+                if callee_path == Some("Channel.buffered") =>
+            {
+                args.first().map(|arg| ("capacity", arg))
+            }
+            CallKind::NativeMethod(NativeTypeKind::Slice) => {
+                match callee_expression.unwrap_parens() {
+                    Expression::DotAccess { member, .. } if member == "reserve" => {
+                        args.first().map(|arg| ("capacity", arg))
+                    }
+                    _ => None,
+                }
+            }
+            CallKind::NativeMethodIdentifier(NativeTypeKind::Slice)
+                if callee_path == Some("Slice.reserve") =>
+            {
+                args.get(1).map(|arg| ("capacity", arg))
+            }
+            _ => None,
+        };
+        if let Some((what, arg)) = sized
+            && is_negative_integer_literal(arg)
+        {
+            self.sink.push(diagnostics::infer::negative_size_literal(
+                what,
+                arg.get_span(),
+            ));
         }
     }
 
@@ -1353,14 +1442,7 @@ impl InferCtx<'_, '_> {
                     return CallKind::TupleStructConstructor;
                 }
 
-                // Native constructor: Channel.new, Map.new, Slice.new
-                let constructor_kind = match value.as_str() {
-                    "Channel.new" | "Channel.buffered" => Some(NativeTypeKind::Channel),
-                    "Map.new" => Some(NativeTypeKind::Map),
-                    "Slice.new" => Some(NativeTypeKind::Slice),
-                    _ => None,
-                };
-                if let Some(kind) = constructor_kind {
+                if let Some(kind) = NativeTypeKind::from_constructor_path(value) {
                     return CallKind::NativeConstructor(kind);
                 }
 
@@ -1684,4 +1766,18 @@ fn callee_label(expr: &Expression) -> String {
         },
         _ => "the function".to_string(),
     }
+}
+
+fn is_negative_integer_literal(expression: &Expression) -> bool {
+    matches!(
+        expression.unwrap_parens(),
+        Expression::Unary {
+            operator: UnaryOperator::Negative,
+            expression: inner,
+            ..
+        } if matches!(
+            inner.unwrap_parens(),
+            Expression::Literal { literal: Literal::Integer { value, .. }, .. } if *value > 0
+        )
+    )
 }
