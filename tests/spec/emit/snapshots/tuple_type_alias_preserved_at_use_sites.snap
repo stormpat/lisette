@@ -1,6 +1,12 @@
 ---
 source: tests/spec/emit/types.rs
-description: "\ntype Pair = (int, int)\n\nstruct Holder { p: Pair }\n\nfn use_it(h: Holder, x: Pair) -> int { h.p.0 + x.1 }\n"
+description: |
+  
+  type Pair = (int, int)
+  
+  struct Holder { p: Pair }
+  
+  fn use_it(h: Holder, x: Pair) -> int { h.p.0 + x.1 }
 ---
 package main
 

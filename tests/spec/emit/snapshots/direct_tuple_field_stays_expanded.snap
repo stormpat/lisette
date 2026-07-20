@@ -1,6 +1,8 @@
 ---
 source: tests/spec/emit/types.rs
-description: "\nstruct Holder { p: (int, int) }\n"
+description: |
+  
+  struct Holder { p: (int, int) }
 ---
 package main
 

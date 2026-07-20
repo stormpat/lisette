@@ -6086,6 +6086,38 @@ fn main() {
 }
 
 #[test]
+fn tuple_alias_destructure() {
+    infer(
+        r#"
+type Pair = (int, string)
+
+fn main() {
+  let p: Pair = (1, "x")
+  let (a, b) = p
+  let _: int = a
+  let _: string = b
+}
+"#,
+    )
+    .assert_no_errors();
+}
+
+#[test]
+fn tuple_alias_destructure_arity_mismatch() {
+    infer(
+        r#"
+type Pair = (int, int)
+
+fn main() {
+  let p: Pair = (1, 2)
+  let (a, b, c) = p
+}
+"#,
+    )
+    .assert_infer_code("tuple_element_count_mismatch");
+}
+
+#[test]
 fn cast_through_generic_alias_to_underlying_generic() {
     infer(
         r#"

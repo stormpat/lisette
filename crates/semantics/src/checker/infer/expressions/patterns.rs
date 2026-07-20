@@ -63,7 +63,8 @@ impl InferCtx<'_, '_> {
             }
 
             Pattern::Tuple { elements, span } => {
-                let element_types: Vec<Type> = match &expected_ty {
+                let peeled = self.store.peel_alias(&expected_ty.resolve_in(&self.env));
+                let element_types: Vec<Type> = match &peeled {
                     Type::Tuple(types) if types.len() == elements.len() => types.clone(),
                     Type::Tuple(types) => {
                         self.sink.push(diagnostics::infer::tuple_arity_mismatch(
