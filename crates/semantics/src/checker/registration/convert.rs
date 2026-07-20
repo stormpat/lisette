@@ -337,8 +337,7 @@ impl TaskState<'_> {
                 // id already matches (function aliases are pre-wrapped by populate_type_alias).
                 let body_differs = match &resolved_ty {
                     Type::Nominal { id, .. } => id.as_str() != qualified_name.as_str(),
-                    Type::Simple(_) | Type::Compound { .. } | Type::Array { .. } => true,
-                    _ => false,
+                    other => other.is_structural_alias_body(),
                 };
                 if body_differs
                     && let Some(Definition {

@@ -589,7 +589,8 @@ impl InferCtx<'_, '_> {
     ) -> Option<(Expression, DotAccessKind)> {
         let index: usize = args.member_name.parse().ok()?;
 
-        let Type::Tuple(elements) = &args.deref_ty else {
+        let peeled = self.store.peel_alias(&args.deref_ty);
+        let Type::Tuple(elements) = &peeled else {
             return None;
         };
 

@@ -1307,6 +1307,26 @@ fn get_val(o: Outer) -> int {
 }
 
 #[test]
+fn tuple_type_alias_preserved_at_use_sites() {
+    let input = r#"
+type Pair = (int, int)
+
+struct Holder { p: Pair }
+
+fn use_it(h: Holder, x: Pair) -> int { h.p.0 + x.1 }
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
+fn direct_tuple_field_stays_expanded() {
+    let input = r#"
+struct Holder { p: (int, int) }
+"#;
+    assert_emit_snapshot!(input);
+}
+
+#[test]
 fn type_alias_chained() {
     let input = r#"
 struct Point { pub x: int, pub y: int }

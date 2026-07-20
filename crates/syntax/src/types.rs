@@ -1191,6 +1191,15 @@ impl Type {
         matches!(self, Type::Var { .. })
     }
 
+    /// A transparent alias over this keeps its name, wrapped in a `Nominal`
+    /// that unification peels back to it.
+    pub fn is_structural_alias_body(&self) -> bool {
+        matches!(
+            self,
+            Type::Simple(_) | Type::Compound { .. } | Type::Array { .. } | Type::Tuple(_)
+        )
+    }
+
     pub fn is_numeric(&self) -> bool {
         self.as_simple().is_some_and(SimpleKind::is_arithmetic)
     }
