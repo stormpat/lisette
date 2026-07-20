@@ -137,17 +137,17 @@ impl InferCtx<'_, '_> {
             // Go-level aliases for scalar types: byte <-> uint8, rune <-> int32.
             (Type::Simple(k1), Type::Simple(k2)) if simple_kinds_are_go_aliases(*k1, *k2) => Ok(()),
 
-            // Alias follow-through: `type MyFoo = Foo` stores a Nominal
-            // alias with Foo as `underlying_ty`. When the other side is a
-            // Simple/Compound/Array, follow the alias to the underlying type.
+            // Alias follow-through: `type MyFoo = Foo` stores a Nominal with
+            // `Foo` as `underlying_ty`; when unifying against a structural
+            // body, peel to the underlying type.
             (
                 Nominal {
                     id,
                     underlying_ty: Some(underlying),
                     ..
                 },
-                other @ (Type::Simple(_) | Type::Compound { .. } | Type::Array { .. }),
-            ) => {
+                other,
+            ) if other.is_structural_alias_body() => {
                 if matches!(other, Type::Simple(_)) && store.is_nominal_defined_type(id.as_str()) {
                     Err(UnifyError::TypeMismatch)
                 } else {
@@ -157,13 +157,13 @@ impl InferCtx<'_, '_> {
             }
 
             (
-                other @ (Type::Simple(_) | Type::Compound { .. } | Type::Array { .. }),
+                other,
                 Nominal {
                     id,
                     underlying_ty: Some(underlying),
                     ..
                 },
-            ) => {
+            ) if other.is_structural_alias_body() => {
                 if matches!(other, Type::Simple(_)) && store.is_nominal_defined_type(id.as_str()) {
                     Err(UnifyError::TypeMismatch)
                 } else {
